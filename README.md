@@ -10,7 +10,7 @@ ready, a notification offers **Open PR** or **Merge**.
 ## Install
 
 ```sh
-curl -sL https://github.com/juancarlosllhL/PRMasterTray/releases/latest/download/PRMaster.app.zip -o /tmp/prmaster.zip \
+curl -fsSL https://github.com/juancarlosllhL/PRMasterTray/releases/latest/download/PRMaster.app.zip -o /tmp/prmaster.zip \
   && ditto -x -k /tmp/prmaster.zip /tmp/prmaster \
   && rm -rf /Applications/PRMaster.app \
   && ditto /tmp/prmaster/PRMaster.app /Applications/PRMaster.app \
