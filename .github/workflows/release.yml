@@ -18,7 +18,7 @@ jobs:
     runs-on: macos-15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Printed rather than pinned. Swift 6 is required; leaving the image's
       # default in place avoids chasing Xcode paths every time the image moves,
