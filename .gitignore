@@ -1,0 +1,24 @@
+.build/
+.swiftpm/
+*.xcodeproj
+.DS_Store
+
+# Local wiz/HUD session state — not shared.
+.claude/wiz/
+.claude/hud-budget.json
+.claude/active-plan.json
+.claude/knowledge-pending.json
+dist/
+
+# Local agent tooling config and its archives. Internal to how this repo is
+# worked on, not part of the app, and the yagni archive carries the full text of
+# whatever was deleted — tracking it would put the working notes below straight
+# back into the repo through the back door.
+.claude/
+
+# Working notes, kept local. They stay on disk so the tooling can still read
+# them; they are simply not part of the published repo.
+plans/
+reviews/
+stories/
+FOLLOWUP.md

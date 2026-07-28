@@ -1,0 +1,211 @@
+{
+  "data": {
+    "search": {
+      "nodes": [
+        {
+          "id": "PR_1",
+          "number": 1204,
+          "title": ":sparkles: paginate the widget catalogue endpoint",
+          "url": "https://github.com/acme/widget-service/pull/1204",
+          "isDraft": false,
+          "headRefOid": "52eca0e",
+          "updatedAt": "2026-07-27T08:56:15Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "reviewDecision": "APPROVED",
+          "repository": {
+            "nameWithOwner": "acme/widget-service"
+          },
+          "commits": {
+            "nodes": [
+              {
+                "commit": {
+                  "statusCheckRollup": {
+                    "state": "SUCCESS"
+                  }
+                }
+              }
+            ]
+          },
+          "reviews": {
+            "totalCount": 2
+          }
+        },
+        {
+          "id": "PR_2",
+          "number": 318,
+          "title": ":fire: drop the unused session cache",
+          "url": "https://github.com/acme/chat-assistant/pull/318",
+          "isDraft": false,
+          "headRefOid": "05ae9cf",
+          "updatedAt": "2026-07-27T08:39:21Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "BLOCKED",
+          "reviewDecision": null,
+          "repository": {
+            "nameWithOwner": "acme/chat-assistant"
+          },
+          "commits": {
+            "nodes": [
+              {
+                "commit": {
+                  "statusCheckRollup": {
+                    "state": "SUCCESS"
+                  }
+                }
+              }
+            ]
+          },
+          "reviews": {
+            "totalCount": 0
+          }
+        },
+        {
+          "id": "PR_3",
+          "number": 260,
+          "title": ":white_check_mark: retry the flaky integration suite on timeout instead of failing the whole pipeline run",
+          "url": "https://github.com/acme/widget-service/pull/260",
+          "isDraft": false,
+          "headRefOid": "aaa111b",
+          "updatedAt": "2026-07-27T07:10:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "BLOCKED",
+          "reviewDecision": "CHANGES_REQUESTED",
+          "repository": {
+            "nameWithOwner": "acme/widget-service"
+          },
+          "commits": {
+            "nodes": [
+              {
+                "commit": {
+                  "statusCheckRollup": {
+                    "state": "FAILURE"
+                  }
+                }
+              }
+            ]
+          },
+          "reviews": {
+            "totalCount": 0
+          }
+        },
+        {
+          "id": "PR_4",
+          "number": 71,
+          "title": ":arrow_up: upgrade telemetry SDK to v4",
+          "url": "https://github.com/acme/infra/pull/71",
+          "isDraft": false,
+          "headRefOid": "bbb222c",
+          "updatedAt": "2026-07-27T06:45:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "reviewDecision": "APPROVED",
+          "repository": {
+            "nameWithOwner": "acme/infra"
+          },
+          "commits": {
+            "nodes": [
+              {
+                "commit": {
+                  "statusCheckRollup": {
+                    "state": "PENDING"
+                  }
+                }
+              }
+            ]
+          },
+          "reviews": {
+            "totalCount": 1
+          }
+        },
+        {
+          "id": "PR_5",
+          "number": 44,
+          "title": ":construction: spike: replace the scheduler",
+          "url": "https://github.com/acme/widget-service/pull/44",
+          "isDraft": true,
+          "headRefOid": "ccc333d",
+          "updatedAt": "2026-07-25T09:14:30Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "UNSTABLE",
+          "reviewDecision": "REVIEW_REQUIRED",
+          "repository": {
+            "nameWithOwner": "acme/widget-service"
+          },
+          "commits": {
+            "nodes": [
+              {
+                "commit": {
+                  "statusCheckRollup": {
+                    "state": "SUCCESS"
+                  }
+                }
+              }
+            ]
+          },
+          "reviews": {
+            "totalCount": 0
+          }
+        },
+        {
+          "id": "PR_6",
+          "number": 19,
+          "title": ":bug: fix changelog generation :not_a_gitmoji: for release tags",
+          "url": "https://github.com/acme/docs-site/pull/19",
+          "isDraft": false,
+          "headRefOid": "ddd444e",
+          "updatedAt": "2026-07-24T14:00:00Z",
+          "mergeable": "CONFLICTING",
+          "mergeStateStatus": "DIRTY",
+          "reviewDecision": "APPROVED",
+          "repository": {
+            "nameWithOwner": "acme/docs-site"
+          },
+          "commits": {
+            "nodes": [
+              {
+                "commit": {
+                  "statusCheckRollup": {
+                    "state": "SUCCESS"
+                  }
+                }
+              }
+            ]
+          },
+          "reviews": {
+            "totalCount": 1
+          }
+        },
+        {
+          "id": "PR_7",
+          "number": 36,
+          "title": ":zap: add rate limit headers to public API",
+          "url": "https://github.com/acme/infra/pull/36",
+          "isDraft": false,
+          "headRefOid": "eee555f",
+          "updatedAt": "2026-07-24T11:30:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "BEHIND",
+          "reviewDecision": "APPROVED",
+          "repository": {
+            "nameWithOwner": "acme/infra"
+          },
+          "commits": {
+            "nodes": [
+              {
+                "commit": {
+                  "statusCheckRollup": {
+                    "state": "SUCCESS"
+                  }
+                }
+              }
+            ]
+          },
+          "reviews": {
+            "totalCount": 1
+          }
+        }
+      ]
+    }
+  }
+}

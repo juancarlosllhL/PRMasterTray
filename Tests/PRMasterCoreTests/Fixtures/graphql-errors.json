@@ -1,0 +1,13 @@
+{
+  "data": null,
+  "errors": [
+    {
+      "type": "FORBIDDEN",
+      "message": "Resource protected by organization SAML enforcement. You must grant your OAuth token access to this organization."
+    },
+    {
+      "type": "FORBIDDEN",
+      "message": "Although you appear to have the correct authorization credentials, the organization has enabled OIDC SSO."
+    }
+  ]
+}

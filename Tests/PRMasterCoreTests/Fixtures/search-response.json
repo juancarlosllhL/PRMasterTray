@@ -1,0 +1,76 @@
+{
+  "data": {
+    "search": {
+      "nodes": [
+        {
+          "id": "PR_kwDOAAAAAA71xzWs",
+          "number": 1204,
+          "title": "paginate the widget catalogue endpoint",
+          "url": "https://github.com/acme/widget-service/pull/1204",
+          "isDraft": false,
+          "headRefOid": "52eca0e32d7c8511105b13f5a7bb497246e84a1f",
+          "updatedAt": "2026-07-27T08:56:15Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "reviewDecision": "APPROVED",
+          "repository": { "nameWithOwner": "acme/widget-service" },
+          "commits": {
+            "nodes": [{ "commit": { "statusCheckRollup": { "state": "SUCCESS" } } }]
+          },
+          "reviews": { "totalCount": 2 }
+        },
+        {
+          "id": "PR_kwDOAAAAAA72yNKp",
+          "number": 318,
+          "title": "drop the unused session cache",
+          "url": "https://github.com/acme/chat-assistant/pull/318",
+          "isDraft": false,
+          "headRefOid": "05ae9cf897c20a913453f20beddedf0f7efbe9cf",
+          "updatedAt": "2026-07-27T08:39:21Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "BLOCKED",
+          "reviewDecision": null,
+          "repository": { "nameWithOwner": "acme/chat-assistant" },
+          "commits": {
+            "nodes": [{ "commit": { "statusCheckRollup": { "state": "SUCCESS" } } }]
+          },
+          "reviews": { "totalCount": 0 }
+        },
+        {
+          "id": "PR_kwDOAAAAAA73zOLq",
+          "number": 8,
+          "title": "bump docs dependency",
+          "url": "https://github.com/acme/docs-site/pull/8",
+          "isDraft": false,
+          "headRefOid": "aaaabbbbccccddddeeeeffff0000111122223333",
+          "updatedAt": "2026-07-26T17:02:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "reviewDecision": null,
+          "repository": { "nameWithOwner": "acme/docs-site" },
+          "commits": {
+            "nodes": [{ "commit": { "statusCheckRollup": null } }]
+          },
+          "reviews": { "totalCount": 0 }
+        },
+        {
+          "id": "PR_kwDOAAAAAA74aPMr",
+          "number": 44,
+          "title": "spike: replace the scheduler",
+          "url": "https://github.com/acme/widget-service/pull/44",
+          "isDraft": true,
+          "headRefOid": "9999888877776666555544443333222211110000",
+          "updatedAt": "2026-07-25T09:14:30Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "UNSTABLE",
+          "reviewDecision": "REVIEW_REQUIRED",
+          "repository": { "nameWithOwner": "acme/widget-service" },
+          "commits": {
+            "nodes": [{ "commit": { "statusCheckRollup": { "state": "PENDING" } } }]
+          },
+          "reviews": { "totalCount": 0 }
+        }
+      ]
+    }
+  }
+}

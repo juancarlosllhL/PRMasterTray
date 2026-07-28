@@ -1,0 +1,31 @@
+{
+  "url": "https://api.github.com/repos/juancarlosllhL/PRMaster/releases/1234567",
+  "html_url": "https://github.com/juancarlosllhL/PRMaster/releases/tag/v0.2.0",
+  "id": 1234567,
+  "tag_name": "v0.2.0",
+  "target_commitish": "main",
+  "name": "v0.2.0",
+  "draft": false,
+  "prerelease": false,
+  "created_at": "2026-07-28T09:51:16Z",
+  "published_at": "2026-07-28T09:51:17Z",
+  "assets": [
+    {
+      "url": "https://api.github.com/repos/juancarlosllhL/PRMaster/releases/assets/491288149",
+      "id": 491288149,
+      "name": "PRMaster.app.zip",
+      "label": "",
+      "content_type": "application/zip",
+      "state": "uploaded",
+      "size": 1048576,
+      "digest": "sha256:d99c34544838251ca1dd2d7fc6770de4d6f412108349647c3fad5056149a3329",
+      "download_count": 3,
+      "created_at": "2026-07-28T09:51:16Z",
+      "updated_at": "2026-07-28T09:51:17Z",
+      "browser_download_url": "https://github.com/juancarlosllhL/PRMaster/releases/download/v0.2.0/PRMaster.app.zip"
+    }
+  ],
+  "tarball_url": "https://api.github.com/repos/juancarlosllhL/PRMaster/tarball/v0.2.0",
+  "zipball_url": "https://api.github.com/repos/juancarlosllhL/PRMaster/zipball/v0.2.0",
+  "body": "## What's New\n\nFirst release carrying the self-updater.\n"
+}

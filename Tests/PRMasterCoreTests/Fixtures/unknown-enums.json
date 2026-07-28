@@ -1,0 +1,25 @@
+{
+  "data": {
+    "search": {
+      "nodes": [
+        {
+          "id": "PR_kwDOAAAAAA75future",
+          "number": 999,
+          "title": "a PR from a future GitHub schema",
+          "url": "https://github.com/acme/widget-service/pull/999",
+          "isDraft": false,
+          "headRefOid": "1111222233334444555566667777888899990000",
+          "updatedAt": "2026-07-27T10:00:00Z",
+          "mergeable": "SOMETHING_NEW",
+          "mergeStateStatus": "AWAITING_QUANTUM_REVIEW",
+          "reviewDecision": "VIBES_BASED",
+          "repository": { "nameWithOwner": "acme/widget-service" },
+          "commits": {
+            "nodes": [{ "commit": { "statusCheckRollup": { "state": "MYSTERIOUS" } } }]
+          },
+          "reviews": { "totalCount": 0 }
+        }
+      ]
+    }
+  }
+}

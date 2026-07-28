@@ -1,0 +1,79 @@
+name: Release
+
+# Tag-driven: the tag is the trigger *and* the version, which is why the first
+# real step checks it against Info.plist.
+on:
+  push:
+    tags: ["v*"]
+
+# gh release create writes to the repo. Without this it gets a 403.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # Pinned rather than macos-latest: the runner's architecture is the
+    # architecture that ships, so it should not change under us silently.
+    # Apple Silicon, so the release is arm64-only.
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Printed rather than pinned. Swift 6 is required; leaving the image's
+      # default in place avoids chasing Xcode paths every time the image moves,
+      # and this makes a toolchain failure obvious in the log instead of
+      # surfacing as a confusing compile error.
+      - name: Show toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+
+      # First, and before anything expensive. The app compares a release tag
+      # against its own CFBundleShortVersionString, so a tag that disagrees with
+      # the plist would ship an app that either re-offers an update it already
+      # has or never sees one at all.
+      # Passed as TAG in the environment, not as `make verify-version TAG=…`.
+      # A tag name may legally contain backticks or `$(…)` — `git tag 'v1.0.0`id`'`
+      # is accepted — and Make expands both in a command-line variable *value*,
+      # which would run the tag and leave a mangled string that compares equal,
+      # passing the very check this step exists to perform. Read from the
+      # environment, the value reaches the shell verbatim and untouched.
+      - name: Check the tag matches Info.plist
+        env:
+          TAG: ${{ github.ref_name }}
+        run: make verify-version
+
+      - name: Test
+        run: make test
+
+      - name: Build and package
+        run: make dist
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          gh release create "$REF_NAME" \
+            dist/PRMaster.app.zip \
+            --title "$REF_NAME" \
+            --generate-notes
+
+      # The in-app updater refuses to install an asset with no published digest —
+      # it fails closed rather than skipping the integrity check. That makes the
+      # digest load-bearing, so its absence is a release failure and not
+      # something to discover on a user's machine.
+      - name: Confirm the asset carries a sha256 digest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          digest=$(gh release view "$REF_NAME" --json assets \
+            --jq '.assets[] | select(.name == "PRMaster.app.zip") | .digest')
+          if [ -z "$digest" ]; then
+            echo "The release asset has no digest. The updater fails closed"
+            echo "without one, so this release would not be installable."
+            exit 1
+          fi
+          echo "asset digest: $digest"
