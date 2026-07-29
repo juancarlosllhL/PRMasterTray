@@ -5,6 +5,7 @@ struct PRListView: View {
     @Bindable var store: PRStore
     let onOpen: (PullRequest) -> Void
     let onMerge: (PullRequest) -> Void
+    let onOpenSettings: () -> Void
     let onQuit: () -> Void
     /// False while a debug override is active, so the app never offers an
     /// action it is going to refuse.
@@ -100,7 +101,7 @@ struct PRListView: View {
         Menu {
             // The version sits directly above "Check for Updates…" so that item
             // unmistakably means *this app*, and not the branch toggle below it.
-            Text(verbatim: "PRMaster \(updates.currentVersion)")
+            Text(verbatim: "PR Master Tray \(updates.currentVersion)")
             if updates.isChecking {
                 Text("Checking for updates…")
             } else {
@@ -116,13 +117,17 @@ struct PRListView: View {
                 Text(verbatim: "Last check failed — \(failure)")
             }
             Divider()
+            // Which organizations and whether private repositories show. Its own
+            // window because the organization list is unbounded, and a menu that
+            // scrolls is a menu nobody reads.
+            Button("Settings…", action: onOpenSettings)
             // Absent under a debug override, where the store has no updater —
             // offering a switch for a feature that cannot run would be a lie.
             if canAutoUpdate {
                 Toggle("Auto-update behind branches", isOn: $store.autoUpdateEnabled)
             }
             Divider()
-            Button("Quit PRMaster", action: onQuit)
+            Button("Quit PR Master Tray", action: onQuit)
         } label: {
             Image(systemName: "gearshape")
         }
@@ -198,9 +203,36 @@ struct PRListView: View {
         .padding(.horizontal, 4)
     }
 
+    /// "No open pull requests" would be a lie when the filter is what emptied
+    /// the list — and a lie the app could keep telling for weeks, since a hidden
+    /// PR produces no notification either.
+    @ViewBuilder
     private var emptyState: some View {
-        message(icon: "checkmark.circle", title: "No open pull requests",
-                detail: "Nothing of yours is waiting to merge.")
+        if store.hiddenCount > 0 {
+            VStack(spacing: 6) {
+                Image(systemName: "line.3.horizontal.decrease.circle")
+                    .font(.system(size: 22))
+                    .foregroundStyle(.secondary)
+                Text("Nothing to show").font(.system(size: 12, weight: .medium))
+                Text(verbatim: Self.hiddenSummary(store.hiddenCount))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Button("Settings…", action: onOpenSettings)
+                    .font(.system(size: 11))
+                    .padding(.top, 2)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 24)
+        } else {
+            message(icon: "checkmark.circle", title: "No open pull requests",
+                    detail: "Nothing of yours is waiting to merge.")
+        }
+    }
+
+    static func hiddenSummary(_ count: Int) -> String {
+        count == 1
+            ? "1 pull request is hidden by your settings."
+            : "\(count) pull requests are hidden by your settings."
     }
 
     private var loadingState: some View {
@@ -339,6 +371,14 @@ struct PRListView: View {
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
             Spacer()
+            // So a shorter list than expected has a visible reason, rather than
+            // the user wondering where a pull request went.
+            if store.hiddenCount > 0 {
+                Text(verbatim: "\(store.hiddenCount) hidden")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .help(Self.hiddenSummary(store.hiddenCount))
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)

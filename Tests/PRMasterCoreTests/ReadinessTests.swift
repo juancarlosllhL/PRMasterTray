@@ -16,6 +16,7 @@ private func makePR(
         title: "test",
         url: URL(string: "https://github.com/o/r/pull/1")!,
         repo: "o/r",
+        isPrivate: false,
         isDraft: isDraft,
         headRefOid: "deadbeef",
         mergeable: mergeable,

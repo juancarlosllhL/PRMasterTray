@@ -48,8 +48,9 @@ final class NotificationManager: NSObject, ReadyPRNotifying, @unchecked Sendable
             )
         ]
         // No Merge button while a debug override is active — the notification
-        // would be describing a PR the app cannot safely act on.
-        if !Debug.overridesActive {
+        // would be describing a PR the app cannot safely act on. PRMASTER_DEMO_MERGE
+        // is the exception: it can act on nothing at all.
+        if Debug.mergingOffered {
             actions.append(
                 UNNotificationAction(
                     identifier: NotificationRouter.mergeAction,

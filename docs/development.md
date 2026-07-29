@@ -43,7 +43,7 @@ not break it.
 ```
 Sources/PRMasterCore/   pure, fully tested, no AppKit
 Sources/PRMaster/       AppKit + SwiftUI shell
-Tests/                  174 tests, no network, no gh required
+Tests/                  201 tests, no network, no gh required
 .github/workflows/      tag-driven release
 ```
 
@@ -63,6 +63,28 @@ In the [README](../README.md#the-list), with the mapping table.
 `Readiness.evaluate` is the implementation; `ReadinessTests` covers every branch
 of it.
 
+## What the settings window filters
+
+`PRFilter` is applied to a fetch *before* the notification and branch-update
+decisions, so hiding something stops the app acting on it as well as showing it.
+That is the whole design: a filter that only shortened the list would still wake
+you at 2am for a pull request you switched off, and still push a merge commit to
+its branch on a timer.
+
+Organizations are stored as the set to **hide**, never the set to show. An
+allowlist would make the first pull request you open in a new organization
+invisible, and silently hiding a pull request is the one failure this app cannot
+afford. The same reasoning fixes both defaults: absent keys mean "show
+everything", so installing an update never shortens anybody's list.
+
+Two `UserDefaults` keys, which is where to look first when the list is shorter
+than expected:
+
+```sh
+defaults read com.jcll.PRMaster hiddenOrganizations
+defaults read com.jcll.PRMaster showPrivateRepositories
+```
+
 ## Debug hooks
 
 The interesting states normally need a real reviewer or a real outage. These make
@@ -76,6 +98,10 @@ them. All of them fake only *fetching* — merging always goes to the real API.
 | `PRMASTER_FAIL_AFTER=n` | succeed `n` times, then fail — shows the stale banner |
 | `PRMASTER_DEMO_MERGE=confirm\|fail` | open the merge confirm sheet or failure alert |
 | `PRMASTER_AUTO_OPEN=1` | open the popover at launch |
+| `PRMASTER_OPEN_SETTINGS=1` | open the settings window at launch |
+
+The last two fake nothing — they only open something a screenshot script cannot
+click — so neither counts as an override below.
 
 Setting any override refuses merges outright, hides the row's **Merge** button
 and drops the **Merge** action from notifications: a fixture is routinely

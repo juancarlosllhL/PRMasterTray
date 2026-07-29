@@ -88,6 +88,7 @@ private func makePR(title: String) -> PullRequest {
         title: title,
         url: URL(string: "https://github.com/acme/widget/pull/1")!,
         repo: "acme/widget",
+        isPrivate: false,
         isDraft: false,
         headRefOid: "oid1",
         mergeable: .mergeable,

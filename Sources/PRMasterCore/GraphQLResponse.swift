@@ -72,7 +72,11 @@ struct SearchPayload: Decodable {
         let commits: Commits
         let reviews: Reviews
 
-        struct Repository: Decodable { let nameWithOwner: String }
+        struct Repository: Decodable {
+            let nameWithOwner: String
+            let isPrivate: Bool
+        }
+
         struct Reviews: Decodable { let totalCount: Int }
 
         struct Commits: Decodable {
@@ -94,6 +98,7 @@ struct SearchPayload: Decodable {
                 title: title,
                 url: url,
                 repo: repository.nameWithOwner,
+                isPrivate: repository.isPrivate,
                 isDraft: isDraft,
                 headRefOid: headRefOid,
                 mergeable: mergeable,

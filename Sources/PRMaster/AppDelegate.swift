@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var client: GitHubClient!
     private var merger: MergeCoordinator!
     private var updates: AppUpdateStore!
+    private let settingsWindow = SettingsWindowController()
     private var observers: [NSObjectProtocol] = []
     private var dismissMonitors: [Any] = []
 
@@ -79,6 +80,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // with the fetch the user is actually waiting to see.
         updates.start()
 
+        if Debug.openSettings {
+            settingsWindow.show(store: store)
+        }
+
         // Under a fixture, open straight away so the UI can be inspected and
         // screenshotted without clicking the menu bar.
         if Debug.fixturePath != nil || Debug.fakeError != nil || Debug.autoOpen {
@@ -123,7 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.image = NSImage(
             systemSymbolName: "arrow.triangle.pull",
-            accessibilityDescription: "PRMaster"
+            accessibilityDescription: "PR Master Tray"
         )
         item.button?.imagePosition = .imageLeading
         item.button?.action = #selector(togglePopover)
@@ -171,8 +176,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         id: pr.id, oid: pr.headRefOid, title: pr.displayTitle, url: pr.url
                     )
                 },
+                onOpenSettings: { [weak self] in
+                    guard let self else { return }
+                    // Closed explicitly rather than left to `.transient`: the
+                    // panel activates the app, and two things fighting over who
+                    // is key is how the popover ends up half-dismissed.
+                    popover.performClose(nil)
+                    settingsWindow.show(store: store)
+                },
                 onQuit: { NSApp.terminate(nil) },
-                canMerge: !Debug.overridesActive,
+                canMerge: Debug.mergingOffered,
                 canAutoUpdate: !Debug.overridesActive,
                 notifications: NotificationStatus.shared,
                 updates: updates
@@ -320,8 +333,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let alert = NSAlert()
         alert.messageText = "Merging is disabled"
         alert.informativeText = """
-            PRMaster is showing data from a debug override, so these rows may \
-            not correspond to real pull requests. Restart without \
+            PR Master Tray is showing data from a debug override, so these \
+            rows may not correspond to real pull requests. Restart without \
             PRMASTER_FIXTURE, PRMASTER_FAKE_ERROR, PRMASTER_FAIL_AFTER or \
             PRMASTER_DEMO_MERGE to merge.
             """

@@ -16,6 +16,7 @@ private func makePR(
         title: "title",
         url: URL(string: "https://github.com/acme/widget/pull/1")!,
         repo: "acme/widget",
+        isPrivate: false,
         isDraft: isDraft,
         headRefOid: headRefOid,
         mergeable: mergeable,

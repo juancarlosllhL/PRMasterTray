@@ -13,7 +13,7 @@
           "mergeable": "SOMETHING_NEW",
           "mergeStateStatus": "AWAITING_QUANTUM_REVIEW",
           "reviewDecision": "VIBES_BASED",
-          "repository": { "nameWithOwner": "acme/widget-service" },
+          "repository": { "nameWithOwner": "acme/widget-service", "isPrivate": false },
           "commits": {
             "nodes": [{ "commit": { "statusCheckRollup": { "state": "MYSTERIOUS" } } }]
           },

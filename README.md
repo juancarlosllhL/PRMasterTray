@@ -18,6 +18,10 @@ GitHub would merge right now.
   confirmation.
 - Pull requests that fall behind their base branch are brought up to date
   automatically. Can be turned off from the gear menu.
+- **Settings…** in the gear menu chooses what the list is made of: which
+  organizations to include, and whether pull requests from private repositories
+  show at all. Hidden ones are left out of the count, never notify, and are never
+  brought up to date automatically.
 - Refreshes every minute, on opening the popover, and on waking the machine. A
   failed refresh keeps the last good list and tells you it is stale.
 - Checks for new versions of the app and installs them for you.

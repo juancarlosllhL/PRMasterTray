@@ -13,6 +13,10 @@ public struct PullRequest: Identifiable, Sendable, Equatable {
     public let url: URL
     /// `owner/name`, e.g. `acme/widget-service`.
     public let repo: String
+    /// Whether the repository is private. Fetched only so `PRFilter` can hide
+    /// these rows: the app is a menu bar item that is often on screen while
+    /// somebody else is looking at it.
+    public let isPrivate: Bool
     public let isDraft: Bool
     /// Head commit at the time of the snapshot. Passed to the merge mutation
     /// so GitHub refuses to merge commits the user never saw.
@@ -28,12 +32,20 @@ public struct PullRequest: Identifiable, Sendable, Equatable {
 
     public var readiness: Readiness { Readiness.evaluate(self) }
 
+    /// The owner half of `repo` — an organization, or the user's own account for
+    /// a personal repository. Neither half may contain a slash, so the split is
+    /// unambiguous, and GitHub guarantees the field is always `owner/name`.
+    public var organization: String {
+        String(repo.prefix { $0 != "/" })
+    }
+
     public init(
         id: String,
         number: Int,
         title: String,
         url: URL,
         repo: String,
+        isPrivate: Bool,
         isDraft: Bool,
         headRefOid: String,
         mergeable: Mergeable,
@@ -48,6 +60,7 @@ public struct PullRequest: Identifiable, Sendable, Equatable {
         self.title = title
         self.url = url
         self.repo = repo
+        self.isPrivate = isPrivate
         self.isDraft = isDraft
         self.headRefOid = headRefOid
         self.mergeable = mergeable

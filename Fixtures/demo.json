@@ -14,7 +14,8 @@
           "mergeStateStatus": "CLEAN",
           "reviewDecision": "APPROVED",
           "repository": {
-            "nameWithOwner": "acme/widget-service"
+            "nameWithOwner": "acme/widget-service",
+            "isPrivate": false
           },
           "commits": {
             "nodes": [
@@ -43,7 +44,8 @@
           "mergeStateStatus": "BLOCKED",
           "reviewDecision": null,
           "repository": {
-            "nameWithOwner": "acme/chat-assistant"
+            "nameWithOwner": "acme/chat-assistant",
+            "isPrivate": false
           },
           "commits": {
             "nodes": [
@@ -72,7 +74,8 @@
           "mergeStateStatus": "BLOCKED",
           "reviewDecision": "CHANGES_REQUESTED",
           "repository": {
-            "nameWithOwner": "acme/widget-service"
+            "nameWithOwner": "acme/widget-service",
+            "isPrivate": false
           },
           "commits": {
             "nodes": [
@@ -101,7 +104,8 @@
           "mergeStateStatus": "CLEAN",
           "reviewDecision": "APPROVED",
           "repository": {
-            "nameWithOwner": "acme/infra"
+            "nameWithOwner": "acme/infra",
+            "isPrivate": true
           },
           "commits": {
             "nodes": [
@@ -130,7 +134,8 @@
           "mergeStateStatus": "UNSTABLE",
           "reviewDecision": "REVIEW_REQUIRED",
           "repository": {
-            "nameWithOwner": "acme/widget-service"
+            "nameWithOwner": "acme/widget-service",
+            "isPrivate": false
           },
           "commits": {
             "nodes": [
@@ -159,7 +164,8 @@
           "mergeStateStatus": "DIRTY",
           "reviewDecision": "APPROVED",
           "repository": {
-            "nameWithOwner": "acme/docs-site"
+            "nameWithOwner": "acme/docs-site",
+            "isPrivate": false
           },
           "commits": {
             "nodes": [
@@ -188,7 +194,8 @@
           "mergeStateStatus": "BEHIND",
           "reviewDecision": "APPROVED",
           "repository": {
-            "nameWithOwner": "acme/infra"
+            "nameWithOwner": "acme/infra",
+            "isPrivate": true
           },
           "commits": {
             "nodes": [

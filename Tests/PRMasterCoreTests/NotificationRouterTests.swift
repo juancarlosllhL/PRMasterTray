@@ -9,7 +9,7 @@ private func makePR() -> PullRequest {
     PullRequest(
         id: "PR_node123", number: 42, title: "add rate limit headers",
         url: URL(string: "https://github.com/acme/infra/pull/42")!,
-        repo: "acme/infra", isDraft: false, headRefOid: "abc123",
+        repo: "acme/infra", isPrivate: false, isDraft: false, headRefOid: "abc123",
         mergeable: .mergeable, mergeState: .clean,
         reviewDecision: .approved, checks: .success, approvals: 1,
         updatedAt: Date(timeIntervalSince1970: 0)
@@ -42,7 +42,7 @@ struct NotificationRouterTests {
         let pr = PullRequest(
             id: "PR_1", number: 1, title: ":sparkles: add rate limit headers",
             url: URL(string: "https://github.com/acme/infra/pull/42")!,
-            repo: "acme/infra", isDraft: false, headRefOid: "abc123",
+            repo: "acme/infra", isPrivate: false, isDraft: false, headRefOid: "abc123",
             mergeable: .mergeable, mergeState: .clean,
             reviewDecision: .approved, checks: .success, approvals: 1,
             updatedAt: Date(timeIntervalSince1970: 0)

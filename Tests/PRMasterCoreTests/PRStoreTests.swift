@@ -5,12 +5,14 @@ import Testing
 private func makePR(
     _ id: String,
     mergeState: MergeStateStatus = .clean,
-    headRefOid: String = "oid"
+    headRefOid: String = "oid",
+    repo: String = "o/r",
+    isPrivate: Bool = false
 ) -> PullRequest {
     PullRequest(
         id: id, number: 1, title: "test",
         url: URL(string: "https://github.com/o/r/pull/1")!,
-        repo: "o/r", isDraft: false, headRefOid: headRefOid,
+        repo: repo, isPrivate: isPrivate, isDraft: false, headRefOid: headRefOid,
         mergeable: .mergeable, mergeState: mergeState,
         reviewDecision: nil, checks: .success, approvals: 0,
         updatedAt: Date(timeIntervalSince1970: 0)
@@ -83,9 +85,17 @@ private final class SpyUpdater: PullRequestBranchUpdating, @unchecked Sendable {
 private final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
     private let lock = NSLock()
     private var enabled: Bool
-    init(autoUpdate: Bool = true) { enabled = autoUpdate }
+    private var stored: PRFilter
+
+    init(autoUpdate: Bool = true, filter: PRFilter = PRFilter()) {
+        enabled = autoUpdate
+        stored = filter
+    }
+
     func autoUpdateEnabled() -> Bool { lock.withLock { enabled } }
     func setAutoUpdateEnabled(_ value: Bool) { lock.withLock { enabled = value } }
+    func filter() -> PRFilter { lock.withLock { stored } }
+    func setFilter(_ value: PRFilter) { lock.withLock { stored = value } }
 }
 
 @MainActor
@@ -465,6 +475,142 @@ struct PRStoreTests {
         #expect(store.lastUpdateFailure == nil)
     }
 
+    // MARK: filtering
+
+    private func makeFilteringStore(
+        _ prs: [PullRequest],
+        filter: PRFilter,
+        refreshes: Int = 1
+    ) -> (PRStore, SpyNotifier, SpyUpdater, MemoryPreferences) {
+        let notifier = SpyNotifier()
+        let updater = SpyUpdater()
+        let preferences = MemoryPreferences(filter: filter)
+        let store = PRStore(
+            client: StubClient(Array(repeating: .success(prs), count: refreshes)),
+            notifier: notifier,
+            idStore: MemoryIDStore(),
+            updater: updater,
+            preferences: preferences,
+            now: { Date(timeIntervalSince1970: 1000) },
+            sleep: { _ in }
+        )
+        return (store, notifier, updater, preferences)
+    }
+
+    @Test("the stored filter is adopted at launch")
+    func adoptsStoredFilter() {
+        let (store, _, _, _) = makeFilteringStore([], filter: PRFilter(hiddenOrganizations: ["acme"]))
+        #expect(store.filter.hiddenOrganizations == ["acme"])
+    }
+
+    @Test("a hidden organization is left out of the list")
+    func hiddenOrganizationIsNotListed() async {
+        let (store, _, _, _) = makeFilteringStore([
+            makePR("a", repo: "acme/widget"),
+            makePR("b", repo: "widgetco/api"),
+        ], filter: PRFilter(hiddenOrganizations: ["acme"]))
+        await store.refresh()
+        #expect(store.prs.map(\.id) == ["b"])
+        #expect(store.allPRs.count == 2, "the unfiltered snapshot must be kept")
+        #expect(store.hiddenCount == 1)
+    }
+
+    @Test("private pull requests are left out when the switch is off")
+    func privateIsNotListed() async {
+        let (store, _, _, _) = makeFilteringStore([
+            makePR("a", repo: "acme/widget", isPrivate: true),
+            makePR("b", repo: "acme/api"),
+        ], filter: PRFilter(showsPrivateRepositories: false))
+        await store.refresh()
+        #expect(store.prs.map(\.id) == ["b"])
+    }
+
+    /// The point of hiding something is not hearing about it. A filter that only
+    /// shortened the list would still wake the user up at 2am for a PR they
+    /// deliberately switched off.
+    @Test("a hidden pull request never notifies")
+    func hiddenNeverNotifies() async {
+        let (store, notifier, _, _) = makeFilteringStore(
+            [makePR("a", repo: "acme/widget")],
+            filter: PRFilter(hiddenOrganizations: ["acme"])
+        )
+        await store.refresh()
+        #expect(notifier.notified.isEmpty)
+    }
+
+    /// Sharper than the notification case: this one writes to GitHub off a timer.
+    @Test("a hidden pull request is never brought up to date")
+    func hiddenIsNeverUpdated() async {
+        let (store, _, updater, _) = makeFilteringStore(
+            [makePR("a", mergeState: .behind, repo: "acme/widget")],
+            filter: PRFilter(hiddenOrganizations: ["acme"])
+        )
+        await store.refresh()
+        #expect(updater.calls.isEmpty)
+    }
+
+    @Test("the menu bar count ignores hidden pull requests")
+    func hiddenIsNotCounted() async {
+        let (store, _, _, _) = makeFilteringStore([
+            makePR("a", repo: "acme/widget"),
+            makePR("b", repo: "widgetco/api"),
+        ], filter: PRFilter(hiddenOrganizations: ["acme"]))
+        await store.refresh()
+        #expect(store.readyCount == 1)
+    }
+
+    /// An empty list is a legitimate outcome of a *successful* fetch, so none of
+    /// the failure state may be set — otherwise the popover shows an error.
+    @Test("a filter that hides everything is not a failure")
+    func hidingEverythingIsNotAnError() async {
+        let (store, _, _, _) = makeFilteringStore(
+            [makePR("a", repo: "acme/widget")],
+            filter: PRFilter(hiddenOrganizations: ["acme"])
+        )
+        await store.refresh()
+        #expect(store.prs.isEmpty)
+        #expect(store.lastError == nil)
+        #expect(store.lastSuccessfulFetch == Date(timeIntervalSince1970: 1000))
+    }
+
+    /// The settings window is opened from the popover, so waiting a poll interval
+    /// to see the effect would read as the switch not working.
+    @Test("changing the filter re-filters the snapshot without fetching again")
+    func filterChangeRefiltersImmediately() async {
+        let (store, _, _, _) = makeFilteringStore([
+            makePR("a", repo: "acme/widget"),
+            makePR("b", repo: "widgetco/api"),
+        ], filter: PRFilter())
+        await store.refresh()
+        #expect(store.prs.count == 2)
+
+        store.filter.setOrganization("acme", shown: false)
+        #expect(store.prs.map(\.id) == ["b"], "must re-filter from the snapshot in hand")
+        #expect(store.hiddenCount == 1)
+
+        store.filter.setOrganization("acme", shown: true)
+        #expect(store.prs.count == 2, "unhiding must bring it back without a fetch")
+    }
+
+    @Test("changing the filter writes through so it survives a relaunch")
+    func filterPersists() {
+        let (store, _, _, preferences) = makeFilteringStore([], filter: PRFilter())
+        store.filter.showsPrivateRepositories = false
+        #expect(preferences.filter().showsPrivateRepositories == false)
+    }
+
+    /// Otherwise switching an organization off would remove it from the very
+    /// window you switch it back on in.
+    @Test("knownOrganizations includes hidden ones and is sorted")
+    func knownOrganizationsIncludesHidden() async {
+        let (store, _, _, _) = makeFilteringStore([
+            makePR("a", repo: "widgetco/api"),
+            makePR("b", repo: "acme/widget"),
+        ], filter: PRFilter(hiddenOrganizations: ["zeta", "acme"]))
+        await store.refresh()
+        #expect(store.knownOrganizations == ["acme", "widgetco", "zeta"])
+    }
+
     /// The app writes to GitHub with no user gesture, so it has to say so while
     /// it happens — and stop saying so once it is done.
     @Test("updatingIDs is empty once the refresh returns")
@@ -478,7 +624,7 @@ struct PRStoreTests {
     }
 }
 
-@Suite("Auto-update preference")
+@Suite("Stored preferences")
 struct PreferenceStoreTests {
 
     /// `UserDefaults.bool(forKey:)` returns false for an absent key, which would
@@ -501,6 +647,49 @@ struct PreferenceStoreTests {
         let preferences = UserDefaultsPreferences(defaults: defaults)
         preferences.setAutoUpdateEnabled(value)
         #expect(preferences.autoUpdateEnabled() == value)
+    }
+
+    /// Same reasoning as the auto-update default, with more at stake: a filter
+    /// that read as "hide private" for an absent key would empty the list of
+    /// every existing install on the first launch after updating.
+    @Test("an absent filter hides nothing")
+    func filterDefaultsToShowingEverything() throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let filter = UserDefaultsPreferences(defaults: defaults).filter()
+        #expect(filter == PRFilter())
+        #expect(filter.isActive == false)
+    }
+
+    @Test("a stored filter round-trips")
+    func filterRoundTrips() throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let preferences = UserDefaultsPreferences(defaults: defaults)
+        preferences.setFilter(
+            PRFilter(hiddenOrganizations: ["acme", "widgetco"], showsPrivateRepositories: false)
+        )
+        let restored = preferences.filter()
+        #expect(restored.hiddenOrganizations == ["acme", "widgetco"])
+        #expect(restored.showsPrivateRepositories == false)
+    }
+
+    /// Unhiding the last organization has to clear the stored list, not leave the
+    /// previous one behind.
+    @Test("an emptied filter round-trips as empty")
+    func filterClears() throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let preferences = UserDefaultsPreferences(defaults: defaults)
+        preferences.setFilter(PRFilter(hiddenOrganizations: ["acme"]))
+        preferences.setFilter(PRFilter())
+        #expect(preferences.filter() == PRFilter())
     }
 }
 

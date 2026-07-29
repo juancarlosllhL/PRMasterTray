@@ -56,6 +56,15 @@ struct DecodingTests {
         #expect(prs[3].readiness == .draft)
     }
 
+    /// `repository { isPrivate }` is what the settings window filters on, and it
+    /// arrives one level down from where the model keeps it.
+    @Test("carries the private flag through")
+    func decodesPrivate() throws {
+        let prs = try PullRequestDecoder.decodeSearch(try fixture("search-response"))
+        #expect(prs[1].isPrivate, "acme/chat-assistant is the private one")
+        #expect(prs[0].isPrivate == false)
+    }
+
     // MARK: the traps
 
     /// A repo with no CI reports `statusCheckRollup: null`. Decoding that as

@@ -36,6 +36,8 @@ extension GitHubClient: PullRequestBranchUpdating {}
 public protocol PreferenceStoring: Sendable {
     func autoUpdateEnabled() -> Bool
     func setAutoUpdateEnabled(_ value: Bool)
+    func filter() -> PRFilter
+    func setFilter(_ value: PRFilter)
 }
 
 /// Observable state behind the menu bar UI.
@@ -43,9 +45,14 @@ public protocol PreferenceStoring: Sendable {
 @Observable
 public final class PRStore {
 
-    /// The last *successful* snapshot. Deliberately not cleared on failure:
-    /// a wifi blip must not make the app look like you have no open PRs.
+    /// The last *successful* snapshot, as filtered. Deliberately not cleared on
+    /// failure: a wifi blip must not make the app look like you have no open PRs.
     public private(set) var prs: [PullRequest] = []
+    /// The same snapshot before `filter` ran. Kept so the settings window can
+    /// offer organizations the user is currently hiding — deriving the list from
+    /// the visible rows would make an organization disappear from the settings
+    /// the moment it was switched off, with no way back.
+    public private(set) var allPRs: [PullRequest] = []
     public private(set) var lastSuccessfulFetch: Date?
     public private(set) var lastError: PRMasterError?
     public private(set) var isRefreshing = false
@@ -66,6 +73,32 @@ public final class PRStore {
     /// the switch exists because the alternative escape hatch is quitting.
     public var autoUpdateEnabled: Bool {
         didSet { preferences.setAutoUpdateEnabled(autoUpdateEnabled) }
+    }
+
+    /// Which pull requests the user wants to see. Writing to it re-derives the
+    /// visible list from the snapshot already in hand, so the settings window
+    /// takes effect immediately rather than at the next poll.
+    public var filter: PRFilter {
+        didSet {
+            guard filter != oldValue else { return }
+            preferences.setFilter(filter)
+            prs = filter.apply(to: allPRs)
+        }
+    }
+
+    /// Every organization the settings window should offer: the ones with open
+    /// pull requests right now, plus the ones being hidden, which by definition
+    /// have none showing. Sorted the way a person reads a list.
+    public var knownOrganizations: [String] {
+        Set(allPRs.map(\.organization))
+            .union(filter.hiddenOrganizations)
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    /// How many pull requests the filter is holding back. The popover shows this
+    /// rather than letting a filtered-out list read as "you have no open PRs".
+    public var hiddenCount: Int {
+        allPRs.count - prs.count
     }
 
     public var readyCount: Int {
@@ -115,6 +148,7 @@ public final class PRStore {
         self.sleep = sleep
         self.notifiedIDs = idStore.load()
         self.autoUpdateEnabled = preferences.autoUpdateEnabled()
+        self.filter = preferences.filter()
     }
 
     /// How long the loop will wait before the next refresh.
@@ -134,12 +168,18 @@ public final class PRStore {
         defer { isRefreshing = false }
 
         do {
-            let fresh = try await client.fetchMyPullRequests()
+            let fetched = try await client.fetchMyPullRequests()
+            // Everything downstream sees the filtered list, deliberately: a
+            // hidden PR must not notify, must not be updated on a timer, and
+            // must not sit in the menu bar count. `allPRs` keeps the unfiltered
+            // snapshot for the settings window and the hidden count.
+            let fresh = filter.apply(to: fetched)
 
             // Only reached on success, which is what guarantees a network flap
             // cannot be mistaken for every PR going ready at once.
             let decision = NotificationDecider.decide(prs: fresh, notified: notifiedIDs)
 
+            allPRs = fetched
             prs = fresh
             lastSuccessfulFetch = now()
             lastError = nil
@@ -259,7 +299,9 @@ public struct UserDefaultsIDStore: NotifiedIDStore {
 
 /// `UserDefaults`-backed settings.
 public struct UserDefaultsPreferences: PreferenceStoring {
-    private let key = "autoUpdateBehindBranches"
+    private let autoUpdateKey = "autoUpdateBehindBranches"
+    private let hiddenOrganizationsKey = "hiddenOrganizations"
+    private let showPrivateKey = "showPrivateRepositories"
     // UserDefaults is documented as thread-safe but predates Sendable.
     nonisolated(unsafe) private let defaults: UserDefaults
 
@@ -271,10 +313,26 @@ public struct UserDefaultsPreferences: PreferenceStoring {
         // Probed through `object(forKey:)` because `bool(forKey:)` cannot tell
         // an absent key from a stored false, and would ship the feature
         // silently switched off for everyone who has never touched the setting.
-        defaults.object(forKey: key) as? Bool ?? true
+        defaults.object(forKey: autoUpdateKey) as? Bool ?? true
     }
 
     public func setAutoUpdateEnabled(_ value: Bool) {
-        defaults.set(value, forKey: key)
+        defaults.set(value, forKey: autoUpdateKey)
+    }
+
+    public func filter() -> PRFilter {
+        PRFilter(
+            hiddenOrganizations: Set(defaults.stringArray(forKey: hiddenOrganizationsKey) ?? []),
+            // Absent reads as shown, for the same reason as above: nobody's list
+            // should get shorter because they installed an update.
+            showsPrivateRepositories: defaults.object(forKey: showPrivateKey) as? Bool ?? true
+        )
+    }
+
+    public func setFilter(_ value: PRFilter) {
+        // Sorted so the stored array is stable and readable under
+        // `defaults read com.jcll.PRMaster`, which is how this gets debugged.
+        defaults.set(value.hiddenOrganizations.sorted(), forKey: hiddenOrganizationsKey)
+        defaults.set(value.showsPrivateRepositories, forKey: showPrivateKey)
     }
 }

@@ -13,7 +13,7 @@
           "mergeable": "MERGEABLE",
           "mergeStateStatus": "CLEAN",
           "reviewDecision": "APPROVED",
-          "repository": { "nameWithOwner": "acme/widget-service" },
+          "repository": { "nameWithOwner": "acme/widget-service", "isPrivate": false },
           "commits": {
             "nodes": [{ "commit": { "statusCheckRollup": { "state": "SUCCESS" } } }]
           },
@@ -30,7 +30,7 @@
           "mergeable": "MERGEABLE",
           "mergeStateStatus": "BLOCKED",
           "reviewDecision": null,
-          "repository": { "nameWithOwner": "acme/chat-assistant" },
+          "repository": { "nameWithOwner": "acme/chat-assistant", "isPrivate": true },
           "commits": {
             "nodes": [{ "commit": { "statusCheckRollup": { "state": "SUCCESS" } } }]
           },
@@ -47,7 +47,7 @@
           "mergeable": "MERGEABLE",
           "mergeStateStatus": "CLEAN",
           "reviewDecision": null,
-          "repository": { "nameWithOwner": "acme/docs-site" },
+          "repository": { "nameWithOwner": "acme/docs-site", "isPrivate": false },
           "commits": {
             "nodes": [{ "commit": { "statusCheckRollup": null } }]
           },
@@ -64,7 +64,7 @@
           "mergeable": "MERGEABLE",
           "mergeStateStatus": "UNSTABLE",
           "reviewDecision": "REVIEW_REQUIRED",
-          "repository": { "nameWithOwner": "acme/widget-service" },
+          "repository": { "nameWithOwner": "acme/widget-service", "isPrivate": false },
           "commits": {
             "nodes": [{ "commit": { "statusCheckRollup": { "state": "PENDING" } } }]
           },

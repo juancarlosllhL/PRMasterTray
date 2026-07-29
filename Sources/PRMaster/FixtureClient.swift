@@ -101,9 +101,28 @@ enum Debug {
         ProcessInfo.processInfo.environment["PRMASTER_AUTO_OPEN"] == "1"
     }
 
+    /// `PRMASTER_OPEN_SETTINGS=1` opens the settings window at launch. It is
+    /// otherwise only reachable through the gear menu, which nothing but a real
+    /// mouse can open — including whatever is taking the screenshots. Not part of
+    /// `overridesActive`: it fakes no data, so it has no bearing on merging.
+    static var openSettings: Bool {
+        ProcessInfo.processInfo.environment["PRMASTER_OPEN_SETTINGS"] == "1"
+    }
+
     /// `PRMASTER_DEMO_MERGE=confirm|fail` drives the merge dialogs directly,
-    /// so the irreversible path can be inspected without a mergeable PR.
+    /// so the irreversible path can be inspected without a mergeable PR. Any
+    /// other value swaps in the no-op merger without opening a dialog.
     static var demoMerge: String? {
         ProcessInfo.processInfo.environment["PRMASTER_DEMO_MERGE"]
     }
+
+    /// Whether to offer the Merge affordances — the row button and the
+    /// notification action.
+    ///
+    /// Normally the inverse of `overridesActive`, because a fixture row can name
+    /// a real pull request and the merge would be refused. `PRMASTER_DEMO_MERGE`
+    /// is the exception: it swaps in `NoopMerger`, so nothing can be merged and
+    /// the affordances are both safe and the point. Without this, the one hook
+    /// for demonstrating the merge path hid its own entry point.
+    static var mergingOffered: Bool { !overridesActive || demoMerge != nil }
 }
