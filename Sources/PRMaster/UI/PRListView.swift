@@ -341,24 +341,34 @@ struct PRListView: View {
         .background(Color.orange.opacity(0.10))
     }
 
+    /// The row was already clickable end to end, but nothing about it said so:
+    /// an orange band of text reads as a complaint, not as an offer to fix it.
+    /// So it takes the same shape as the update row — what happened, and a
+    /// button that does something about it.
     private var notificationsDisabledRow: some View {
-        Button {
-            NSWorkspace.shared.open(URL(
-                string: "x-apple.systempreferences:com.apple.preference.notifications"
-            )!)
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "bell.slash.fill").foregroundStyle(.orange)
-                Text("Notifications disabled — open System Settings")
-                    .font(.system(size: 11))
-                Spacer(minLength: 0)
-            }
-            .contentShape(Rectangle())
+        HStack(spacing: 6) {
+            Image(systemName: "bell.slash.fill").foregroundStyle(.orange)
+            Text("Notifications are turned off")
+                .font(.system(size: 11))
+            Spacer(minLength: 0)
+            Button("Open Settings", action: Self.openNotificationSettings)
+                .font(.system(size: 11))
         }
-        .buttonStyle(.plain)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(Color.orange.opacity(0.10))
+        .help("PR Master Tray can't tell you a pull request is ready until you allow its notifications.")
+    }
+
+    /// Opens the Notifications pane of System Settings.
+    ///
+    /// The identifier is the pre-Ventura one on purpose: the settings extension
+    /// still declares it as its `legacyBundleIdentifier`, and it is the form
+    /// that works across the macOS versions this app runs on.
+    private static func openNotificationSettings() {
+        NSWorkspace.shared.open(URL(
+            string: "x-apple.systempreferences:com.apple.preference.notifications"
+        )!)
     }
 
     // MARK: - Footer
