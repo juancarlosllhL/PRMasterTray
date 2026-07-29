@@ -15,10 +15,20 @@ public enum PRMasterError: Error, LocalizedError {
     /// HTTP 200 carrying an `errors` array, typically SAML SSO enforcement.
     case graphQL([String])
     case rateLimited(until: Date)
+    /// A status the app cannot use. Only the code is carried, as with the
+    /// release check: a 403 and a 502 are different problems and the user can
+    /// tell them apart.
+    case httpError(status: Int)
     /// GitHub refused the merge; the payload is its own message, verbatim.
     case mergeRejected(String)
     /// GitHub refused to bring the branch up to date; its own message, verbatim.
     case updateRejected(String)
+    /// The body was not JSON at all, so there is nothing to decode. In practice
+    /// this is a proxy or a Wi-Fi sign-in page answering in HTML instead of
+    /// api.github.com answering in JSON.
+    case notJSON
+    /// The body was JSON but not the shape the app expects. The payload is a
+    /// diagnostic — a `DecodingError` dump, which the message never shows.
     case decoding(String)
     /// The repo has no published release. Not a fault: it is the state the repo
     /// is in before the first tag is ever pushed.
@@ -62,10 +72,22 @@ public enum PRMasterError: Error, LocalizedError {
             return messages.first ?? "GitHub returned an error."
         case .rateLimited(let until):
             return "Rate limited until \(until.formatted(date: .omitted, time: .shortened))."
+        case .httpError(let status) where status >= 500:
+            return "GitHub is having trouble (HTTP \(status)). Try again in a moment."
+        case .httpError(let status):
+            return "GitHub answered with HTTP \(status)."
         case .mergeRejected(let message), .updateRejected(let message):
             return message
-        case .decoding(let detail):
-            return "Could not read GitHub's response: \(detail)"
+        case .notJSON:
+            // The likely culprit rather than a shrug: on a managed network
+            // something else answers for api.github.com, and the user is the
+            // only one who can tell whether they are behind a proxy.
+            return "GitHub's answer wasn't JSON. If you're on a VPN or company network, a proxy is probably answering instead."
+        case .decoding:
+            // The payload is a DecodingError dump. It named a JSON path and an
+            // error domain, which told the user nothing and buried the one fact
+            // that mattered: this is not something they can fix.
+            return "GitHub's response wasn't in a shape this app understands."
         case .noReleaseYet:
             return "No release has been published yet."
         case .releaseAssetMissing:
@@ -87,6 +109,7 @@ extension PRMasterError: Equatable {
         switch (lhs, rhs) {
         case (.ghNotFound, .ghNotFound),
              (.unauthorized, .unauthorized),
+             (.notJSON, .notJSON),
              (.noReleaseYet, .noReleaseYet),
              (.releaseAssetMissing, .releaseAssetMissing),
              (.updateVerificationFailed, .updateVerificationFailed):
@@ -98,6 +121,8 @@ extension PRMasterError: Equatable {
         case (.graphQL(let l), .graphQL(let r)):
             return l == r
         case (.rateLimited(let l), .rateLimited(let r)):
+            return l == r
+        case (.httpError(let l), .httpError(let r)):
             return l == r
         case (.mergeRejected(let l), .mergeRejected(let r)),
              (.updateRejected(let l), .updateRejected(let r)):

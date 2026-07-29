@@ -92,6 +92,29 @@ struct FetchTests {
         }
     }
 
+    /// The failure a user actually reported: a proxy answered for
+    /// api.github.com with an HTML page, and the popover filled with the JSON
+    /// decoder's account of it.
+    @Test("an HTML body on a 200 never reaches the decoder", arguments: [
+        "<!DOCTYPE html><html><body>Access denied</body></html>",
+        "  \n<html>Sign in to the network</html>",
+        "",
+    ])
+    func htmlBody(body: String) async throws {
+        let ctx = makeClient([.response(status: 200, body: Data(body.utf8))])
+        await #expect(throws: PRMasterError.notJSON) {
+            _ = try await ctx.client.fetchMyPullRequests()
+        }
+    }
+
+    @Test("maps an unusable status to httpError", arguments: [403, 502, 503])
+    func unusableStatus(status: Int) async throws {
+        let ctx = makeClient([.response(status: status, body: Data("<html>nope</html>".utf8))])
+        await #expect(throws: PRMasterError.httpError(status: status)) {
+            _ = try await ctx.client.fetchMyPullRequests()
+        }
+    }
+
     @Test("maps a 429 to rateLimited")
     func rateLimited() async throws {
         let ctx = makeClient([.response(status: 429, body: Data("{}".utf8))])

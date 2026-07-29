@@ -106,15 +106,33 @@ public actor GitHubClient {
         guard let http = response as? HTTPURLResponse else { return data }
 
         switch http.statusCode {
+        case 200:
+            // GitHub reports application-level failures in the body with a 200,
+            // so the decoder is the arbiter — but only over JSON. Handing it an
+            // HTML page produced a screenful of NSCocoaErrorDomain where one
+            // sentence belongs.
+            guard Self.looksLikeJSON(data) else { throw PRMasterError.notJSON }
+            return data
         case 401:
             throw PRMasterError.unauthorized
         case 429:
             throw PRMasterError.rateLimited(until: Self.resetDate(from: http))
         default:
-            // Anything else falls through: GitHub reports application-level
-            // failures in the body with a 200, so the decoder is the arbiter.
-            return data
+            // Every other status used to fall through to the decoder, which
+            // could only describe a 502's HTML error page as an unexpected "<".
+            throw PRMasterError.httpError(status: http.statusCode)
         }
+    }
+
+    /// Whether the body is even worth handing to a JSON decoder.
+    ///
+    /// A GraphQL reply is always a JSON object, so anything that does not open
+    /// with `{` came from something other than the API — GitHub's own edge
+    /// error page, a corporate proxy, or a captive portal.
+    private static func looksLikeJSON(_ data: Data) -> Bool {
+        let whitespace: Set<UInt8> = [0x20, 0x09, 0x0A, 0x0D]
+        guard let first = data.first(where: { !whitespace.contains($0) }) else { return false }
+        return first == UInt8(ascii: "{")
     }
 
     private static func resetDate(from response: HTTPURLResponse) -> Date {

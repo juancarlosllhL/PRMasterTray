@@ -94,7 +94,7 @@ them. All of them fake only *fetching* — merging always goes to the real API.
 | Variable | Effect |
 |---|---|
 | `PRMASTER_FIXTURE=path.json` | serve PRs from a search-response JSON file |
-| `PRMASTER_FAKE_ERROR=ghNotFound\|notAuthenticated\|network` | force a failure state |
+| `PRMASTER_FAKE_ERROR=ghNotFound\|notAuthenticated\|network\|notJSON` | force a failure state |
 | `PRMASTER_FAIL_AFTER=n` | succeed `n` times, then fail — shows the stale banner |
 | `PRMASTER_DEMO_MERGE=confirm\|fail` | open the merge confirm sheet or failure alert |
 | `PRMASTER_AUTO_OPEN=1` | open the popover at launch |

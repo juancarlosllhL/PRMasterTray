@@ -67,14 +67,16 @@ enum Debug {
         return path
     }
 
-    /// `PRMASTER_FAKE_ERROR=ghNotFound|notAuthenticated|network` forces a
-    /// failure so the setup and stale-banner states are reachable without
-    /// having to uninstall gh or pull the network cable.
+    /// `PRMASTER_FAKE_ERROR=ghNotFound|notAuthenticated|network|notJSON` forces
+    /// a failure so the setup and stale-banner states are reachable without
+    /// having to uninstall gh, pull the network cable, or sit behind the proxy
+    /// that answered in HTML for the one user who reported it.
     static var fakeError: PRMasterError? {
         switch ProcessInfo.processInfo.environment["PRMASTER_FAKE_ERROR"] {
         case "ghNotFound": return .ghNotFound
         case "notAuthenticated": return .notAuthenticated(detail: "forced")
         case "network": return .network(URLError(.notConnectedToInternet))
+        case "notJSON": return .notJSON
         default: return nil
         }
     }
