@@ -2,27 +2,22 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- The displayed name. The bundle, its identifier and the release asset
-	     stay PRMaster: the installer and the updater both look
-	     PRMaster.app.zip up by exact name, and the identifier is what macOS
-	     ties the notification permission to. -->
-	<key>CFBundleName</key>
-	<string>PR Master Tray</string>
 	<key>CFBundleDisplayName</key>
 	<string>PR Master Tray</string>
-	<key>CFBundleIdentifier</key>
-	<string>com.jcll.PRMaster</string>
 	<key>CFBundleExecutable</key>
 	<string>PRMaster</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.jcll.PRMaster</string>
+	<key>CFBundleName</key>
+	<string>PR Master Tray</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.3.0</string>
+	<string>0.3.1</string>
 	<key>CFBundleVersion</key>
-	<string>3</string>
+	<string>4</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
-	<!-- No Dock icon, no menu bar: menu bar extra only. -->
 	<key>LSUIElement</key>
 	<true/>
 </dict>
