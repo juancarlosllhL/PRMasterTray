@@ -38,6 +38,10 @@ public protocol PreferenceStoring: Sendable {
     func setAutoUpdateEnabled(_ value: Bool)
     func filter() -> PRFilter
     func setFilter(_ value: PRFilter)
+    func theme() -> AppTheme
+    func setTheme(_ value: AppTheme)
+    func monochromeEnabled() -> Bool
+    func setMonochromeEnabled(_ value: Bool)
 }
 
 /// Observable state behind the menu bar UI.
@@ -302,6 +306,8 @@ public struct UserDefaultsPreferences: PreferenceStoring {
     private let autoUpdateKey = "autoUpdateBehindBranches"
     private let hiddenOrganizationsKey = "hiddenOrganizations"
     private let showPrivateKey = "showPrivateRepositories"
+    private let themeKey = "appearanceTheme"
+    private let monochromeKey = "highContrastMonochrome"
     // UserDefaults is documented as thread-safe but predates Sendable.
     nonisolated(unsafe) private let defaults: UserDefaults
 
@@ -334,5 +340,29 @@ public struct UserDefaultsPreferences: PreferenceStoring {
         // `defaults read com.jcll.PRMaster`, which is how this gets debugged.
         defaults.set(value.hiddenOrganizations.sorted(), forKey: hiddenOrganizationsKey)
         defaults.set(value.showsPrivateRepositories, forKey: showPrivateKey)
+    }
+
+    public func theme() -> AppTheme {
+        // Absent *and* unrecognised both fall back to following the system: a
+        // downgrade or a stray `defaults write` must not pin somebody to a
+        // theme they never chose, and System is the answer that is never wrong.
+        defaults.string(forKey: themeKey).flatMap(AppTheme.init(rawValue:)) ?? .system
+    }
+
+    public func setTheme(_ value: AppTheme) {
+        // The raw string, not an index — `defaults read com.jcll.PRMaster` is
+        // how this gets debugged, and "2" says nothing.
+        defaults.set(value.rawValue, forKey: themeKey)
+    }
+
+    public func monochromeEnabled() -> Bool {
+        // `object(forKey:)` for the same reason as `autoUpdateEnabled`: with
+        // `bool(forKey:)` a stored false is indistinguishable from an absent
+        // key, so switching monochrome off would not survive a relaunch.
+        defaults.object(forKey: monochromeKey) as? Bool ?? false
+    }
+
+    public func setMonochromeEnabled(_ value: Bool) {
+        defaults.set(value, forKey: monochromeKey)
     }
 }

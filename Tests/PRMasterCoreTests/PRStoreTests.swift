@@ -82,20 +82,33 @@ private final class SpyUpdater: PullRequestBranchUpdating, @unchecked Sendable {
     }
 }
 
-private final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
+final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
     private let lock = NSLock()
     private var enabled: Bool
     private var stored: PRFilter
+    private var storedTheme: AppTheme
+    private var storedMonochrome: Bool
 
-    init(autoUpdate: Bool = true, filter: PRFilter = PRFilter()) {
+    init(
+        autoUpdate: Bool = true,
+        filter: PRFilter = PRFilter(),
+        theme: AppTheme = .system,
+        monochrome: Bool = false
+    ) {
         enabled = autoUpdate
         stored = filter
+        storedTheme = theme
+        storedMonochrome = monochrome
     }
 
     func autoUpdateEnabled() -> Bool { lock.withLock { enabled } }
     func setAutoUpdateEnabled(_ value: Bool) { lock.withLock { enabled = value } }
     func filter() -> PRFilter { lock.withLock { stored } }
     func setFilter(_ value: PRFilter) { lock.withLock { stored = value } }
+    func theme() -> AppTheme { lock.withLock { storedTheme } }
+    func setTheme(_ value: AppTheme) { lock.withLock { storedTheme = value } }
+    func monochromeEnabled() -> Bool { lock.withLock { storedMonochrome } }
+    func setMonochromeEnabled(_ value: Bool) { lock.withLock { storedMonochrome = value } }
 }
 
 @MainActor
@@ -690,6 +703,94 @@ struct PreferenceStoreTests {
         preferences.setFilter(PRFilter(hiddenOrganizations: ["acme"]))
         preferences.setFilter(PRFilter())
         #expect(preferences.filter() == PRFilter())
+    }
+
+    // MARK: - Appearance
+
+    /// The same rule as every other default in here: an absent key has to mean
+    /// "what the app did before this setting existed". Anything else repaints
+    /// every existing install on the first launch after updating.
+    @Test("an absent theme follows the system")
+    func themeDefaultsToSystem() throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        #expect(UserDefaultsPreferences(defaults: defaults).theme() == .system)
+    }
+
+    @Test("a stored theme round-trips", arguments: AppTheme.allCases)
+    func themeRoundTrips(theme: AppTheme) throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let preferences = UserDefaultsPreferences(defaults: defaults)
+        preferences.setTheme(theme)
+        #expect(preferences.theme() == theme)
+    }
+
+    /// A downgrade, a typo in `defaults write`, or a theme that existed in a
+    /// later version — none of which should pin somebody to a theme they never
+    /// chose. Following the system is the one answer that is never wrong.
+    @Test("an unrecognised stored theme falls back to the system")
+    func unknownThemeFallsBack() throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        defaults.set("solarized", forKey: "appearanceTheme")
+        #expect(UserDefaultsPreferences(defaults: defaults).theme() == .system)
+    }
+
+    /// Stored as the raw string rather than an index, because `defaults read
+    /// com.jcll.PRMaster` is how this gets debugged and "2" says nothing.
+    @Test("the theme is stored as a readable string")
+    func themeIsStoredReadably() throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        UserDefaultsPreferences(defaults: defaults).setTheme(.dark)
+        #expect(defaults.string(forKey: "appearanceTheme") == "dark")
+    }
+
+    /// Off unless asked for: monochrome is a deliberate choice, and the app has
+    /// never drawn that way before.
+    @Test("an absent monochrome flag reads as off")
+    func monochromeDefaultsToOff() throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        #expect(UserDefaultsPreferences(defaults: defaults).monochromeEnabled() == false)
+    }
+
+    @Test("a stored monochrome flag round-trips", arguments: [true, false])
+    func monochromeRoundTrips(value: Bool) throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let preferences = UserDefaultsPreferences(defaults: defaults)
+        preferences.setMonochromeEnabled(value)
+        #expect(preferences.monochromeEnabled() == value)
+    }
+
+    /// `bool(forKey:)` cannot tell an absent key from a stored false, so a
+    /// stored false has to survive a round trip distinctly from never having
+    /// been set — otherwise switching monochrome off would not persist.
+    @Test("a stored false is not mistaken for an absent key")
+    func storedFalseSurvives() throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let preferences = UserDefaultsPreferences(defaults: defaults)
+        preferences.setMonochromeEnabled(true)
+        preferences.setMonochromeEnabled(false)
+        #expect(preferences.monochromeEnabled() == false)
+        #expect(defaults.object(forKey: "highContrastMonochrome") as? Bool == false)
     }
 }
 
