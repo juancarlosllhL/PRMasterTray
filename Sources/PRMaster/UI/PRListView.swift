@@ -17,6 +17,21 @@ struct PRListView: View {
     /// App-update state. Nothing to bind to — every property is read-only — so a
     /// plain `let` is enough; `@Observable` tracks the reads either way.
     let updates: AppUpdateStore
+    /// False until the appearance store reaches here in a later step; light and
+    /// dark resolve from the environment regardless, which is the half that
+    /// decides legibility.
+    var monochromeEnabled: Bool = false
+
+    /// Not `private`: a private stored property would make the synthesised
+    /// memberwise initialiser private too, and `AppDelegate` builds this view.
+    var paletteInputs = PaletteInputs()
+
+    /// Computed rather than read from `\.palette`: a view's own environment read
+    /// resolves against what its parent handed down, so publishing and drawing
+    /// with the same value in one view means computing it here.
+    private var palette: ResolvedPalette {
+        paletteInputs.resolved(monochromeEnabled: monochromeEnabled)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -66,6 +81,8 @@ struct PRListView: View {
             }
         }
         .frame(width: 380)
+        // Hands the resolved palette to every row and banner below.
+        .environment(\.palette, palette)
     }
 
     // MARK: - Header
@@ -266,7 +283,7 @@ struct PRListView: View {
     private func staleBannerView(_ text: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
+                .foregroundStyle(palette.color(.orange))
             Text(text)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
@@ -275,7 +292,7 @@ struct PRListView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color.orange.opacity(0.10))
+        .background(palette.wash(.orange))
     }
 
     /// RelativeDateTimeFormatter renders a just-completed fetch as
@@ -310,7 +327,7 @@ struct PRListView: View {
     private func updateRow(_ release: AppRelease) -> some View {
         HStack(spacing: 6) {
             Image(systemName: "arrow.down.circle.fill")
-                .foregroundStyle(.blue)
+                .foregroundStyle(palette.color(.blue))
             // A release tag is whatever was pushed, so it is never interpolated
             // into a localised format string.
             Text(verbatim: "Version \(release.version) available")
@@ -327,18 +344,18 @@ struct PRListView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color.blue.opacity(0.10))
+        .background(palette.wash(.blue))
     }
 
     private func warningRow(icon: String, text: String) -> some View {
         HStack(spacing: 6) {
-            Image(systemName: icon).foregroundStyle(.orange)
+            Image(systemName: icon).foregroundStyle(palette.color(.orange))
             Text(verbatim: text).font(.system(size: 11))
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color.orange.opacity(0.10))
+        .background(palette.wash(.orange))
     }
 
     /// The row was already clickable end to end, but nothing about it said so:
@@ -347,7 +364,7 @@ struct PRListView: View {
     /// button that does something about it.
     private var notificationsDisabledRow: some View {
         HStack(spacing: 6) {
-            Image(systemName: "bell.slash.fill").foregroundStyle(.orange)
+            Image(systemName: "bell.slash.fill").foregroundStyle(palette.color(.orange))
             Text("Notifications are turned off")
                 .font(.system(size: 11))
             Spacer(minLength: 0)
@@ -356,7 +373,7 @@ struct PRListView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color.orange.opacity(0.10))
+        .background(palette.wash(.orange))
         .help("PR Master Tray can't tell you a pull request is ready until you allow its notifications.")
     }
 
@@ -399,12 +416,13 @@ struct PRListView: View {
 struct SetupNeededView: View {
     let title: String
     let command: String
+    @Environment(\.palette) private var palette
 
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 22))
-                .foregroundStyle(.orange)
+                .foregroundStyle(palette.color(.orange))
             Text(title).font(.system(size: 12, weight: .semibold))
             Text("Run this in a terminal:")
                 .font(.system(size: 11))

@@ -73,7 +73,7 @@ extension ContrastMode {
     /// Monochrome outranks increased contrast because it already carries the
     /// highest contrast either appearance can offer, so there is nothing for
     /// `increased` to add.
-    static func resolve(
+    public static func resolve(
         monochromeEnabled: Bool,
         systemDifferentiateWithoutColor: Bool,
         systemIncreasedContrast: Bool

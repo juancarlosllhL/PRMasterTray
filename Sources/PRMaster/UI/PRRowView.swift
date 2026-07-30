@@ -10,13 +10,14 @@ struct PRRowView: View {
     let onMerge: () -> Void
 
     @State private var isHovering = false
+    @Environment(\.palette) private var palette
 
     var body: some View {
         // Centred, not top-aligned: against a fixed two-line stack the glyph
         // reads as belonging to the row rather than to the title.
         HStack(alignment: .center, spacing: 10) {
             Image(systemName: pr.readiness.symbolName)
-                .foregroundStyle(pr.readiness.tint.color)
+                .foregroundStyle(palette.color(pr.readiness.tint))
                 .font(.system(size: 14))
                 .frame(width: 18)
                 .accessibilityLabel(pr.readiness.label)
@@ -30,6 +31,15 @@ struct PRRowView: View {
                     // scans as a column rather than a ragged stack.
                     .lineLimit(1)
                     .truncationMode(.tail)
+                    // Drafts stay visible but muted: present, not actionable.
+                    // The dim lives on the title alone rather than on the whole
+                    // row, which is where it used to be. Starting from full
+                    // black or white the title still clears AA at 0.55 — 4.56:1
+                    // light, 5.39:1 dark — whereas the grey status text below
+                    // came out at 2.39:1, and no opacity short of 1 fixed that.
+                    // The title is the dominant element, so the row still reads
+                    // as muted either way.
+                    .opacity(pr.readiness.isDimmed ? 0.55 : 1)
 
                 HStack(spacing: 6) {
                     // verbatim again, otherwise Text applies locale grouping
@@ -43,8 +53,13 @@ struct PRRowView: View {
                             .foregroundStyle(.secondary)
                     } else {
                         Text(pr.readiness.label)
-                            .font(.system(size: 11))
-                            .foregroundStyle(pr.readiness.tint.color)
+                            // Semibold once colour is gone, so the status still
+                            // separates from the grey "repo #1204" beside it.
+                            .font(.system(
+                                size: 11,
+                                weight: palette.isMonochrome ? .semibold : .regular
+                            ))
+                            .foregroundStyle(palette.color(pr.readiness.tint))
                     }
                 }
                 .lineLimit(1)
@@ -64,8 +79,6 @@ struct PRRowView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
-        // Drafts stay visible but muted: present, not actionable.
-        .opacity(pr.readiness.isDimmed ? 0.55 : 1)
         .background(isHovering ? Color.primary.opacity(0.06) : .clear)
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .contentShape(Rectangle())

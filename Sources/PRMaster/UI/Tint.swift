@@ -1,16 +1,16 @@
 import SwiftUI
 import PRMasterCore
 
-extension ReadinessTint {
-    /// The only place semantic tints become concrete colours.
+extension RGB {
+    /// The only place a palette value becomes a concrete `Color`.
+    ///
+    /// This used to map `ReadinessTint` straight onto `Color.green`, `.yellow`
+    /// and friends. Those are Apple's system colours, tuned for large fills, and
+    /// as 11pt text on a light popover they measured 1.28:1 to 3.40:1 against a
+    /// 4.5:1 floor. The mapping now goes through `Palette`, which is verified,
+    /// and reaches views as `\.palette` in the environment so it can vary with
+    /// the appearance and the contrast the user asked for.
     var color: Color {
-        switch self {
-        case .green:  return .green
-        case .yellow: return .yellow
-        case .blue:   return .blue
-        case .red:    return .red
-        case .orange: return .orange
-        case .gray:   return .secondary
-        }
+        Color(.sRGB, red: red, green: green, blue: blue)
     }
 }
