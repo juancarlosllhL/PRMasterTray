@@ -36,11 +36,14 @@ struct SettingsView: View {
         }
         // A fixed height rather than one per tab. Both would be native — System
         // Settings resizes per pane — but this panel is small enough that the
-        // window jumping every time you switch tabs reads as a glitch. Tall
-        // enough for the appearance tab not to look padded out, and it caps the
-        // organization list, which scrolls inside from there rather than growing
-        // the window past the screen.
-        .frame(width: 440, height: 430)
+        // window jumping every time you switch tabs reads as a glitch.
+        //
+        // Sized so the appearance tab fits without scrolling, which it did not at
+        // 440x430 — a scrollbar over two short sections made the window look full
+        // when it was only too small — and without leaving a cavern under it
+        // either. On the other tab the slack is the point: it is room for the
+        // organization list to grow into before it starts scrolling.
+        .frame(width: 520, height: 470)
     }
 
     /// Which pull requests the app cares about.
@@ -81,14 +84,18 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 
     /// How those pull requests are drawn.
     private var appearanceSettings: some View {
         Form {
-            // Its own section because it is the only control here that is not
-            // about the popover: the theme also reaches this window and the merge
-            // confirmation, so filing it under a "Popover" header would be a lie.
+            // Deliberately unheaded. A "Theme" header over a row already labelled
+            // Theme just stutters, and no shorter word covers both of these
+            // honestly: the theme reaches this window and the merge confirmation
+            // as well, while the background is the popover alone. The tab is
+            // called Appearance, which is the header this group would want.
             Section {
                 Picker("Theme", selection: $appearance.theme) {
                     Text("System").tag(AppTheme.system)
@@ -96,18 +103,12 @@ struct SettingsView: View {
                     Text("Dark").tag(AppTheme.dark)
                 }
                 .pickerStyle(.segmented)
-            } header: {
-                Text("Theme")
-            }
 
-            Section {
                 Picker("Background", selection: $appearance.popoverBackground) {
                     Text("Liquid glass").tag(PopoverBackground.liquidGlass)
                     Text("Opaque").tag(PopoverBackground.opaque)
                 }
                 .pickerStyle(.segmented)
-            } header: {
-                Text("Popover background")
             } footer: {
                 // The one thing a user cannot discover by looking: liquid glass
                 // is prettier and measurably less legible, and which of those
@@ -133,6 +134,8 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 
     /// One switch per organization, checked when its pull requests are shown.
