@@ -60,16 +60,12 @@ struct SettingsView: View {
                 // Says what the switch is actually worth right now — "0 of your
                 // open pull requests" is the difference between a setting that
                 // does nothing and one the user is looking for.
-                Text(verbatim: privateSummary)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                footnote(Text(verbatim: privateSummary))
             }
 
             Section {
                 if store.knownOrganizations.isEmpty {
-                    Text("No organizations yet — they appear here as soon as your pull requests load.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                    footnote(Text("No organizations yet — they appear here as soon as your pull requests load."))
                 } else {
                     organizationList
                 }
@@ -78,9 +74,7 @@ struct SettingsView: View {
             } footer: {
                 // The one thing about this window that is not self-evident, and
                 // the thing a user would be annoyed to discover by accident.
-                Text("Hidden pull requests are left out of the menu bar count, never notify, and are never brought up to date automatically.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                footnote(Text("Hidden pull requests are left out of the menu bar count, never notify, and are never brought up to date automatically."))
             }
         }
         .formStyle(.grouped)
@@ -114,9 +108,7 @@ struct SettingsView: View {
                 // is prettier and measurably less legible, and which of those
                 // matters more is theirs to decide, not ours. Said in terms of
                 // what they will see rather than in contrast ratios.
-                Text("Liquid glass lets the desktop through, the way a macOS popover normally does. Over a window that strongly contrasts with it, the status colours get harder to read — Opaque fixes the background so they stay legible whatever is behind.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                footnote(Text("Liquid glass lets the desktop through, the way a macOS popover normally does. Over a window that strongly contrasts with it, the status colours get harder to read — Opaque fixes the background so they stay legible whatever is behind."))
             }
 
             Section {
@@ -128,14 +120,28 @@ struct SettingsView: View {
                 // reading off while the app draws monochrome, because macOS asked
                 // and a local preference does not override an accessibility
                 // setting.
-                Text("Monochrome drops the status colours and leans on each row's icon and label instead. It also turns on by itself when macOS is set to differentiate without colour.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                footnote(Text("Monochrome drops the status colours and leans on each row's icon and label instead. It also turns on by itself when macOS is set to differentiate without colour."))
             }
         }
         .formStyle(.grouped)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    /// Secondary copy — footers, and the empty-organizations line.
+    ///
+    /// Both alignment modifiers are load-bearing, not belt-and-braces. The
+    /// default alignment of a grouped `Form` footer is not stable across SDKs:
+    /// v0.4.1 shipped from CI against the macOS 15 SDK and ranged these
+    /// paragraphs *right*, while a local build of the identical commit against
+    /// the macOS 26 SDK ranged them left. Stating it makes both agree, and is
+    /// the only version of this that can be verified from either machine.
+    private func footnote(_ text: Text) -> some View {
+        text
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// One switch per organization, checked when its pull requests are shown.
