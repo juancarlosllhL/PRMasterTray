@@ -131,9 +131,73 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             accessibilityDescription: "PR Master Tray"
         )
         item.button?.imagePosition = .imageLeading
-        item.button?.action = #selector(togglePopover)
+        item.button?.action = #selector(statusItemClicked)
         item.button?.target = self
+        // A status item button reports only the left button unless asked. The
+        // alternative — assigning `item.menu` — would hand *both* clicks to the
+        // menu, and the popover would never open at all.
+        item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         statusItem = item
+    }
+
+    /// Left click opens the popover, right click the menu below it.
+    @objc private func statusItemClicked() {
+        let event = NSApp.currentEvent
+        // Control-click is the system's other route to a context menu, and it
+        // arrives as a left click with a modifier rather than as a right one.
+        let wantsMenu =
+            event?.type == .rightMouseUp
+            || event?.modifierFlags.contains(.control) == true
+
+        if wantsMenu {
+            showStatusItemMenu()
+        } else {
+            togglePopover()
+        }
+    }
+
+    /// The right-click menu: the two things worth reaching without first opening
+    /// the popover.
+    ///
+    /// Both are also in the popover's gear menu — this is a shortcut to them, not
+    /// a second home for them, so anything longer belongs there and not here.
+    private func showStatusItemMenu() {
+        guard let item = statusItem, let button = item.button else { return }
+
+        // The global dismiss monitor never sees this click — global monitors skip
+        // our own app's events — so the popover has to be closed by hand or it
+        // stays up behind the menu.
+        popover.performClose(nil)
+
+        let menu = NSMenu()
+        menu.addItem(menuItem("Settings…", #selector(openSettingsFromMenu)))
+        menu.addItem(.separator())
+        menu.addItem(menuItem("Quit PR Master Tray", #selector(quitFromMenu)))
+
+        // Assigned, clicked, then cleared. `NSMenu.popUp(positioning:at:in:)` on
+        // the button draws the menu detached from the item and leaves the item
+        // unhighlighted; handing it to the status item is what makes it look like
+        // every other menu bar menu. Menu tracking is modal, so the line that
+        // gives the left click its action back runs once the menu closes.
+        item.menu = menu
+        button.performClick(nil)
+        item.menu = nil
+    }
+
+    private func menuItem(_ title: String, _ action: Selector) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        // Without a target the item is dimmed: an LSUIElement app has no menu bar
+        // and so no responder chain to find these on.
+        item.target = self
+        return item
+    }
+
+    @objc private func openSettingsFromMenu() {
+        settingsWindow.show(store: store)
+    }
+
+    @objc private func quitFromMenu() {
+        NSApp.terminate(nil)
     }
 
     /// NSStatusItem has no badge API, so the ready count rides on the button
