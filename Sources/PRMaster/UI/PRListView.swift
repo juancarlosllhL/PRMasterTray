@@ -82,15 +82,20 @@ struct PRListView: View {
             }
         }
         .frame(width: 380)
-        // Opaque, rather than letting the popover's vibrant material show
-        // through. Measured over a dark window, the material rendered the light
-        // background at #B9BDC1 instead of the ~#ECECEC a popover shows over the
-        // desktop, which dropped every tint to between 3.6:1 and 4.0:1. A hue
-        // cannot be guaranteed legible against a background that depends on
-        // whatever window happens to be behind it, so the background stops
-        // depending on it. This is what makes the palette's floor real rather
-        // than nominal.
-        .background(Color(nsColor: .windowBackgroundColor))
+        // Mostly the window background, with a quarter of the popover's material
+        // left showing so it still reads like a macOS popover rather than a
+        // panel.
+        //
+        // Not fully transparent, because the material alone is not a background
+        // a colour can be guaranteed against: measured over a dark window it
+        // rendered the light case at #B9BDC1 rather than the ~#ECECEC a popover
+        // shows over the desktop, which put every tint between 3.6:1 and 4.0:1.
+        // This layer compresses that range instead of removing it. At 0.75 the
+        // worst measured material composites to #EEEEF0, where the weakest tint
+        // is 5.87:1 — so the translucency costs about 0.9:1 against the opaque
+        // version and still clears AA with room. Below roughly 0.5 it stops
+        // clearing it at all.
+        .background(Color(nsColor: .windowBackgroundColor).opacity(0.75))
         // Hands the resolved palette to every row and banner below.
         .environment(\.palette, palette)
     }

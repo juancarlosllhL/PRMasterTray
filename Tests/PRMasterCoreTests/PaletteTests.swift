@@ -7,18 +7,19 @@ struct PaletteTests {
 
     /// What the palette is actually drawn on.
     ///
-    /// The first entry of each is measured from a screenshot of the running app:
-    /// `PRListView` fills an opaque `windowBackgroundColor`, which rendered
-    /// #FFFFFF light and #1E1E1E dark. That opacity is load-bearing and not
-    /// decoration — the popover's own vibrant material rendered the light
-    /// background at #B9BDC1 over a dark window, which put every tint between
-    /// 3.6:1 and 4.0:1. A hue cannot be guaranteed against a background that
-    /// depends on what is behind the window, so the background stopped depending
-    /// on it.
+    /// `PRListView` lays `windowBackgroundColor` over the popover's material at
+    /// 0.75, so the background is mostly known but not entirely: a quarter of the
+    /// material still shows through, which is what keeps it looking like a macOS
+    /// popover. That partial cover is load-bearing rather than decorative. The
+    /// bare material rendered the light case at #B9BDC1 over a dark window,
+    /// putting every tint between 3.6:1 and 4.0:1; covering three quarters of it
+    /// compresses the range the background can occupy.
     ///
-    /// The remaining entries are headroom, in case `windowBackgroundColor`
-    /// resolves darker on another macOS version or display profile. Every tint
-    /// has to clear its floor against all of them, not against the friendliest.
+    /// The first entry of each is the measured value with nothing behind to tint
+    /// it. The rest are the compressed worst cases plus headroom — the darkest
+    /// realistic light composite is #EEEEF0 and the lightest dark one #313131, so
+    /// #E0E0E0 and #3A3A3A are stricter than anything that can actually appear.
+    /// Every tint has to clear its floor against all of them, not the friendliest.
     static func backgrounds(_ appearance: AppearanceMode) -> [RGB] {
         switch appearance {
         case .light: return [.hex(0xFFFFFF), .hex(0xECECEC), .hex(0xE0E0E0)]
