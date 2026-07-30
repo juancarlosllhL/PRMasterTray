@@ -111,6 +111,14 @@ enum Debug {
         ProcessInfo.processInfo.environment["PRMASTER_OPEN_SETTINGS"] == "1"
     }
 
+    /// `PRMASTER_SETTINGS_TAB=pullRequests|appearance` selects which tab the
+    /// settings window opens on. Same reason as `openSettings` one line up: a tab
+    /// is a click, and a screenshot has no mouse. Falls through to the first tab
+    /// for any unrecognised value, so a typo shows the default rather than nothing.
+    static var settingsTab: String? {
+        ProcessInfo.processInfo.environment["PRMASTER_SETTINGS_TAB"]
+    }
+
     /// `PRMASTER_DEMO_MERGE=confirm|fail` drives the merge dialogs directly,
     /// so the irreversible path can be inspected without a mergeable PR. Any
     /// other value swaps in the no-op merger without opening a dialog.

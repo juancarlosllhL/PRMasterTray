@@ -99,9 +99,10 @@ them. All of them fake only *fetching* — merging always goes to the real API.
 | `PRMASTER_DEMO_MERGE=confirm\|fail` | open the merge confirm sheet or failure alert |
 | `PRMASTER_AUTO_OPEN=1` | open the popover at launch |
 | `PRMASTER_OPEN_SETTINGS=1` | open the settings window at launch |
+| `PRMASTER_SETTINGS_TAB=pullRequests\|appearance` | which settings tab to open on |
 
-The last two fake nothing — they only open something a screenshot script cannot
-click — so neither counts as an override below.
+The last three fake nothing — they only open something a screenshot script cannot
+click — so none of them counts as an override below.
 
 Setting any override refuses merges outright, hides the row's **Merge** button
 and drops the **Merge** action from notifications: a fixture is routinely

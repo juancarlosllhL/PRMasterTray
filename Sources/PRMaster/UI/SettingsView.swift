@@ -8,11 +8,43 @@ import PRMasterCore
 /// nobody reads. Every control here writes straight through to `PRStore.filter`
 /// or `AppearanceStore`, both of which persist and take effect on the spot — so
 /// there is no Save button, and nothing to undo but the switch itself.
+///
+/// Two tabs, because those are two unrelated jobs. Which pull requests exist has
+/// nothing to do with what colour they are, and the appearance controls arrived
+/// last, which had them sitting underneath an organization list of unbounded
+/// length — the one place in the window nobody scrolls to.
 struct SettingsView: View {
     @Bindable var store: PRStore
     @Bindable var appearance: AppearanceStore
 
+    private enum Tab: String {
+        case pullRequests, appearance
+    }
+
+    /// Only ever moved by a click, except under `PRMASTER_SETTINGS_TAB`, which is
+    /// how the appearance tab gets screenshotted at all.
+    @State private var tab: Tab = Debug.settingsTab.flatMap(Tab.init(rawValue:)) ?? .pullRequests
+
     var body: some View {
+        TabView(selection: $tab) {
+            pullRequests
+                .tabItem { Label("Pull Requests", systemImage: "arrow.triangle.pull") }
+                .tag(Tab.pullRequests)
+            appearanceSettings
+                .tabItem { Label("Appearance", systemImage: "paintbrush") }
+                .tag(Tab.appearance)
+        }
+        // A fixed height rather than one per tab. Both would be native — System
+        // Settings resizes per pane — but this panel is small enough that the
+        // window jumping every time you switch tabs reads as a glitch. Tall
+        // enough for the appearance tab not to look padded out, and it caps the
+        // organization list, which scrolls inside from there rather than growing
+        // the window past the screen.
+        .frame(width: 440, height: 430)
+    }
+
+    /// Which pull requests the app cares about.
+    private var pullRequests: some View {
         Form {
             Section {
                 Toggle(
@@ -47,48 +79,60 @@ struct SettingsView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
+        }
+        .formStyle(.grouped)
+    }
 
-            // Last, because the filters above are what this window is mainly
-            // for — which pull requests exist beats what colour they are.
+    /// How those pull requests are drawn.
+    private var appearanceSettings: some View {
+        Form {
+            // Its own section because it is the only control here that is not
+            // about the popover: the theme also reaches this window and the merge
+            // confirmation, so filing it under a "Popover" header would be a lie.
             Section {
-                Picker("Appearance", selection: $appearance.theme) {
+                Picker("Theme", selection: $appearance.theme) {
                     Text("System").tag(AppTheme.system)
                     Text("Light").tag(AppTheme.light)
                     Text("Dark").tag(AppTheme.dark)
                 }
                 .pickerStyle(.segmented)
+            } header: {
+                Text("Theme")
+            }
 
+            Section {
                 Picker("Background", selection: $appearance.popoverBackground) {
                     Text("Liquid glass").tag(PopoverBackground.liquidGlass)
                     Text("Opaque").tag(PopoverBackground.opaque)
                 }
                 .pickerStyle(.segmented)
+            } header: {
+                Text("Popover background")
+            } footer: {
+                // The one thing a user cannot discover by looking: liquid glass
+                // is prettier and measurably less legible, and which of those
+                // matters more is theirs to decide, not ours. Said in terms of
+                // what they will see rather than in contrast ratios.
+                Text("Liquid glass lets the desktop through, the way a macOS popover normally does. Over a window that strongly contrasts with it, the status colours get harder to read — Opaque fixes the background so they stay legible whatever is behind.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
 
+            Section {
                 Toggle("High-contrast monochrome", isOn: $appearance.monochromeEnabled)
             } header: {
-                Text("Appearance")
+                Text("Accessibility")
             } footer: {
-                VStack(alignment: .leading, spacing: 6) {
-                    // The one thing a user cannot discover by looking: liquid
-                    // glass is prettier and measurably less legible, and which
-                    // matters more is theirs to decide, not ours. Said in terms
-                    // of what they will see rather than in contrast ratios.
-                    Text("Liquid glass lets the desktop through, the way a macOS popover normally does. Over a window that strongly contrasts with it, the status colours get harder to read — Opaque fixes the background so they stay legible whatever is behind.")
-                    // The one confusing state this design allows: the switch off
-                    // while the app draws monochrome, because macOS asked and a
-                    // local preference does not override an accessibility setting.
-                    Text("Monochrome drops the status colours and leans on each row's icon and label instead. It also turns on by itself when macOS is set to differentiate without colour.")
-                }
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                // Names the one confusing state this design allows: the switch
+                // reading off while the app draws monochrome, because macOS asked
+                // and a local preference does not override an accessibility
+                // setting.
+                Text("Monochrome drops the status colours and leans on each row's icon and label instead. It also turns on by itself when macOS is set to differentiate without colour.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
-        .frame(width: 420)
-        // Tall enough that one organization does not look like a mistake, capped
-        // so a busy account cannot grow the window past the screen — the form
-        // scrolls inside it from there.
-        .frame(minHeight: 240, maxHeight: 520)
     }
 
     /// One switch per organization, checked when its pull requests are shown.
