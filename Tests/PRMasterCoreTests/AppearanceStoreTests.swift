@@ -64,6 +64,107 @@ struct ContrastResolutionTests {
     }
 }
 
+@Suite("Appearance store")
+@MainActor
+struct AppearanceStoreTests {
+
+    /// Every control in the settings window writes straight through, so there is
+    /// no Save button and nothing to undo but the switch itself. That only holds
+    /// if the setter actually persists.
+    @Test("setting the theme persists it")
+    func themePersists() {
+        let preferences = MemoryPreferences()
+        let store = AppearanceStore(preferences: preferences)
+
+        store.theme = .dark
+        #expect(preferences.theme() == .dark)
+    }
+
+    @Test("setting monochrome persists it")
+    func monochromePersists() {
+        let preferences = MemoryPreferences()
+        let store = AppearanceStore(preferences: preferences)
+
+        store.monochromeEnabled = true
+        #expect(preferences.monochromeEnabled() == true)
+    }
+
+    /// Switching back off has to persist too — the failure mode of the naive
+    /// `bool(forKey:)` version is that it silently does not.
+    @Test("switching monochrome back off persists as well")
+    func monochromeOffPersists() {
+        let preferences = MemoryPreferences(monochrome: true)
+        let store = AppearanceStore(preferences: preferences)
+
+        store.monochromeEnabled = false
+        #expect(preferences.monochromeEnabled() == false)
+    }
+
+    @Test("a stored appearance is restored on launch", arguments: AppTheme.allCases)
+    func restoresOnInit(theme: AppTheme) {
+        let store = AppearanceStore(
+            preferences: MemoryPreferences(theme: theme, monochrome: true)
+        )
+
+        #expect(store.theme == theme)
+        #expect(store.monochromeEnabled == true)
+    }
+
+    /// Reading defaults must not write them back — a launch that never touched a
+    /// setting should leave the key absent, so the fallback keeps applying.
+    @Test("reading the defaults does not persist them")
+    func initDoesNotWrite() {
+        let preferences = MemoryPreferences()
+        _ = AppearanceStore(preferences: preferences)
+
+        #expect(preferences.theme() == .system)
+        #expect(preferences.monochromeEnabled() == false)
+    }
+
+    // MARK: - Contrast
+
+    /// The convenience the view actually calls: the store supplies its own
+    /// switch, the caller supplies what macOS says.
+    @Test("the store resolves contrast from its own switch")
+    func resolvesFromOwnSwitch() {
+        let store = AppearanceStore(preferences: MemoryPreferences(monochrome: true))
+
+        #expect(store.resolvedContrast(
+            systemDifferentiateWithoutColor: false, systemIncreasedContrast: false
+        ) == .monochrome)
+    }
+
+    @Test("the store still honours the system with its own switch off")
+    func honoursSystemWhenOff() {
+        let store = AppearanceStore(preferences: MemoryPreferences(monochrome: false))
+
+        #expect(store.resolvedContrast(
+            systemDifferentiateWithoutColor: true, systemIncreasedContrast: false
+        ) == .monochrome)
+        #expect(store.resolvedContrast(
+            systemDifferentiateWithoutColor: false, systemIncreasedContrast: true
+        ) == .increased)
+        #expect(store.resolvedContrast(
+            systemDifferentiateWithoutColor: false, systemIncreasedContrast: false
+        ) == .standard)
+    }
+
+    /// Flipping the switch has to change what the palette resolves to without
+    /// rebuilding the store, or the setting would only take effect on relaunch.
+    @Test("flipping the switch changes resolution immediately")
+    func flippingTakesEffect() {
+        let store = AppearanceStore(preferences: MemoryPreferences())
+        #expect(store.resolvedContrast(
+            systemDifferentiateWithoutColor: false, systemIncreasedContrast: false
+        ) == .standard)
+
+        store.monochromeEnabled = true
+        #expect(store.resolvedContrast(
+            systemDifferentiateWithoutColor: false, systemIncreasedContrast: false
+        ) == .monochrome)
+    }
+}
+
 @Suite("App theme")
 struct AppThemeTests {
 
