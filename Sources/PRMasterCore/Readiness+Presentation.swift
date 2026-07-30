@@ -1,7 +1,9 @@
 /// Semantic colour for a readiness state. Named rather than concrete so the
 /// mapping stays in the testable core and only the SwiftUI layer knows about
 /// actual `Color` values.
-public enum ReadinessTint: Sendable, Equatable {
+/// `CaseIterable` so `PaletteTests` can assert the contrast floor across every
+/// tint rather than across the ones somebody remembered to list.
+public enum ReadinessTint: Sendable, Equatable, CaseIterable {
     case green, yellow, blue, red, orange, gray
 }
 
