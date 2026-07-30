@@ -12,10 +12,20 @@ permissions:
 
 jobs:
   release:
-    # Pinned rather than macos-latest: the runner's architecture is the
-    # architecture that ships, so it should not change under us silently.
-    # Apple Silicon, so the release is arm64-only.
-    runs-on: macos-15
+    # Pinned rather than macos-latest, for two reasons now.
+    #
+    # The runner's architecture is the architecture that ships, so it should not
+    # change under us silently. Apple Silicon, so the release is arm64-only.
+    #
+    # And the runner's SDK is what the release is *linked against*, which is what
+    # decides SwiftUI's layout defaults. macos-15 links 15.5 while development
+    # here uses 26.x, and v0.4.1 shipped with its settings footers ranged right
+    # for exactly that reason, while every local build of the same commit ranged
+    # them left — a whole class of bug that cannot be seen before release.
+    # macos-26 gives Xcode 26.5 and Swift 6.3.2, matching development, and still
+    # links minos 14.0 so macOS 14 stays supported. Both were verified on the
+    # runner before this line was changed.
+    runs-on: macos-26
 
     steps:
       - uses: actions/checkout@v5
@@ -49,6 +59,16 @@ jobs:
 
       - name: Build and package
         run: make dist
+
+      # The toolchain step above says what compiled it. This says what it was
+      # linked against, which is the number that actually decides layout
+      # defaults, and the one whose absence made v0.4.1's footers a mystery.
+      # Printed rather than asserted, like the toolchain: an image bump should be
+      # visible in the log, not a release that refuses to happen.
+      - name: Show the linked SDK
+        run: |
+          otool -l .build/PRMaster.app/Contents/MacOS/PRMaster \
+            | grep -A4 LC_BUILD_VERSION | grep -E 'minos|sdk'
 
       - name: Publish
         env:
