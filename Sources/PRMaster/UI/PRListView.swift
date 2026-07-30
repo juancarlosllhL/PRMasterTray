@@ -82,22 +82,30 @@ struct PRListView: View {
             }
         }
         .frame(width: 380)
-        // Mostly the window background, with a quarter of the popover's material
-        // left showing so it still reads like a macOS popover rather than a
-        // panel.
-        //
-        // Not fully transparent, because the material alone is not a background
-        // a colour can be guaranteed against: measured over a dark window it
-        // rendered the light case at #B9BDC1 rather than the ~#ECECEC a popover
-        // shows over the desktop, which put every tint between 3.6:1 and 4.0:1.
-        // This layer compresses that range instead of removing it. At 0.75 the
-        // worst measured material composites to #EEEEF0, where the weakest tint
-        // is 5.87:1 — so the translucency costs about 0.9:1 against the opaque
-        // version and still clears AA with room. Below roughly 0.5 it stops
-        // clearing it at all.
-        .background(.thickMaterial)
+        .background(backgroundMaterial)
         // Hands the resolved palette to every row and banner below.
         .environment(\.palette, palette)
+    }
+
+    /// A real system material, so the popover stays translucent, but which one
+    /// depends on how much contrast has been asked for.
+    ///
+    /// The popover's own material is not something a colour can be guaranteed
+    /// against: measured against deliberately hostile backdrops, light over a
+    /// black window rendered #B9BDC1 and dark over a white one #5D5D5D, putting
+    /// the tints at 3.6:1 and 3.0:1. Both directions fail — light ink loses when
+    /// the background darkens, dark ink when it lightens — so both get a material
+    /// laid over it to narrow the range.
+    ///
+    /// Dark standard gets the thinner of the two, because that is where the
+    /// translucency is most missed, and its palette is pale enough to afford it.
+    /// Anyone who has asked for increased contrast or monochrome has said which
+    /// side of that trade they want, so those get the thicker material regardless
+    /// of appearance.
+    private var backgroundMaterial: Material {
+        palette.contrast == .standard && palette.appearance == .dark
+            ? .regularMaterial
+            : .thickMaterial
     }
 
     // MARK: - Header

@@ -7,23 +7,28 @@ struct PaletteTests {
 
     /// What the palette is actually drawn on.
     ///
-    /// `PRListView` backs the popover with `.thickMaterial`, so the background is
-    /// a real translucent system material and does move with whatever is behind
-    /// the window — but far less than the popover's own material did. That matters
-    /// because the bare popover material rendered the light case at #B9BDC1 over a
-    /// dark window, which put every tint between 3.6:1 and 4.0:1. `.thickMaterial`
-    /// narrows the range enough for a floor to mean something.
+    /// The popover stays translucent, so the background moves with whatever is
+    /// behind the window and there is no single value to test against. These are
+    /// the extremes, measured off screenshots of the running app against
+    /// deliberately hostile backdrops rather than hopeful ones.
     ///
-    /// The last entry of each is the extreme, measured off screenshots of the
-    /// running app against a deliberately hostile backdrop: a pure black window
-    /// behind the light theme rendered #DBDEE2, and a pure white one behind the
-    /// dark theme rendered #3A3C3F. The values here are a little past both, so the
-    /// suite is stricter than anything that can actually appear on screen. Every
-    /// tint has to clear its floor against all three, not the friendliest.
-    static func backgrounds(_ appearance: AppearanceMode) -> [RGB] {
-        switch appearance {
-        case .light: return [.hex(0xFFFFFF), .hex(0xECECEC), .hex(0xD8DBDF)]
-        case .dark:  return [.hex(0x1E1E1E), .hex(0x2B2B2B), .hex(0x3E4043)]
+    /// The material `PRListView` lays over the popover depends on the contrast
+    /// mode, so the extreme does too. Dark standard uses the thinner
+    /// `.regularMaterial` and lifted to #45494D behind a pure white window;
+    /// everything else uses `.thickMaterial`, where light behind a pure black
+    /// window fell to #DBDEE2 and dark behind a white one lifted to #3A3C3F.
+    ///
+    /// The last entry of each is a little past the measured extreme, so the suite
+    /// is stricter than anything that can appear on screen. Every tint has to
+    /// clear its floor against all three, not against the friendliest.
+    static func backgrounds(_ appearance: AppearanceMode, _ contrast: ContrastMode) -> [RGB] {
+        switch (appearance, contrast) {
+        case (.light, _):
+            return [.hex(0xFFFFFF), .hex(0xECECEC), .hex(0xD8DBDF)]
+        case (.dark, .standard):
+            return [.hex(0x1E1E1E), .hex(0x2B2B2B), .hex(0x494D51)]
+        case (.dark, .increased), (.dark, .monochrome):
+            return [.hex(0x1E1E1E), .hex(0x2B2B2B), .hex(0x3E4043)]
         }
     }
 
@@ -51,7 +56,7 @@ struct PaletteTests {
             let foreground = Palette.foreground(tint, appearance: appearance, contrast: contrast)
             let floor = Self.minimumRatio(contrast)
 
-            for background in Self.backgrounds(appearance) {
+            for background in Self.backgrounds(appearance, contrast) {
                 let ratio = Self.contrastRatio(foreground, background)
                 #expect(
                     ratio >= floor,
@@ -89,22 +94,33 @@ struct PaletteTests {
 
     // MARK: - Regression guards
 
+    /// The dark palette is paler than anyone would pick by eye, for two reasons
+    /// that compound, and both are easy to "tidy" away.
+    ///
     /// Apple's own dark `systemBlue`, `systemRed` and `systemGray` measure
-    /// 3.12:1, 3.34:1 and 3.96:1 against the darkest background above — all
-    /// below AA. These are deliberately lighter, and "restoring" Apple's
-    /// values would undo the fix while looking like a tidy-up.
-    @Test("dark blue, red and grey stay lightened rather than Apple's values")
-    func darkOverridesStayLightened() {
-        #expect(Palette.foreground(.blue, appearance: .dark, contrast: .standard) == .hex(0x64B5FF))
-        #expect(Palette.foreground(.red, appearance: .dark, contrast: .standard) == .hex(0xFF9188))
-        #expect(Palette.foreground(.gray, appearance: .dark, contrast: .standard) == .hex(0xAEAEB2))
+    /// 3.12:1, 3.34:1 and 3.96:1 on a dark background — under AA before anything
+    /// else happens. And dark keeps a genuinely translucent material, so behind a
+    /// light window the background lifts to #45494D rather than resting near
+    /// #1E1E1E, which costs bright ink more contrast still.
+    ///
+    /// So this pins the values. Anything more saturated looks better in isolation
+    /// and drops the row below AA in use.
+    @Test("the dark palette stays pale rather than reverting to Apple's values")
+    func darkStaysPale() {
+        #expect(Palette.foreground(.blue, appearance: .dark, contrast: .standard) == .hex(0x8FC8FF))
+        #expect(Palette.foreground(.red, appearance: .dark, contrast: .standard) == .hex(0xFFAFA8))
+        #expect(Palette.foreground(.gray, appearance: .dark, contrast: .standard) == .hex(0xC7C7CC))
+        #expect(Palette.foreground(.green, appearance: .dark, contrast: .standard) == .hex(0x5FE07F))
+        #expect(Palette.foreground(.orange, appearance: .dark, contrast: .standard) == .hex(0xFFB84D))
 
-        for tint in [ReadinessTint.blue, .red, .gray] {
-            let apple: RGB = switch tint {
-            case .blue: .hex(0x0A84FF)
-            case .red:  .hex(0xFF453A)
-            default:    .hex(0x98989D)
-            }
+        // Apple's dark system colours, none of which may come back.
+        for (tint, apple) in [
+            (ReadinessTint.blue, RGB.hex(0x0A84FF)),
+            (.red, .hex(0xFF453A)),
+            (.gray, .hex(0x98989D)),
+            (.green, .hex(0x30D158)),
+            (.orange, .hex(0xFF9F0A)),
+        ] {
             #expect(Palette.foreground(tint, appearance: .dark, contrast: .standard) != apple)
         }
     }
@@ -114,7 +130,7 @@ struct PaletteTests {
     @Test("increased contrast beats standard on every tint", arguments: ReadinessTint.allCases)
     func increasedBeatsStandard(tint: ReadinessTint) {
         for appearance in AppearanceMode.allCases {
-            let background = Self.backgrounds(appearance)[0]
+            let background = Self.backgrounds(appearance, .standard)[0]
             let standard = Self.contrastRatio(
                 Palette.foreground(tint, appearance: appearance, contrast: .standard), background
             )

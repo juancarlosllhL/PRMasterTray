@@ -107,20 +107,28 @@ public enum Palette {
 
     // MARK: - Dark
 
+    /// Paler than Apple's dark system colours, and paler than you would pick by
+    /// eye. Two reasons compound here.
+    ///
+    /// Apple's own dark `systemBlue` (#0A84FF), `systemRed` (#FF453A) and
+    /// `systemGray` (#98989D) measure 3.12:1, 3.34:1 and 3.96:1 against a dark
+    /// background — under AA before anything else happens.
+    ///
+    /// Then the background itself moves. Dark keeps a genuinely translucent
+    /// material, so over a light window behind the popover it lifts to #45494D
+    /// rather than staying near #1E1E1E. Bright ink loses contrast as the
+    /// background lightens, which is the mirror image of light mode's problem, so
+    /// every one of these has to clear AA against the lifted value and not the
+    /// resting one. Restoring anything more saturated would look like tidying and
+    /// would quietly drop the row below AA; `PaletteTests` fails if anyone tries.
     private static func darkStandard(_ tint: ReadinessTint) -> RGB {
         switch tint {
-        // Green, yellow and orange are Apple's own dark values, which pass.
-        case .green:  return .hex(0x30D158)  // 5.63:1
-        case .yellow: return .hex(0xFFD60A)  // 8.06:1
-        case .orange: return .hex(0xFF9F0A)  // 5.53:1
-        // These three are not. Apple's dark systemBlue (#0A84FF), systemRed
-        // (#FF453A) and systemGray (#98989D) measure 3.12:1, 3.34:1 and 3.96:1
-        // against the darkest background — under AA — so they are lightened.
-        // Putting Apple's values back would look like tidying and would undo
-        // half the fix; `PaletteTests` fails if anyone tries.
-        case .blue:   return .hex(0x64B5FF)  // 5.20:1
-        case .red:    return .hex(0xFF9188)  // 5.23:1
-        case .gray:   return .hex(0xAEAEB2)  // 5.14:1
+        case .green:  return .hex(0x5FE07F)  // 5.38:1
+        case .yellow: return .hex(0xFFD60A)  // 6.43:1 — Apple's, light enough already
+        case .blue:   return .hex(0x8FC8FF)  // 5.13:1
+        case .red:    return .hex(0xFFAFA8)  // 5.17:1
+        case .orange: return .hex(0xFFB84D)  // 5.28:1
+        case .gray:   return .hex(0xC7C7CC)  // 5.39:1
         }
     }
 
