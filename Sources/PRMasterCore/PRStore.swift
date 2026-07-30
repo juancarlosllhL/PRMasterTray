@@ -42,6 +42,8 @@ public protocol PreferenceStoring: Sendable {
     func setTheme(_ value: AppTheme)
     func monochromeEnabled() -> Bool
     func setMonochromeEnabled(_ value: Bool)
+    func popoverBackground() -> PopoverBackground
+    func setPopoverBackground(_ value: PopoverBackground)
 }
 
 /// Observable state behind the menu bar UI.
@@ -308,6 +310,7 @@ public struct UserDefaultsPreferences: PreferenceStoring {
     private let showPrivateKey = "showPrivateRepositories"
     private let themeKey = "appearanceTheme"
     private let monochromeKey = "highContrastMonochrome"
+    private let popoverBackgroundKey = "popoverBackground"
     // UserDefaults is documented as thread-safe but predates Sendable.
     nonisolated(unsafe) private let defaults: UserDefaults
 
@@ -364,5 +367,16 @@ public struct UserDefaultsPreferences: PreferenceStoring {
 
     public func setMonochromeEnabled(_ value: Bool) {
         defaults.set(value, forKey: monochromeKey)
+    }
+
+    public func popoverBackground() -> PopoverBackground {
+        // Absent and unrecognised both mean liquid glass, which is what the
+        // popover did before this setting existed.
+        defaults.string(forKey: popoverBackgroundKey)
+            .flatMap(PopoverBackground.init(rawValue:)) ?? .liquidGlass
+    }
+
+    public func setPopoverBackground(_ value: PopoverBackground) {
+        defaults.set(value.rawValue, forKey: popoverBackgroundKey)
     }
 }

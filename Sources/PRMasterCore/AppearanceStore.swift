@@ -11,6 +11,30 @@ public enum AppTheme: String, Sendable, Equatable, CaseIterable {
     case system, light, dark
 }
 
+/// What the popover is drawn on.
+///
+/// This is a genuine preference rather than a thing with a right answer, which is
+/// why it is a setting and not a decision made here.
+///
+/// `liquidGlass` leaves the popover's own material alone, so it looks like every
+/// other macOS popover and blurs whatever is behind it. The cost is that the
+/// background then follows whatever that is: measured against hostile backdrops it
+/// ranges from #1E1E1E to #5D5D5D in dark and down to #B9BDC1 in light, and no
+/// coloured tint holds 4.5:1 across a range that wide while still reading as a
+/// colour. Anything laid over the material to narrow the range also flattens the
+/// vibrancy that made it look native — there is no material that does both.
+///
+/// `opaque` fixes the background at `windowBackgroundColor`, measured #FFFFFF and
+/// #1E1E1E, which is what lets the palette's floor be a guarantee instead of a
+/// hope. It does not look like a popover any more; it looks like a small panel.
+///
+/// Default is `liquidGlass`, because it is what the popover did before any of this
+/// and because a setting whose default changes everybody's appearance on update is
+/// the thing this codebase avoids everywhere else.
+public enum PopoverBackground: String, Sendable, Equatable, CaseIterable {
+    case liquidGlass, opaque
+}
+
 /// Observable state behind the appearance settings.
 ///
 /// Beside `PRStore` rather than inside it: that one is pull-request state, it
@@ -34,6 +58,12 @@ public final class AppearanceStore {
         didSet { preferences.setMonochromeEnabled(monochromeEnabled) }
     }
 
+    /// Native translucency, or a background the palette can be guaranteed
+    /// against. See `PopoverBackground` for why this is a preference.
+    public var popoverBackground: PopoverBackground {
+        didSet { preferences.setPopoverBackground(popoverBackground) }
+    }
+
     private let preferences: PreferenceStoring
 
     public init(preferences: PreferenceStoring = UserDefaultsPreferences()) {
@@ -42,6 +72,7 @@ public final class AppearanceStore {
         // keys absent so the fallbacks keep applying.
         self.theme = preferences.theme()
         self.monochromeEnabled = preferences.monochromeEnabled()
+        self.popoverBackground = preferences.popoverBackground()
     }
 
     /// What the palette should actually use, given this switch and what macOS

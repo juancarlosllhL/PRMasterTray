@@ -88,17 +88,20 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
     private var stored: PRFilter
     private var storedTheme: AppTheme
     private var storedMonochrome: Bool
+    private var storedBackground: PopoverBackground
 
     init(
         autoUpdate: Bool = true,
         filter: PRFilter = PRFilter(),
         theme: AppTheme = .system,
-        monochrome: Bool = false
+        monochrome: Bool = false,
+        background: PopoverBackground = .liquidGlass
     ) {
         enabled = autoUpdate
         stored = filter
         storedTheme = theme
         storedMonochrome = monochrome
+        storedBackground = background
     }
 
     func autoUpdateEnabled() -> Bool { lock.withLock { enabled } }
@@ -109,6 +112,10 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
     func setTheme(_ value: AppTheme) { lock.withLock { storedTheme = value } }
     func monochromeEnabled() -> Bool { lock.withLock { storedMonochrome } }
     func setMonochromeEnabled(_ value: Bool) { lock.withLock { storedMonochrome = value } }
+    func popoverBackground() -> PopoverBackground { lock.withLock { storedBackground } }
+    func setPopoverBackground(_ value: PopoverBackground) {
+        lock.withLock { storedBackground = value }
+    }
 }
 
 @MainActor
@@ -753,6 +760,39 @@ struct PreferenceStoreTests {
 
         UserDefaultsPreferences(defaults: defaults).setTheme(.dark)
         #expect(defaults.string(forKey: "appearanceTheme") == "dark")
+    }
+
+    /// Liquid glass is what the popover did before any of this work, so an absent
+    /// key has to mean that. Opaque is the option somebody opts into, knowing it
+    /// trades the native look for a contrast guarantee.
+    @Test("an absent popover background reads as liquid glass")
+    func backgroundDefaultsToLiquidGlass() throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        #expect(UserDefaultsPreferences(defaults: defaults).popoverBackground() == .liquidGlass)
+    }
+
+    @Test("a stored popover background round-trips", arguments: PopoverBackground.allCases)
+    func backgroundRoundTrips(style: PopoverBackground) throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let preferences = UserDefaultsPreferences(defaults: defaults)
+        preferences.setPopoverBackground(style)
+        #expect(preferences.popoverBackground() == style)
+    }
+
+    @Test("an unrecognised stored background falls back to liquid glass")
+    func unknownBackgroundFallsBack() throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        defaults.set("frosted", forKey: "popoverBackground")
+        #expect(UserDefaultsPreferences(defaults: defaults).popoverBackground() == .liquidGlass)
     }
 
     /// Off unless asked for: monochrome is a deliberate choice, and the app has

@@ -58,19 +58,29 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.segmented)
 
+                Picker("Background", selection: $appearance.popoverBackground) {
+                    Text("Liquid glass").tag(PopoverBackground.liquidGlass)
+                    Text("Opaque").tag(PopoverBackground.opaque)
+                }
+                .pickerStyle(.segmented)
+
                 Toggle("High-contrast monochrome", isOn: $appearance.monochromeEnabled)
             } header: {
                 Text("Appearance")
             } footer: {
-                // Both halves earn their place. The first says what monochrome
-                // costs and what replaces it, so it does not read as "make the
-                // app worse". The second explains the one confusing state this
-                // design allows: the switch off while the app draws monochrome,
-                // because macOS asked and a local preference does not get to
-                // override an accessibility setting.
-                Text("Monochrome drops the status colours and leans on each row's icon and label instead. It also turns on by itself when macOS is set to differentiate without colour.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    // The one thing a user cannot discover by looking: liquid
+                    // glass is prettier and measurably less legible, and which
+                    // matters more is theirs to decide, not ours. Said in terms
+                    // of what they will see rather than in contrast ratios.
+                    Text("Liquid glass lets the desktop through, the way a macOS popover normally does. Over a window that strongly contrasts with it, the status colours get harder to read — Opaque fixes the background so they stay legible whatever is behind.")
+                    // The one confusing state this design allows: the switch off
+                    // while the app draws monochrome, because macOS asked and a
+                    // local preference does not override an accessibility setting.
+                    Text("Monochrome drops the status colours and leans on each row's icon and label instead. It also turns on by itself when macOS is set to differentiate without colour.")
+                }
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

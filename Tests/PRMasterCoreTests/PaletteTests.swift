@@ -21,24 +21,42 @@ struct PaletteTests {
     /// The last entry of each is a little past the measured extreme, so the suite
     /// is stricter than anything that can appear on screen. Every tint has to
     /// clear its floor against all three, not against the friendliest.
-    static func backgrounds(_ appearance: AppearanceMode, _ contrast: ContrastMode) -> [RGB] {
-        switch (appearance, contrast) {
-        case (.light, _):
-            return [.hex(0xFFFFFF), .hex(0xECECEC), .hex(0xD8DBDF)]
-        case (.dark, .standard):
-            return [.hex(0x1E1E1E), .hex(0x2B2B2B), .hex(0x494D51)]
-        case (.dark, .increased), (.dark, .monochrome):
-            return [.hex(0x1E1E1E), .hex(0x2B2B2B), .hex(0x3E4043)]
+    static func backgrounds(
+        _ appearance: AppearanceMode, _ background: PopoverBackground
+    ) -> [RGB] {
+        switch (background, appearance) {
+        // Opaque: `windowBackgroundColor`, measured off the running app. The
+        // extra entries are headroom in case it resolves differently on another
+        // macOS version or display profile.
+        case (.opaque, .light): return [.hex(0xFFFFFF), .hex(0xECECEC), .hex(0xE0E0E0)]
+        case (.opaque, .dark):  return [.hex(0x1E1E1E), .hex(0x2B2B2B), .hex(0x3A3A3A)]
+        // Liquid glass: the popover's own material, so the background follows
+        // whatever is behind the window. The last entry of each is the measured
+        // extreme against a deliberately hostile backdrop — a pure black window
+        // behind the light theme, a pure white one behind the dark theme.
+        case (.liquidGlass, .light): return [.hex(0xFFFFFF), .hex(0xECECEC), .hex(0xB9BDC1)]
+        case (.liquidGlass, .dark):  return [.hex(0x1E1E1E), .hex(0x2B2B2B), .hex(0x5D5D5D)]
         }
     }
 
-    /// AA for normal text. `.increased` and `.monochrome` exist precisely
-    /// because somebody asked for more than that, so they owe AAA.
-    static func minimumRatio(_ contrast: ContrastMode) -> Double {
-        switch contrast {
-        case .standard:   return 4.5
-        case .increased:  return 7
-        case .monochrome: return 7
+    /// What each configuration actually owes.
+    ///
+    /// Opaque owes the real thing: AA for standard, AAA for the two modes that
+    /// exist because somebody asked for more than AA.
+    ///
+    /// Liquid glass cannot owe that and does not pretend to. On a background that
+    /// ranges from #1E1E1E to #5D5D5D there is no coloured tint that holds 4.5:1
+    /// and still reads as a colour — that is the trade the setting exists to let
+    /// the user make. These are the ratios it does reach, pinned just under the
+    /// measured values so the weaker configuration cannot quietly get weaker.
+    static func minimumRatio(_ contrast: ContrastMode, _ background: PopoverBackground) -> Double {
+        switch (background, contrast) {
+        case (.opaque, .standard):        return 4.5
+        case (.opaque, .increased):       return 7
+        case (.opaque, .monochrome):      return 7
+        case (.liquidGlass, .standard):   return 3.5
+        case (.liquidGlass, .increased):  return 4.4
+        case (.liquidGlass, .monochrome): return 6.5
         }
     }
 
@@ -54,18 +72,33 @@ struct PaletteTests {
     func clearsThreshold(tint: ReadinessTint, contrast: ContrastMode) {
         for appearance in AppearanceMode.allCases {
             let foreground = Palette.foreground(tint, appearance: appearance, contrast: contrast)
-            let floor = Self.minimumRatio(contrast)
 
-            for background in Self.backgrounds(appearance, contrast) {
-                let ratio = Self.contrastRatio(foreground, background)
-                #expect(
-                    ratio >= floor,
-                    """
-                    \(tint) in \(appearance)/\(contrast) is \(ratio) against \
-                    \(background), below the \(floor) floor
-                    """
-                )
+            for style in PopoverBackground.allCases {
+                let floor = Self.minimumRatio(contrast, style)
+
+                for background in Self.backgrounds(appearance, style) {
+                    let ratio = Self.contrastRatio(foreground, background)
+                    #expect(
+                        ratio >= floor,
+                        """
+                        \(tint) in \(appearance)/\(contrast)/\(style) is \(ratio) \
+                        against \(background), below the \(floor) floor
+                        """
+                    )
+                }
             }
+        }
+    }
+
+    /// The setting is only worth having if the two options actually differ, and
+    /// the difference is the whole reason the footer warns about one of them.
+    @Test("opaque is a stronger guarantee than liquid glass")
+    func opaqueBeatsLiquidGlass() {
+        for contrast in ContrastMode.allCases {
+            #expect(
+                Self.minimumRatio(contrast, .opaque)
+                    > Self.minimumRatio(contrast, .liquidGlass)
+            )
         }
     }
 
@@ -130,7 +163,7 @@ struct PaletteTests {
     @Test("increased contrast beats standard on every tint", arguments: ReadinessTint.allCases)
     func increasedBeatsStandard(tint: ReadinessTint) {
         for appearance in AppearanceMode.allCases {
-            let background = Self.backgrounds(appearance, .standard)[0]
+            let background = Self.backgrounds(appearance, .opaque)[0]
             let standard = Self.contrastRatio(
                 Palette.foreground(tint, appearance: appearance, contrast: .standard), background
             )

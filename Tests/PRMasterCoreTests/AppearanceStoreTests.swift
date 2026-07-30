@@ -121,6 +121,22 @@ struct AppearanceStoreTests {
         #expect(preferences.monochromeEnabled() == false)
     }
 
+    @Test("setting the popover background persists it")
+    func backgroundPersists() {
+        let preferences = MemoryPreferences()
+        let store = AppearanceStore(preferences: preferences)
+
+        store.popoverBackground = .opaque
+        #expect(preferences.popoverBackground() == .opaque)
+    }
+
+    @Test("a stored popover background is restored on launch",
+          arguments: PopoverBackground.allCases)
+    func backgroundRestores(style: PopoverBackground) {
+        let store = AppearanceStore(preferences: MemoryPreferences(background: style))
+        #expect(store.popoverBackground == style)
+    }
+
     // MARK: - Contrast
 
     /// The convenience the view actually calls: the store supplies its own

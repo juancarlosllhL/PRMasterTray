@@ -82,30 +82,24 @@ struct PRListView: View {
             }
         }
         .frame(width: 380)
-        .background(backgroundMaterial)
+        .background { popoverBackground }
         // Hands the resolved palette to every row and banner below.
         .environment(\.palette, palette)
     }
 
-    /// A real system material, so the popover stays translucent, but which one
-    /// depends on how much contrast has been asked for.
+    /// Nothing at all for liquid glass.
     ///
-    /// The popover's own material is not something a colour can be guaranteed
-    /// against: measured against deliberately hostile backdrops, light over a
-    /// black window rendered #B9BDC1 and dark over a white one #5D5D5D, putting
-    /// the tints at 3.6:1 and 3.0:1. Both directions fail — light ink loses when
-    /// the background darkens, dark ink when it lightens — so both get a material
-    /// laid over it to narrow the range.
-    ///
-    /// Dark standard gets the thinner of the two, because that is where the
-    /// translucency is most missed, and its palette is pale enough to afford it.
-    /// Anyone who has asked for increased contrast or monochrome has said which
-    /// side of that trade they want, so those get the thicker material regardless
-    /// of appearance.
-    private var backgroundMaterial: Material {
-        palette.contrast == .standard && palette.appearance == .dark
-            ? .regularMaterial
-            : .thickMaterial
+    /// That is the point rather than an oversight: the popover already has one
+    /// material of its own, and laying a second over it is what flattened the
+    /// vibrancy in three earlier attempts at this. Opaque instead replaces it
+    /// outright, which is the only way the palette floor becomes a guarantee —
+    /// see `PopoverBackground` for the measurements behind that trade.
+    @ViewBuilder
+    private var popoverBackground: some View {
+        switch appearance.popoverBackground {
+        case .liquidGlass: Color.clear
+        case .opaque:      Color(nsColor: .windowBackgroundColor)
+        }
     }
 
     // MARK: - Header
