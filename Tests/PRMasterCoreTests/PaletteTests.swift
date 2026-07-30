@@ -5,14 +5,24 @@ import Testing
 @Suite("Palette")
 struct PaletteTests {
 
-    /// The popover is an `NSVisualEffectView`, so there is no single background
-    /// to measure against — vibrancy pulls it around with the wallpaper. These
-    /// are the extremes it lands between, and a tint has to clear its threshold
-    /// against all of them rather than against a convenient average.
+    /// What the palette is actually drawn on.
+    ///
+    /// The first entry of each is measured from a screenshot of the running app:
+    /// `PRListView` fills an opaque `windowBackgroundColor`, which rendered
+    /// #FFFFFF light and #1E1E1E dark. That opacity is load-bearing and not
+    /// decoration — the popover's own vibrant material rendered the light
+    /// background at #B9BDC1 over a dark window, which put every tint between
+    /// 3.6:1 and 4.0:1. A hue cannot be guaranteed against a background that
+    /// depends on what is behind the window, so the background stopped depending
+    /// on it.
+    ///
+    /// The remaining entries are headroom, in case `windowBackgroundColor`
+    /// resolves darker on another macOS version or display profile. Every tint
+    /// has to clear its floor against all of them, not against the friendliest.
     static func backgrounds(_ appearance: AppearanceMode) -> [RGB] {
         switch appearance {
-        case .light: return [.hex(0xECECEC), .hex(0xF6F6F6), .hex(0xE0E0E0)]
-        case .dark:  return [.hex(0x2B2B2B), .hex(0x1E1E1E), .hex(0x3A3A3A)]
+        case .light: return [.hex(0xFFFFFF), .hex(0xECECEC), .hex(0xE0E0E0)]
+        case .dark:  return [.hex(0x1E1E1E), .hex(0x2B2B2B), .hex(0x3A3A3A)]
         }
     }
 

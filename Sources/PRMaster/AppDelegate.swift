@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var client: GitHubClient!
     private var merger: MergeCoordinator!
     private var updates: AppUpdateStore!
+    private var appearanceStore: AppearanceStore!
     private let settingsWindow = SettingsWindowController()
     private var observers: [NSObjectProtocol] = []
     private var dismissMonitors: [Any] = []
@@ -70,6 +71,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         )
 
+        appearanceStore = AppearanceStore()
+        applyAppearance()
+        observeAppearance()
+
         installStatusItem()
         installPopover()
         observeWake()
@@ -81,7 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updates.start()
 
         if Debug.openSettings {
-            settingsWindow.show(store: store)
+            settingsWindow.show(store: store, appearance: appearanceStore)
         }
 
         // Under a fixture, open straight away so the UI can be inspected and
@@ -193,11 +198,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openSettingsFromMenu() {
-        settingsWindow.show(store: store)
+        settingsWindow.show(store: store, appearance: appearanceStore)
     }
 
     @objc private func quitFromMenu() {
         NSApp.terminate(nil)
+    }
+
+    // MARK: - Appearance
+
+    /// Applies the chosen theme to the whole app.
+    ///
+    /// `NSApp.appearance` rather than SwiftUI's `.preferredColorScheme`, because
+    /// this app has three separate window hierarchies — the popover, the settings
+    /// panel, and the merge alerts — and only the AppKit-level override reaches
+    /// all three. Windows inherit from the application unless they set an
+    /// appearance of their own, and none of ours does.
+    ///
+    /// `nil` restores following the system. `.preferredColorScheme(nil)` is
+    /// reported not to repaint in an LSUIElement app, whose panels and popovers
+    /// do not reliably see the activation that would otherwise trigger the
+    /// redraw — which would strand anybody switching back to System.
+    ///
+    /// Not covered, and not a bug to chase: the status item glyph is a template
+    /// image drawn by the system menu bar, which follows the system appearance
+    /// regardless of what this app overrides.
+    private func applyAppearance() {
+        switch appearanceStore.theme {
+        case .system: NSApp.appearance = nil
+        case .light:  NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark:   NSApp.appearance = NSAppearance(named: .darkAqua)
+        }
+        // The popover does not inherit it. Verified by eye: with the app set to
+        // Light, the settings panel turned light and the popover stayed dark —
+        // its backing window is created and styled by AppKit rather than being an
+        // NSWindow of ours in the inheritance chain. Assigning it directly is
+        // what makes the two agree, and nil still means "follow the system".
+        popover.appearance = NSApp.appearance
+    }
+
+    /// Same one-shot `withObservationTracking` shape as the badge below, and it
+    /// re-arms for the same reason: the tracking fires once per change.
+    private func observeAppearance() {
+        withObservationTracking {
+            _ = appearanceStore.theme
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                self?.applyAppearance()
+                self?.observeAppearance()
+            }
+        }
     }
 
     /// NSStatusItem has no badge API, so the ready count rides on the button
@@ -246,13 +296,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     // panel activates the app, and two things fighting over who
                     // is key is how the popover ends up half-dismissed.
                     popover.performClose(nil)
-                    settingsWindow.show(store: store)
+                    settingsWindow.show(store: store, appearance: appearanceStore)
                 },
                 onQuit: { NSApp.terminate(nil) },
                 canMerge: Debug.mergingOffered,
                 canAutoUpdate: !Debug.overridesActive,
                 notifications: NotificationStatus.shared,
-                updates: updates
+                updates: updates,
+                appearance: appearanceStore
             )
         )
         // Without this the popover sizes itself once from a stale measurement

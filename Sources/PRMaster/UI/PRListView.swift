@@ -17,10 +17,11 @@ struct PRListView: View {
     /// App-update state. Nothing to bind to — every property is read-only — so a
     /// plain `let` is enough; `@Observable` tracks the reads either way.
     let updates: AppUpdateStore
-    /// False until the appearance store reaches here in a later step; light and
-    /// dark resolve from the environment regardless, which is the half that
-    /// decides legibility.
-    var monochromeEnabled: Bool = false
+    /// Read live rather than snapshotted. The popover's rootView is built once,
+    /// so a plain `Bool` would freeze the switch at whatever it was at launch;
+    /// reading the property inside `palette` lets `@Observable` track it and
+    /// re-render when it flips. Same reason `updates` is a plain `let`.
+    let appearance: AppearanceStore
 
     /// Not `private`: a private stored property would make the synthesised
     /// memberwise initialiser private too, and `AppDelegate` builds this view.
@@ -30,7 +31,7 @@ struct PRListView: View {
     /// resolves against what its parent handed down, so publishing and drawing
     /// with the same value in one view means computing it here.
     private var palette: ResolvedPalette {
-        paletteInputs.resolved(monochromeEnabled: monochromeEnabled)
+        paletteInputs.resolved(monochromeEnabled: appearance.monochromeEnabled)
     }
 
     var body: some View {
@@ -81,6 +82,15 @@ struct PRListView: View {
             }
         }
         .frame(width: 380)
+        // Opaque, rather than letting the popover's vibrant material show
+        // through. Measured over a dark window, the material rendered the light
+        // background at #B9BDC1 instead of the ~#ECECEC a popover shows over the
+        // desktop, which dropped every tint to between 3.6:1 and 4.0:1. A hue
+        // cannot be guaranteed legible against a background that depends on
+        // whatever window happens to be behind it, so the background stops
+        // depending on it. This is what makes the palette's floor real rather
+        // than nominal.
+        .background(Color(nsColor: .windowBackgroundColor))
         // Hands the resolved palette to every row and banner below.
         .environment(\.palette, palette)
     }

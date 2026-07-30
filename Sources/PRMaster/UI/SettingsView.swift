@@ -1,15 +1,16 @@
 import SwiftUI
 import PRMasterCore
 
-/// Chooses which pull requests the app cares about.
+/// Chooses which pull requests the app cares about, and how it draws them.
 ///
 /// A window rather than more rows in the gear menu: the organization list is as
 /// long as the user's GitHub life is wide, and a menu that scrolls is a menu
-/// nobody reads. Every control here writes straight through to `PRStore.filter`,
-/// which persists and re-filters on the spot — so there is no Save button, and
-/// nothing to undo but the switch itself.
+/// nobody reads. Every control here writes straight through to `PRStore.filter`
+/// or `AppearanceStore`, both of which persist and take effect on the spot — so
+/// there is no Save button, and nothing to undo but the switch itself.
 struct SettingsView: View {
     @Bindable var store: PRStore
+    @Bindable var appearance: AppearanceStore
 
     var body: some View {
         Form {
@@ -43,6 +44,31 @@ struct SettingsView: View {
                 // The one thing about this window that is not self-evident, and
                 // the thing a user would be annoyed to discover by accident.
                 Text("Hidden pull requests are left out of the menu bar count, never notify, and are never brought up to date automatically.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+
+            // Last, because the filters above are what this window is mainly
+            // for — which pull requests exist beats what colour they are.
+            Section {
+                Picker("Appearance", selection: $appearance.theme) {
+                    Text("System").tag(AppTheme.system)
+                    Text("Light").tag(AppTheme.light)
+                    Text("Dark").tag(AppTheme.dark)
+                }
+                .pickerStyle(.segmented)
+
+                Toggle("High-contrast monochrome", isOn: $appearance.monochromeEnabled)
+            } header: {
+                Text("Appearance")
+            } footer: {
+                // Both halves earn their place. The first says what monochrome
+                // costs and what replaces it, so it does not read as "make the
+                // app worse". The second explains the one confusing state this
+                // design allows: the switch off while the app draws monochrome,
+                // because macOS asked and a local preference does not get to
+                // override an accessibility setting.
+                Text("Monochrome drops the status colours and leans on each row's icon and label instead. It also turns on by itself when macOS is set to differentiate without colour.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
