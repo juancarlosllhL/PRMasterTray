@@ -130,7 +130,7 @@ public enum Palette {
         case .yellow: return .hex(0xFFE566)  // 9.02:1
         case .blue:   return .hex(0xB8DBFF)  // 7.92:1
         case .red:    return .hex(0xFFC9C4)  // 7.80:1
-        case .orange: return .hex(0xFFC777)  // 7.41:1
+        case .orange: return .hex(0xFFD394)  // 7.43:1
         case .gray:   return .hex(0xD6D6DB)  // 7.85:1
         }
     }

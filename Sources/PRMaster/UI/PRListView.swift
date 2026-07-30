@@ -95,7 +95,7 @@ struct PRListView: View {
         // is 5.87:1 — so the translucency costs about 0.9:1 against the opaque
         // version and still clears AA with room. Below roughly 0.5 it stops
         // clearing it at all.
-        .background(Color(nsColor: .windowBackgroundColor).opacity(0.75))
+        .background(.thickMaterial)
         // Hands the resolved palette to every row and banner below.
         .environment(\.palette, palette)
     }

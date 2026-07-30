@@ -7,23 +7,23 @@ struct PaletteTests {
 
     /// What the palette is actually drawn on.
     ///
-    /// `PRListView` lays `windowBackgroundColor` over the popover's material at
-    /// 0.75, so the background is mostly known but not entirely: a quarter of the
-    /// material still shows through, which is what keeps it looking like a macOS
-    /// popover. That partial cover is load-bearing rather than decorative. The
-    /// bare material rendered the light case at #B9BDC1 over a dark window,
-    /// putting every tint between 3.6:1 and 4.0:1; covering three quarters of it
-    /// compresses the range the background can occupy.
+    /// `PRListView` backs the popover with `.thickMaterial`, so the background is
+    /// a real translucent system material and does move with whatever is behind
+    /// the window — but far less than the popover's own material did. That matters
+    /// because the bare popover material rendered the light case at #B9BDC1 over a
+    /// dark window, which put every tint between 3.6:1 and 4.0:1. `.thickMaterial`
+    /// narrows the range enough for a floor to mean something.
     ///
-    /// The first entry of each is the measured value with nothing behind to tint
-    /// it. The rest are the compressed worst cases plus headroom — the darkest
-    /// realistic light composite is #EEEEF0 and the lightest dark one #313131, so
-    /// #E0E0E0 and #3A3A3A are stricter than anything that can actually appear.
-    /// Every tint has to clear its floor against all of them, not the friendliest.
+    /// The last entry of each is the extreme, measured off screenshots of the
+    /// running app against a deliberately hostile backdrop: a pure black window
+    /// behind the light theme rendered #DBDEE2, and a pure white one behind the
+    /// dark theme rendered #3A3C3F. The values here are a little past both, so the
+    /// suite is stricter than anything that can actually appear on screen. Every
+    /// tint has to clear its floor against all three, not the friendliest.
     static func backgrounds(_ appearance: AppearanceMode) -> [RGB] {
         switch appearance {
-        case .light: return [.hex(0xFFFFFF), .hex(0xECECEC), .hex(0xE0E0E0)]
-        case .dark:  return [.hex(0x1E1E1E), .hex(0x2B2B2B), .hex(0x3A3A3A)]
+        case .light: return [.hex(0xFFFFFF), .hex(0xECECEC), .hex(0xD8DBDF)]
+        case .dark:  return [.hex(0x1E1E1E), .hex(0x2B2B2B), .hex(0x3E4043)]
         }
     }
 
