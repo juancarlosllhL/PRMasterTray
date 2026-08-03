@@ -16,6 +16,11 @@ GitHub would merge right now.
   and **Merge** actions.
 - Squash and merge straight from the list or the notification, after a
   confirmation.
+- Pull requests you opened a long time ago and forgot are marked with their age,
+  and can be closed from the list after a confirmation. Measured from when the
+  pull request was opened rather than from its last activity, so keeping a branch
+  up to date does not reset it. The threshold is a setting: off, two weeks, one
+  month, three months or six months.
 - Pull requests that fall behind their base branch are brought up to date
   automatically. Can be turned off from the gear menu.
 - **Settings…** in the gear menu chooses what the list is made of: which
