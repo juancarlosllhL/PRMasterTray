@@ -90,19 +90,22 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
     private var storedTheme: AppTheme
     private var storedMonochrome: Bool
     private var storedBackground: PopoverBackground
+    private var storedThreshold: StaleThreshold
 
     init(
         autoUpdate: Bool = true,
         filter: PRFilter = PRFilter(),
         theme: AppTheme = .system,
         monochrome: Bool = false,
-        background: PopoverBackground = .liquidGlass
+        background: PopoverBackground = .liquidGlass,
+        staleThreshold: StaleThreshold = .oneMonth
     ) {
         enabled = autoUpdate
         stored = filter
         storedTheme = theme
         storedMonochrome = monochrome
         storedBackground = background
+        storedThreshold = staleThreshold
     }
 
     func autoUpdateEnabled() -> Bool { lock.withLock { enabled } }
@@ -117,6 +120,10 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
     func setPopoverBackground(_ value: PopoverBackground) {
         lock.withLock { storedBackground = value }
     }
+    func staleThreshold() -> StaleThreshold { lock.withLock { storedThreshold } }
+    func setStaleThreshold(_ value: StaleThreshold) {
+        lock.withLock { storedThreshold = value }
+    }
 }
 
 @MainActor
@@ -127,6 +134,7 @@ struct PRStoreTests {
         _ results: [Result<[PullRequest], PRMasterError>],
         notified: Set<String> = [],
         notifierFails: Bool = false,
+        preferences: MemoryPreferences = MemoryPreferences(),
         sleep: @escaping @Sendable (Duration) async throws -> Void = { _ in }
     ) -> (PRStore, StubClient, SpyNotifier, MemoryIDStore) {
         let client = StubClient(results)
@@ -136,6 +144,7 @@ struct PRStoreTests {
             client: client,
             notifier: notifier,
             idStore: idStore,
+            preferences: preferences,
             now: { Date(timeIntervalSince1970: 1000) },
             sleep: sleep
         )
@@ -496,6 +505,41 @@ struct PRStoreTests {
         #expect(store.lastUpdateFailure == nil)
     }
 
+    // MARK: staleness threshold
+
+    /// The one setting in this app whose default deliberately changes what an
+    /// existing install shows. That is the point of the feature, so the default
+    /// has to be the documented one rather than "whatever the app did before".
+    @Test("an absent threshold adopts one month")
+    func adoptsDefaultThreshold() {
+        let (store, _, _, _) = makeStore([])
+        #expect(store.staleThreshold == .oneMonth)
+    }
+
+    @Test("the stored threshold is adopted at launch", arguments: StaleThreshold.allCases)
+    func adoptsStoredThreshold(threshold: StaleThreshold) {
+        let (store, _, _, _) = makeStore([], preferences: MemoryPreferences(staleThreshold: threshold))
+        #expect(store.staleThreshold == threshold)
+    }
+
+    @Test("moving the threshold writes through so it survives a relaunch")
+    func thresholdPersists() {
+        let preferences = MemoryPreferences()
+        let (store, _, _, _) = makeStore([], preferences: preferences)
+        store.staleThreshold = .sixMonths
+        #expect(preferences.staleThreshold() == .sixMonths)
+    }
+
+    /// Switching the marker off has to persist too. The failure mode this guards
+    /// is the same one `monochromeEnabled` had: a setting that silently reverts.
+    @Test("switching the marker off persists as well")
+    func offPersists() {
+        let preferences = MemoryPreferences(staleThreshold: .oneMonth)
+        let (store, _, _, _) = makeStore([], preferences: preferences)
+        store.staleThreshold = .off
+        #expect(preferences.staleThreshold() == .off)
+    }
+
     // MARK: filtering
 
     private func makeFilteringStore(
@@ -711,6 +755,77 @@ struct PreferenceStoreTests {
         preferences.setFilter(PRFilter(hiddenOrganizations: ["acme"]))
         preferences.setFilter(PRFilter())
         #expect(preferences.filter() == PRFilter())
+    }
+
+    // MARK: - Staleness
+
+    /// The deliberate exception to the rule the rest of this suite enforces. Every
+    /// other absent key means "what the app did before this setting existed";
+    /// here it means one month, because marking forgotten pull requests is the
+    /// whole point and a feature that shipped switched off would be nothing.
+    @Test("an absent threshold reads as one month")
+    func thresholdDefaultsToOneMonth() throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        #expect(UserDefaultsPreferences(defaults: defaults).staleThreshold() == .oneMonth)
+    }
+
+    @Test("a stored threshold round-trips", arguments: StaleThreshold.allCases)
+    func thresholdRoundTrips(threshold: StaleThreshold) throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let preferences = UserDefaultsPreferences(defaults: defaults)
+        preferences.setStaleThreshold(threshold)
+        #expect(preferences.staleThreshold() == threshold)
+    }
+
+    /// A downgrade or a stray `defaults write` must not switch the marker off, so
+    /// an unrecognised value falls back to the default rather than to `off`.
+    @Test("an unrecognised stored threshold falls back to one month")
+    func unknownThresholdFallsBack() throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        defaults.set("fortnight", forKey: "staleThreshold")
+        #expect(UserDefaultsPreferences(defaults: defaults).staleThreshold() == .oneMonth)
+    }
+
+    /// Same reason as the theme: `defaults read com.jcll.PRMaster` is how this
+    /// gets debugged, and an index says nothing.
+    @Test("the threshold is stored as a readable string")
+    func thresholdIsStoredReadably() throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        UserDefaultsPreferences(defaults: defaults).setStaleThreshold(.threeMonths)
+        #expect(defaults.string(forKey: "staleThreshold") == "threeMonths")
+    }
+
+    /// Building a store must not write the default back. If it did, the key would
+    /// be pinned at whatever this version's default happened to be, and a later
+    /// change to that default would never reach anybody who had already launched.
+    @Test("constructing a store does not persist the default threshold")
+    @MainActor
+    func storeInitDoesNotPinTheThreshold() throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = PRStore(
+            client: StubClient([]),
+            notifier: SpyNotifier(),
+            idStore: MemoryIDStore(),
+            preferences: UserDefaultsPreferences(defaults: defaults)
+        )
+
+        #expect(store.staleThreshold == .oneMonth)
+        #expect(defaults.object(forKey: "staleThreshold") == nil, "the key must stay absent")
     }
 
     // MARK: - Appearance

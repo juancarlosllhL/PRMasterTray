@@ -44,6 +44,8 @@ public protocol PreferenceStoring: Sendable {
     func setMonochromeEnabled(_ value: Bool)
     func popoverBackground() -> PopoverBackground
     func setPopoverBackground(_ value: PopoverBackground)
+    func staleThreshold() -> StaleThreshold
+    func setStaleThreshold(_ value: StaleThreshold)
 }
 
 /// Observable state behind the menu bar UI.
@@ -79,6 +81,15 @@ public final class PRStore {
     /// the switch exists because the alternative escape hatch is quitting.
     public var autoUpdateEnabled: Bool {
         didSet { preferences.setAutoUpdateEnabled(autoUpdateEnabled) }
+    }
+
+    /// How long a pull request may stay open before the list marks it.
+    ///
+    /// Read live by the rows rather than snapshotted into the store, which is what
+    /// lets the picker re-mark the visible list on the spot: there is no derived
+    /// state here to recompute, so unlike `filter` this setter only has to persist.
+    public var staleThreshold: StaleThreshold {
+        didSet { preferences.setStaleThreshold(staleThreshold) }
     }
 
     /// Which pull requests the user wants to see. Writing to it re-derives the
@@ -155,6 +166,7 @@ public final class PRStore {
         self.notifiedIDs = idStore.load()
         self.autoUpdateEnabled = preferences.autoUpdateEnabled()
         self.filter = preferences.filter()
+        self.staleThreshold = preferences.staleThreshold()
     }
 
     /// How long the loop will wait before the next refresh.
@@ -311,6 +323,7 @@ public struct UserDefaultsPreferences: PreferenceStoring {
     private let themeKey = "appearanceTheme"
     private let monochromeKey = "highContrastMonochrome"
     private let popoverBackgroundKey = "popoverBackground"
+    private let staleThresholdKey = "staleThreshold"
     // UserDefaults is documented as thread-safe but predates Sendable.
     nonisolated(unsafe) private let defaults: UserDefaults
 
@@ -378,5 +391,20 @@ public struct UserDefaultsPreferences: PreferenceStoring {
 
     public func setPopoverBackground(_ value: PopoverBackground) {
         defaults.set(value.rawValue, forKey: popoverBackgroundKey)
+    }
+
+    public func staleThreshold() -> StaleThreshold {
+        // The one default in here that is not "what the app did before this
+        // setting existed" — before it, nothing was marked at all. Marking
+        // forgotten pull requests is the whole feature, so an absent key means
+        // one month. Unrecognised falls back the same way rather than to `off`:
+        // a downgrade or a stray `defaults write` must not silently switch the
+        // marker off, which is the one failure nobody would notice.
+        defaults.string(forKey: staleThresholdKey)
+            .flatMap(StaleThreshold.init(rawValue:)) ?? .oneMonth
+    }
+
+    public func setStaleThreshold(_ value: StaleThreshold) {
+        defaults.set(value.rawValue, forKey: staleThresholdKey)
     }
 }
