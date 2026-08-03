@@ -56,6 +56,21 @@ struct ReadinessTests {
         #expect(MergeStateStatus.allCases.count == 7)
     }
 
+    /// Readiness is one axis and stays one axis.
+    ///
+    /// Guards the decision behind `StaleThreshold`: staleness is a second,
+    /// orthogonal signal precisely so it cannot land here. An eighth case would
+    /// silently break three exact-match comparisons — `NotificationDecider`,
+    /// `BranchUpdateDecider` and the row's merge button — so a stale-but-ready
+    /// pull request would stop notifying and lose its Merge affordance with
+    /// nobody having decided that. Same for the tint: `PaletteTests` proves a
+    /// contrast floor across every case, and a new one arrives unproven.
+    @Test("readiness stays one axis, so staleness cannot be folded into it")
+    func readinessIsNotAStalenessAxis() {
+        #expect(Readiness.allCases.count == 7)
+        #expect(ReadinessTint.allCases.count == 6)
+    }
+
     // MARK: precedence
 
     @Test("draft beats everything, even a mergeable PR")

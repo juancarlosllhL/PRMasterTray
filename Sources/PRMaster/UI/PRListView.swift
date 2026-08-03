@@ -222,12 +222,23 @@ struct PRListView: View {
     private static let rowsBeforeScrolling = 8
 
     private var rows: some View {
-        LazyVStack(spacing: 2) {
+        // One clock read for the whole list, so every row is measured against the
+        // same instant. Read here rather than held on the store: staleness is a
+        // pure function of the threshold and the time, so there is no derived
+        // state to keep in step — and reading `store.staleThreshold` inside the
+        // body is what lets `@Observable` re-mark the list the moment the
+        // settings picker moves, with no refetch.
+        let now = Date()
+        let threshold = store.staleThreshold
+
+        return LazyVStack(spacing: 2) {
             ForEach(store.prs) { pr in
                 PRRowView(
                     pr: pr,
                     canMerge: canMerge,
                     isUpdating: store.updatingIDs.contains(pr.id),
+                    isStale: threshold.isStale(createdAt: pr.createdAt, now: now),
+                    staleAge: StaleAge.label(createdAt: pr.createdAt, now: now),
                     onOpen: { onOpen(pr) },
                     onMerge: { onMerge(pr) }
                 )

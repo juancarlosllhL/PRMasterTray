@@ -6,6 +6,12 @@ struct PRRowView: View {
     let canMerge: Bool
     /// True while the app is merging the base branch into this PR.
     let isUpdating: Bool
+    /// Whether this pull request has been open longer than the user's threshold.
+    /// Decided by the caller, which is the only place that knows the threshold.
+    let isStale: Bool
+    /// How old, in words. Passed in rather than computed here so the row reads
+    /// one clock per redraw instead of one per row.
+    let staleAge: String
     let onOpen: () -> Void
     let onMerge: () -> Void
 
@@ -47,6 +53,12 @@ struct PRRowView: View {
                     Text(verbatim: "\(pr.repo) #\(pr.number)")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
+                        // Wins the squeeze against the status beside it, which
+                        // only matters once a stale chip shares the line. The
+                        // glyph at the leading edge already states the readiness
+                        // twice over, in shape and in colour; nothing anywhere
+                        // else on the row states which pull request this is.
+                        .layoutPriority(1)
                     if isUpdating {
                         Text("Updating branch…")
                             .font(.system(size: 11))
@@ -60,6 +72,14 @@ struct PRRowView: View {
                                 weight: palette.isMonochrome ? .semibold : .regular
                             ))
                             .foregroundStyle(palette.color(pr.readiness.tint))
+                    }
+                    // Trailing the line behind a Spacer, so the repo name and the
+                    // status truncate before the age does. A row is 380pt wide and
+                    // "acme/widget-service #1204 · Waiting for review" already
+                    // fills most of it.
+                    if isStale {
+                        Spacer(minLength: 6)
+                        staleChip
                     }
                 }
                 .lineLimit(1)
@@ -88,9 +108,35 @@ struct PRRowView: View {
         // Text(verbatim:) for the same reason the row itself uses it: an
         // interpolated string literal is a LocalizedStringKey, which applies
         // locale grouping and had VoiceOver reading #1204 as "1.204".
-        .accessibilityLabel(Text(
-            verbatim: "\(pr.repo) pull request \(pr.number), "
-                + "\(pr.displayTitle), \(pr.readiness.label)"
-        ))
+        .accessibilityLabel(Text(verbatim: accessibilityDescription))
+    }
+
+    /// Orange rather than a new tint: `PaletteTests` proves a contrast floor
+    /// across every `ReadinessTint`, and a seventh case would arrive unproven.
+    /// Orange already means "this wants your attention" everywhere else in the
+    /// popover, and the age sits in a different place from the readiness glyph,
+    /// so sharing the colour with `conflicted` does not confuse the two.
+    private var staleChip: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "clock.badge.exclamationmark")
+            // verbatim, or "31 days old" would be read as a format string.
+            Text(verbatim: staleAge)
+        }
+        // Semibold once colour is gone, the same trick the status label uses:
+        // in monochrome the words are all that is left to carry this.
+        .font(.system(size: 11, weight: palette.isMonochrome ? .semibold : .regular))
+        .foregroundStyle(palette.color(.orange))
+    }
+
+    /// The age has to be in here, or the one thing this feature adds to a row is
+    /// invisible to VoiceOver — which is the only way some people read the list.
+    ///
+    /// Spelled out, unlike the chip: the chip is short because it shares a 380pt
+    /// line with two other things and has a clock glyph to explain it, neither of
+    /// which is true when the row is being read aloud.
+    private var accessibilityDescription: String {
+        let base = "\(pr.repo) pull request \(pr.number), "
+            + "\(pr.displayTitle), \(pr.readiness.label)"
+        return isStale ? base + ", opened \(staleAge) ago" : base
     }
 }

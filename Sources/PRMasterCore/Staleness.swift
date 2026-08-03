@@ -64,10 +64,19 @@ public enum StaleThreshold: String, Sendable, Equatable, CaseIterable {
 /// this runs per visible row.
 public enum StaleAge {
 
-    /// Days, then months, then years, switching only where the smaller unit
-    /// stops being readable. "74 days old" is a number nobody parses; "2 months
-    /// old" is. The switch is deliberately late — just past the threshold a
-    /// precise day count is more useful than a rounded month.
+    /// Just the duration — "5 months", not "5 months old".
+    ///
+    /// The wording is load-bearing rather than terse for its own sake. A row is
+    /// 380pt wide and its second line already carries `owner/repo #1234` and a
+    /// status; measured against the real popover, the trailing " old" was enough
+    /// to push the pull request number off the end of the longest rows. The clock
+    /// glyph beside it already says what the number means, and the accessibility
+    /// label spells it out in full.
+    ///
+    /// Days, then months, then years, switching only where the smaller unit stops
+    /// being readable: "74 days" is a number nobody parses, "2 months" is. The
+    /// switch is deliberately late — just past the threshold a precise day count
+    /// is more useful than a rounded month.
     public static func label(createdAt: Date, now: Date) -> String {
         // Clamped because a machine whose clock is ahead of GitHub's would
         // otherwise put a negative number on the row.
@@ -80,6 +89,6 @@ public enum StaleAge {
     /// Interpolating an `Int` rather than formatting it, so the digits are never
     /// locale-grouped — the trap that had PR #1204 rendering as "1.204".
     private static func unit(_ count: Int, _ noun: String) -> String {
-        count == 1 ? "1 \(noun) old" : "\(count) \(noun)s old"
+        count == 1 ? "1 \(noun)" : "\(count) \(noun)s"
     }
 }

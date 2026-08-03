@@ -125,26 +125,38 @@ struct StaleThresholdTests {
 struct StaleAgeTests {
 
     @Test("the age reads in the largest unit that stays honest", arguments: [
-        (0.0, "0 days old"),
-        (1.0, "1 day old"),
-        (2.0, "2 days old"),
-        (31.0, "31 days old"),
+        (0.0, "0 days"),
+        (1.0, "1 day"),
+        (2.0, "2 days"),
+        (31.0, "31 days"),
         // 60 days is where days stop being readable and months take over.
-        (59.0, "59 days old"),
-        (60.0, "2 months old"),
-        (90.0, "3 months old"),
-        (364.0, "12 months old"),
+        (59.0, "59 days"),
+        (60.0, "2 months"),
+        (90.0, "3 months"),
+        (364.0, "12 months"),
         // A year, likewise, once months stop being readable.
-        (365.0, "1 year old"),
-        (400.0, "1 year old"),
-        (730.0, "2 years old"),
+        (365.0, "1 year"),
+        (400.0, "1 year"),
+        (730.0, "2 years"),
     ])
     func label(days: Double, expected: String) {
         #expect(StaleAge.label(createdAt: opened(daysAgo: days), now: now) == expected)
     }
 
-    /// The row shows this string verbatim, so a stray "1 days old" would be
-    /// visible to every user with a day-old pull request.
+    /// The duration alone, with no trailing "old". Measured against the real
+    /// popover, those four characters were enough to push the pull request number
+    /// off the end of the longest rows — the clock glyph beside it already says
+    /// what the number means.
+    @Test("the label carries no suffix that would widen the row")
+    func noSuffix() {
+        let label = StaleAge.label(createdAt: opened(daysAgo: 150), now: now)
+        #expect(label == "5 months")
+        #expect(label.contains("old") == false)
+        #expect(label.contains("ago") == false)
+    }
+
+    /// The row shows this string verbatim, so a stray "1 days" would be visible to
+    /// every user with a day-old pull request.
     @Test("a count of one is never pluralised", arguments: [1.0, 30.0, 365.0])
     func singular(days: Double) {
         let label = StaleAge.label(createdAt: opened(daysAgo: days), now: now)
@@ -158,7 +170,7 @@ struct StaleAgeTests {
     @Test("a creation date in the future reads as zero, not negative")
     func futureClamps() {
         let label = StaleAge.label(createdAt: now.addingTimeInterval(86_400), now: now)
-        #expect(label == "0 days old")
+        #expect(label == "0 days")
     }
 
     /// Hand-rolled rather than RelativeDateTimeFormatter, so the digits are not
@@ -166,7 +178,7 @@ struct StaleAgeTests {
     /// PR #1204 once rendered as "1.204".
     @Test("a four-digit day count is not grouped")
     func noGrouping() {
-        #expect(StaleAge.label(createdAt: opened(daysAgo: 1200), now: now) == "3 years old")
+        #expect(StaleAge.label(createdAt: opened(daysAgo: 1200), now: now) == "3 years")
         #expect(StaleAge.label(createdAt: opened(daysAgo: 1000), now: now).contains(",") == false)
     }
 }
