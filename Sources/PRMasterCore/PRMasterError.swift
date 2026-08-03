@@ -23,6 +23,10 @@ public enum PRMasterError: Error, LocalizedError {
     case mergeRejected(String)
     /// GitHub refused to bring the branch up to date; its own message, verbatim.
     case updateRejected(String)
+    /// GitHub did not close the pull request. Its own message when it gave one,
+    /// and otherwise a sentence saying it never confirmed — there is no
+    /// documented error text for closing something that cannot be closed.
+    case closeRejected(String)
     /// The body was not JSON at all, so there is nothing to decode. In practice
     /// this is a proxy or a Wi-Fi sign-in page answering in HTML instead of
     /// api.github.com answering in JSON.
@@ -76,7 +80,8 @@ public enum PRMasterError: Error, LocalizedError {
             return "GitHub is having trouble (HTTP \(status)). Try again in a moment."
         case .httpError(let status):
             return "GitHub answered with HTTP \(status)."
-        case .mergeRejected(let message), .updateRejected(let message):
+        case .mergeRejected(let message), .updateRejected(let message),
+             .closeRejected(let message):
             return message
         case .notJSON:
             // The likely culprit rather than a shrug: on a managed network
@@ -125,7 +130,8 @@ extension PRMasterError: Equatable {
         case (.httpError(let l), .httpError(let r)):
             return l == r
         case (.mergeRejected(let l), .mergeRejected(let r)),
-             (.updateRejected(let l), .updateRejected(let r)):
+             (.updateRejected(let l), .updateRejected(let r)),
+             (.closeRejected(let l), .closeRejected(let r)):
             return l == r
         case (.decoding(let l), .decoding(let r)),
              (.releaseCheckFailed(let l), .releaseCheckFailed(let r)),

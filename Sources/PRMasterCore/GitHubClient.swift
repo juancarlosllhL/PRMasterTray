@@ -40,6 +40,20 @@ public actor GitHubClient {
         try PullRequestDecoder.decodeBranchUpdate(data)
     }
 
+    /// Closes a pull request without merging it.
+    ///
+    /// There is no head-oid guard to pass: GitHub does not offer one on this
+    /// mutation. That makes this the one write in the app that cannot be made to
+    /// refuse a stale snapshot, so the decision to call it is guarded entirely on
+    /// the way in — see `CloseCoordinator`.
+    ///
+    /// - Throws: `.closeRejected` carrying GitHub's own message, or the same when
+    ///   GitHub answers without confirming the pull request is closed.
+    public func closePullRequest(id: String) async throws {
+        let data = try await perform(query: Queries.closePullRequest, variables: ["id": id])
+        try PullRequestDecoder.decodeClose(data)
+    }
+
     /// Squash-merges a pull request.
     ///
     /// `expectedHeadOid` is a safety control, not an optimisation: if a commit

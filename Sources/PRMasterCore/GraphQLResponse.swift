@@ -173,6 +173,34 @@ public enum PullRequestDecoder {
         }
     }
 
+    /// Confirms a pull request was actually closed.
+    ///
+    /// Insists on the state rather than trusting the absence of an `errors` array,
+    /// which is the difference between this and the other two mutations. GitHub
+    /// documents no error text for closing a pull request that is already closed,
+    /// already merged, or in an archived repository, so "no errors" is not
+    /// evidence of anything — only `CLOSED` is.
+    ///
+    /// - Throws: `.closeRejected` with GitHub's own wording where there is any.
+    public static func decodeClose(_ data: Data) throws {
+        let response: GraphQLResponse<ClosePayload>
+        do {
+            response = try JSONDecoder().decode(GraphQLResponse<ClosePayload>.self, from: data)
+        } catch {
+            throw PRMasterError.decoding(String(describing: error))
+        }
+
+        if let errors = response.errors, !errors.isEmpty {
+            throw PRMasterError.closeRejected(
+                errors.map(\.message).joined(separator: "\n")
+            )
+        }
+
+        guard response.data?.closePullRequest?.pullRequest?.state == .closed else {
+            throw PRMasterError.closeRejected("GitHub did not confirm the pull request was closed.")
+        }
+    }
+
     /// Confirms a branch update actually happened.
     ///
     /// - Throws: `.updateRejected` with GitHub's own wording. A null payload is
@@ -198,6 +226,31 @@ public enum PullRequestDecoder {
         guard response.data?.updatePullRequestBranch?.pullRequest != nil else {
             throw PRMasterError.updateRejected("GitHub did not confirm the branch update.")
         }
+    }
+}
+
+/// GitHub `PullRequestState`.
+///
+/// Tolerant like the rest, and the fallback is the safe reading here too: an
+/// unfamiliar state is not a confirmed close, so `decodeClose` treats it as a
+/// refusal rather than reporting success for something it does not understand.
+enum PullRequestState: String, Sendable, CaseIterable {
+    case open = "OPEN"
+    case closed = "CLOSED"
+    case merged = "MERGED"
+    case unknown
+}
+
+extension PullRequestState: UnknownTolerantEnum {
+    static var unknownFallback: PullRequestState { .unknown }
+}
+
+struct ClosePayload: Decodable {
+    let closePullRequest: Result?
+
+    struct Result: Decodable {
+        let pullRequest: Closed?
+        struct Closed: Decodable { let state: PullRequestState }
     }
 }
 

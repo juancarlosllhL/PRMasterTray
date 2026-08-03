@@ -54,6 +54,27 @@ enum Queries {
     }
     """
 
+    /// Closes a pull request without merging it.
+    ///
+    /// No `expectedHeadOid`, and that is GitHub's doing rather than an omission:
+    /// `ClosePullRequestInput` accepts only `pullRequestId` and
+    /// `clientMutationId`. The merge and the branch update can both be made to
+    /// refuse a pull request that moved since the snapshot; this cannot, so
+    /// nothing here protects against acting on a stale row. `CloseCoordinator`'s
+    /// debug gate is the whole of that protection, which is why it has no
+    /// demo escape hatch the way the merge gate does.
+    ///
+    /// `state` is selected because it is the only trustworthy confirmation:
+    /// GitHub documents no error text for closing a pull request that is already
+    /// closed, already merged, or in an archived repository.
+    static let closePullRequest = """
+    mutation($id: ID!) {
+      closePullRequest(input: { pullRequestId: $id }) {
+        pullRequest { id state }
+      }
+    }
+    """
+
     /// Squash-merges a PR, refusing if the head has moved since the snapshot.
     static let squashMerge = """
     mutation($id: ID!, $oid: GitObjectID!) {
