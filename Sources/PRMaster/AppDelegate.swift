@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var store: PRStore!
     private var client: GitHubClient!
     private var merger: MergeCoordinator!
+    private var closer: CloseCoordinator!
     private var updates: AppUpdateStore!
     private var appearanceStore: AppearanceStore!
     private let settingsWindow = SettingsWindowController()
@@ -37,6 +38,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             merger = MergeCoordinator(client: client, mergingAllowed: !Debug.overridesActive)
         }
+
+        // No `Debug.demoMerge` equivalent, deliberately. That exception is safe
+        // for merging only because it swaps in `NoopMerger`; there is no no-op
+        // closer, and `closePullRequest` accepts no expectedHeadOid to fall back
+        // on, so a fixture row would close the real pull request it names.
+        closer = CloseCoordinator(client: client, closingAllowed: !Debug.overridesActive)
 
         store = PRStore(
             client: fetcher,
@@ -290,6 +297,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         id: pr.id, oid: pr.headRefOid, title: pr.displayTitle, url: pr.url
                     )
                 },
+                onClose: { [weak self] pr in
+                    self?.confirmClose(id: pr.id, title: pr.displayTitle, url: pr.url)
+                },
                 onOpenSettings: { [weak self] in
                     guard let self else { return }
                     // Closed explicitly rather than left to `.transient`: the
@@ -300,6 +310,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 },
                 onQuit: { NSApp.terminate(nil) },
                 canMerge: Debug.mergingOffered,
+                canClose: !Debug.overridesActive,
                 canAutoUpdate: !Debug.overridesActive,
                 notifications: NotificationStatus.shared,
                 updates: updates,
@@ -415,7 +426,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .cancelled:
                 break
             case .refusedDebugOverride:
-                presentRefusal()
+                presentRefusal(action: "Merging")
             case .failed(let message):
                 presentMergeFailure(message, url: url)
             }
@@ -443,19 +454,89 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return alert.runModal() == .alertFirstButtonReturn
     }
 
-    private func presentRefusal() {
+    /// Closing is reversible on GitHub, but only up to a point, so it is
+    /// confirmed like the merge rather than fired on a single click.
+    func confirmClose(id: String, title: String, url: URL) {
+        Task { @MainActor in
+            let outcome = await closer.attempt(id: id) {
+                self.askToClose(title: title)
+            }
+
+            switch outcome {
+            case .closed:
+                await store.refresh()
+            case .cancelled:
+                break
+            case .refusedDebugOverride:
+                presentRefusal(action: "Closing")
+            case .failed(let message):
+                presentCloseFailure(message, url: url)
+            }
+        }
+    }
+
+    /// The confirmation sheet. Returns true only if the user chose to close.
+    private func askToClose(title: String) -> Bool {
+        // An LSUIElement app shows no dialog unless it activates first.
+        NSApp.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.messageText = "Close this pull request without merging?"
+        // Not "you can undo this": GitHub refuses to reopen a pull request whose
+        // head branch has been deleted or force-pushed since, and promising an
+        // undo that might not be there is worse than not mentioning one.
+        alert.informativeText = """
+            \(title)
+
+            Nothing will be merged. You can reopen it on GitHub for as long as \
+            its branch still exists.
+            """
+        alert.alertStyle = .warning
+
+        let close = alert.addButton(withTitle: "Close Pull Request")
+        let cancel = alert.addButton(withTitle: "Cancel")
+        // Same reason as the merge: activating the app steals focus, so a stray
+        // Return aimed somewhere else must not land on the destructive button.
+        close.keyEquivalent = ""
+        cancel.keyEquivalent = "\r"
+
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    /// - Parameter action: "Merging" or "Closing". Parameterised rather than
+    ///   duplicated so the list of override variables lives in one place.
+    private func presentRefusal(action: String) {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "Merging is disabled"
+        alert.messageText = "\(action) is disabled"
         alert.informativeText = """
             PR Master Tray is showing data from a debug override, so these \
             rows may not correspond to real pull requests. Restart without \
             PRMASTER_FIXTURE, PRMASTER_FAKE_ERROR, PRMASTER_FAIL_AFTER or \
-            PRMASTER_DEMO_MERGE to merge.
+            PRMASTER_DEMO_MERGE to continue.
             """
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")
         alert.runModal()
+    }
+
+    private func presentCloseFailure(_ message: String, url: URL) {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Couldn't close"
+        // GitHub's own wording, or our sentence saying it never confirmed —
+        // either way the user needs to know it is still open.
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Open in GitHub")
+        alert.addButton(withTitle: "OK")
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            open(url)
+        }
+        // The snapshot may simply be out of date, so get a fresh one rather than
+        // leaving a row that claims to be open when it is not.
+        Task { await store.refresh() }
     }
 
     private func presentMergeFailure(_ message: String, url: URL) {

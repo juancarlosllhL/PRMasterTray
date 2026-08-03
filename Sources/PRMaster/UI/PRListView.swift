@@ -5,11 +5,16 @@ struct PRListView: View {
     @Bindable var store: PRStore
     let onOpen: (PullRequest) -> Void
     let onMerge: (PullRequest) -> Void
+    let onClose: (PullRequest) -> Void
     let onOpenSettings: () -> Void
     let onQuit: () -> Void
     /// False while a debug override is active, so the app never offers an
     /// action it is going to refuse.
     let canMerge: Bool
+    /// Also false under a debug override, and with no demo exception: closing
+    /// takes no expectedHeadOid, so this flag is the only thing between a
+    /// fixture row and the real pull request it names.
+    let canClose: Bool
     /// Also false under a debug override, where the store has no updater at
     /// all — offering a switch for a feature that cannot run would be a lie.
     let canAutoUpdate: Bool
@@ -239,8 +244,10 @@ struct PRListView: View {
                     isUpdating: store.updatingIDs.contains(pr.id),
                     isStale: threshold.isStale(createdAt: pr.createdAt, now: now),
                     staleAge: StaleAge.label(createdAt: pr.createdAt, now: now),
+                    canClose: canClose,
                     onOpen: { onOpen(pr) },
-                    onMerge: { onMerge(pr) }
+                    onMerge: { onMerge(pr) },
+                    onClose: { onClose(pr) }
                 )
             }
         }

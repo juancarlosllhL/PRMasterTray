@@ -12,8 +12,12 @@ struct PRRowView: View {
     /// How old, in words. Passed in rather than computed here so the row reads
     /// one clock per redraw instead of one per row.
     let staleAge: String
+    /// False while a debug override is active. Unlike `canMerge` there is no
+    /// demo exception to this — see `CloseCoordinator`.
+    let canClose: Bool
     let onOpen: () -> Void
     let onMerge: () -> Void
+    let onClose: () -> Void
 
     @State private var isHovering = false
     @Environment(\.palette) private var palette
@@ -88,6 +92,16 @@ struct PRRowView: View {
             .help(pr.displayTitle)
 
             Spacer(minLength: 4)
+
+            // Same rule as the merge button below: only offered where the action
+            // applies. Plain against Merge's prominent style and to its left, so
+            // that on a row which is both stale and ready the better outcome is
+            // the one that looks like it.
+            if isStale, isHovering, canClose {
+                Button("Close", action: onClose)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
 
             // Merging is irreversible, so the affordance only appears for PRs
             // that can actually be merged.
