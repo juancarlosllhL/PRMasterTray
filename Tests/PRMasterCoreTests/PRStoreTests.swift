@@ -15,7 +15,8 @@ private func makePR(
         repo: repo, isPrivate: isPrivate, isDraft: false, headRefOid: headRefOid,
         mergeable: .mergeable, mergeState: mergeState,
         reviewDecision: nil, checks: .success, approvals: 0,
-        updatedAt: Date(timeIntervalSince1970: 0)
+        updatedAt: Date(timeIntervalSince1970: 0),
+        createdAt: Date(timeIntervalSince1970: 0)
     )
 }
 

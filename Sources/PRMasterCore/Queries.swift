@@ -21,6 +21,7 @@ enum Queries {
             isDraft
             headRefOid
             updatedAt
+            createdAt
             mergeable
             mergeStateStatus
             reviewDecision

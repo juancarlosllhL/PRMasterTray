@@ -10,6 +10,7 @@
           "isDraft": false,
           "headRefOid": "1111222233334444555566667777888899990000",
           "updatedAt": "2026-07-27T10:00:00Z",
+          "createdAt": "2026-07-27T09:00:00Z",
           "mergeable": "SOMETHING_NEW",
           "mergeStateStatus": "AWAITING_QUANTUM_REVIEW",
           "reviewDecision": "VIBES_BASED",

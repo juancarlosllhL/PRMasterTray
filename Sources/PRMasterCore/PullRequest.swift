@@ -29,6 +29,14 @@ public struct PullRequest: Identifiable, Sendable, Equatable {
     public let checks: CheckState?
     public let approvals: Int
     public let updatedAt: Date
+    /// When the pull request was opened.
+    ///
+    /// What the staleness marker measures from, deliberately not `updatedAt`:
+    /// `PRStore.updateBehindBranches` pushes a merge commit into behind branches
+    /// off the poll loop, which bumps `updatedAt`. Against a base branch that
+    /// keeps moving, the app would go on resetting its own staleness signal
+    /// forever and nothing would ever be marked. This field only ever moves once.
+    public let createdAt: Date
 
     public var readiness: Readiness { Readiness.evaluate(self) }
 
@@ -53,7 +61,8 @@ public struct PullRequest: Identifiable, Sendable, Equatable {
         reviewDecision: ReviewDecision?,
         checks: CheckState?,
         approvals: Int,
-        updatedAt: Date
+        updatedAt: Date,
+        createdAt: Date
     ) {
         self.id = id
         self.number = number
@@ -69,6 +78,7 @@ public struct PullRequest: Identifiable, Sendable, Equatable {
         self.checks = checks
         self.approvals = approvals
         self.updatedAt = updatedAt
+        self.createdAt = createdAt
     }
 }
 

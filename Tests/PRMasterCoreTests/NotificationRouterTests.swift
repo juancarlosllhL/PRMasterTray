@@ -12,7 +12,8 @@ private func makePR() -> PullRequest {
         repo: "acme/infra", isPrivate: false, isDraft: false, headRefOid: "abc123",
         mergeable: .mergeable, mergeState: .clean,
         reviewDecision: .approved, checks: .success, approvals: 1,
-        updatedAt: Date(timeIntervalSince1970: 0)
+        updatedAt: Date(timeIntervalSince1970: 0),
+        createdAt: Date(timeIntervalSince1970: 0)
     )
 }
 
@@ -45,7 +46,8 @@ struct NotificationRouterTests {
             repo: "acme/infra", isPrivate: false, isDraft: false, headRefOid: "abc123",
             mergeable: .mergeable, mergeState: .clean,
             reviewDecision: .approved, checks: .success, approvals: 1,
-            updatedAt: Date(timeIntervalSince1970: 0)
+            updatedAt: Date(timeIntervalSince1970: 0),
+            createdAt: Date(timeIntervalSince1970: 0)
         )
         #expect(NotificationRouter.payload(for: pr)["title"] == "✨ add rate limit headers")
     }

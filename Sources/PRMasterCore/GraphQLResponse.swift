@@ -65,6 +65,7 @@ struct SearchPayload: Decodable {
         let isDraft: Bool
         let headRefOid: String
         let updatedAt: Date
+        let createdAt: Date
         let mergeable: Mergeable
         let mergeStateStatus: MergeStateStatus
         let reviewDecision: ReviewDecision?
@@ -107,7 +108,8 @@ struct SearchPayload: Decodable {
                 // Absent rollup stays nil: "no CI" is not "checks running".
                 checks: commits.nodes.first?.commit.statusCheckRollup?.state,
                 approvals: reviews.totalCount,
-                updatedAt: updatedAt
+                updatedAt: updatedAt,
+                createdAt: createdAt
             )
         }
     }

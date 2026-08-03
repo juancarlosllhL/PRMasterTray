@@ -24,7 +24,8 @@ private func makePR(
         reviewDecision: reviewDecision,
         checks: checks,
         approvals: 0,
-        updatedAt: Date(timeIntervalSince1970: 0)
+        updatedAt: Date(timeIntervalSince1970: 0),
+        createdAt: Date(timeIntervalSince1970: 0)
     )
 }
 

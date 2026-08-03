@@ -96,6 +96,7 @@ private func makePR(title: String) -> PullRequest {
         reviewDecision: nil,
         checks: .success,
         approvals: 0,
-        updatedAt: Date(timeIntervalSince1970: 0)
+        updatedAt: Date(timeIntervalSince1970: 0),
+        createdAt: Date(timeIntervalSince1970: 0)
     )
 }

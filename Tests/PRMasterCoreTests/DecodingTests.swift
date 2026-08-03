@@ -47,6 +47,33 @@ struct DecodingTests {
         )
         // 2026-07-27T08:56:15Z
         #expect(pr.updatedAt == Date(timeIntervalSince1970: 1785142575))
+        // 2026-03-02T11:20:00Z — deliberately months before updatedAt, which is
+        // the whole reason staleness is measured from this field and not that one.
+        #expect(pr.createdAt == Date(timeIntervalSince1970: 1772450400))
+        #expect(pr.createdAt < pr.updatedAt)
+    }
+
+    /// `createdAt` is non-optional, so a node without it must fail loudly rather
+    /// than defaulting to now — a silent default would date every pull request to
+    /// the moment of the fetch and quietly disable the staleness marker for good.
+    @Test("a node missing createdAt throws rather than defaulting")
+    func missingCreatedAtThrows() throws {
+        let json = """
+        { "data": { "search": { "nodes": [{
+          "id": "PR_1", "number": 1, "title": "no creation date",
+          "url": "https://github.com/acme/widget-service/pull/1",
+          "isDraft": false, "headRefOid": "oid",
+          "updatedAt": "2026-07-27T08:56:15Z",
+          "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+          "reviewDecision": null,
+          "repository": { "nameWithOwner": "acme/widget-service", "isPrivate": false },
+          "commits": { "nodes": [{ "commit": { "statusCheckRollup": { "state": "SUCCESS" } } }] },
+          "reviews": { "totalCount": 0 }
+        }] } } }
+        """
+        #expect(throws: PRMasterError.self) {
+            _ = try PullRequestDecoder.decodeSearch(Data(json.utf8))
+        }
     }
 
     @Test("carries the draft flag through")
