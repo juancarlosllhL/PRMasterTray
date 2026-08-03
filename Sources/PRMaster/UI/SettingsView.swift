@@ -64,6 +64,24 @@ struct SettingsView: View {
             }
 
             Section {
+                Picker("Mark as stale after", selection: $store.staleThreshold) {
+                    ForEach(StaleThreshold.allCases, id: \.self) { threshold in
+                        // verbatim for consistency with the rest of the window,
+                        // though these labels are ours rather than user content.
+                        Text(verbatim: threshold.label).tag(threshold)
+                    }
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text("Stale pull requests")
+            } footer: {
+                // Two things a user cannot work out by looking, and the second is
+                // the one they would otherwise discover by being annoyed: this
+                // marks rows, it does not quietly change what the app acts on.
+                footnote(Text("Measured from when a pull request was opened, not from its last activity, so keeping a branch up to date doesn't reset it. Stale pull requests still notify and are still brought up to date — the marker only adds a way to close them."))
+            }
+
+            Section {
                 if store.knownOrganizations.isEmpty {
                     footnote(Text("No organizations yet — they appear here as soon as your pull requests load."))
                 } else {
