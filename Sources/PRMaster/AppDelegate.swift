@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var closer: CloseCoordinator!
     private var updates: AppUpdateStore!
     private var appearanceStore: AppearanceStore!
+    private var launchAtLogin: LaunchAtLoginStore!
     private let settingsWindow = SettingsWindowController()
     private var observers: [NSObjectProtocol] = []
     private var dismissMonitors: [Any] = []
@@ -81,6 +82,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appearanceStore = AppearanceStore()
         applyAppearance()
         observeAppearance()
+
+        // Not gated on a debug override, unlike merging, closing and the
+        // updater: this writes nothing to GitHub and does not touch the bundle,
+        // so there is nothing here a fixture row could corrupt.
+        launchAtLogin = LaunchAtLoginStore(loginItem: SMAppServiceLoginItem())
+        // The updater replaces this bundle in place, which can leave the
+        // registration pointing at nothing. A no-op for anybody who never asked.
+        launchAtLogin.repairIfNeeded()
 
         installStatusItem()
         installPopover()
@@ -314,7 +323,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 canAutoUpdate: !Debug.overridesActive,
                 notifications: NotificationStatus.shared,
                 updates: updates,
-                appearance: appearanceStore
+                appearance: appearanceStore,
+                launchAtLogin: launchAtLogin
             )
         )
         // Without this the popover sizes itself once from a stale measurement
@@ -346,6 +356,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.contentViewController?.view.window?.makeKey()
 
         installDismissMonitors()
+
+        // Read on open rather than trusted from launch: the user can tick this in
+        // System Settings while the app runs, and the gear menu below is about to
+        // draw a switch claiming to know its state.
+        launchAtLogin.refresh()
 
         // Opening the popover is an explicit "show me now", so don't make
         // the user wait out the remainder of the poll interval.

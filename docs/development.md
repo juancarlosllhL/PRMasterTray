@@ -25,6 +25,11 @@ convenience — macOS treats an app living there more like a real app than one r
 out of `.build`, which is the leading suspect whenever notification
 authorization is refused.
 
+Don't tick **Open at login** while running out of `.build`. The login item
+records the path it was registered from, so `make clean` leaves macOS trying to
+launch an app that no longer exists. Untick it first, or test that switch from a
+`make install` build.
+
 ## Tests
 
 ```sh
@@ -43,7 +48,7 @@ not break it.
 ```
 Sources/PRMasterCore/   pure, fully tested, no AppKit
 Sources/PRMaster/       AppKit + SwiftUI shell
-Tests/                  201 tests, no network, no gh required
+Tests/                  297 tests, no network, no gh required
 .github/workflows/      tag-driven release
 ```
 

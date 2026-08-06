@@ -46,6 +46,12 @@ public protocol PreferenceStoring: Sendable {
     func setPopoverBackground(_ value: PopoverBackground)
     func staleThreshold() -> StaleThreshold
     func setStaleThreshold(_ value: StaleThreshold)
+    /// Whether the user asked for the app to open at login. Not whether it will —
+    /// macOS owns that, and `LaunchAtLoginStore` reads it from there. This records
+    /// the intent, which is the only thing that can tell a registration lost to an
+    /// update from one nobody ever wanted.
+    func launchAtLoginRequested() -> Bool
+    func setLaunchAtLoginRequested(_ value: Bool)
 }
 
 /// Observable state behind the menu bar UI.
@@ -324,6 +330,7 @@ public struct UserDefaultsPreferences: PreferenceStoring {
     private let monochromeKey = "highContrastMonochrome"
     private let popoverBackgroundKey = "popoverBackground"
     private let staleThresholdKey = "staleThreshold"
+    private let launchAtLoginKey = "launchAtLoginRequested"
     // UserDefaults is documented as thread-safe but predates Sendable.
     nonisolated(unsafe) private let defaults: UserDefaults
 
@@ -406,5 +413,19 @@ public struct UserDefaultsPreferences: PreferenceStoring {
 
     public func setStaleThreshold(_ value: StaleThreshold) {
         defaults.set(value.rawValue, forKey: staleThresholdKey)
+    }
+
+    public func launchAtLoginRequested() -> Bool {
+        // `object(forKey:)` for the usual reason, with more at stake than
+        // anywhere else in here: a stored false that read as an absent key would
+        // make the repair on the next launch switch the login item back on for
+        // somebody who had just turned it off. Absent means never asked, and
+        // never asked has to mean nothing gets registered — an update that put
+        // itself in somebody's login items uninvited is what malware does.
+        defaults.object(forKey: launchAtLoginKey) as? Bool ?? false
+    }
+
+    public func setLaunchAtLoginRequested(_ value: Bool) {
+        defaults.set(value, forKey: launchAtLoginKey)
     }
 }

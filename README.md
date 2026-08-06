@@ -30,6 +30,10 @@ GitHub would merge right now.
 - Refreshes every minute, on opening the popover, and on waking the machine. A
   failed refresh keeps the last good list and tells you it is stale.
 - Checks for new versions of the app and installs them for you.
+- **Open at login** in the gear menu brings it back by itself after a restart. It
+  starts straight into the menu bar, with no window to dismiss. The first time,
+  macOS may ask you to approve it under **System Settings → General → Login
+  Items**; the menu says so, and offers a way there.
 - Signs in through the `gh` CLI, so it stores no credentials of its own.
 
 ## Install

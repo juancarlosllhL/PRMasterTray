@@ -91,6 +91,7 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
     private var storedMonochrome: Bool
     private var storedBackground: PopoverBackground
     private var storedThreshold: StaleThreshold
+    private var storedLaunchAtLogin: Bool
 
     init(
         autoUpdate: Bool = true,
@@ -98,7 +99,8 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
         theme: AppTheme = .system,
         monochrome: Bool = false,
         background: PopoverBackground = .liquidGlass,
-        staleThreshold: StaleThreshold = .oneMonth
+        staleThreshold: StaleThreshold = .oneMonth,
+        launchAtLogin: Bool = false
     ) {
         enabled = autoUpdate
         stored = filter
@@ -106,6 +108,7 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
         storedMonochrome = monochrome
         storedBackground = background
         storedThreshold = staleThreshold
+        storedLaunchAtLogin = launchAtLogin
     }
 
     func autoUpdateEnabled() -> Bool { lock.withLock { enabled } }
@@ -123,6 +126,10 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
     func staleThreshold() -> StaleThreshold { lock.withLock { storedThreshold } }
     func setStaleThreshold(_ value: StaleThreshold) {
         lock.withLock { storedThreshold = value }
+    }
+    func launchAtLoginRequested() -> Bool { lock.withLock { storedLaunchAtLogin } }
+    func setLaunchAtLoginRequested(_ value: Bool) {
+        lock.withLock { storedLaunchAtLogin = value }
     }
 }
 
@@ -826,6 +833,36 @@ struct PreferenceStoreTests {
 
         #expect(store.staleThreshold == .oneMonth)
         #expect(defaults.object(forKey: "staleThreshold") == nil, "the key must stay absent")
+    }
+
+    // MARK: - Launch at login
+
+    /// The one default in here with more at stake than a repainted popover: an
+    /// absent key that read as "asked for" would put the app in the login items
+    /// of every existing install without anybody choosing it, which is what
+    /// malware does.
+    @Test("an absent launch-at-login intent reads as never asked")
+    func launchAtLoginDefaultsToOff() throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        #expect(UserDefaultsPreferences(defaults: defaults).launchAtLoginRequested() == false)
+    }
+
+    /// The stored `false` matters as much as the stored `true`: with
+    /// `bool(forKey:)` it would be indistinguishable from an absent key, and the
+    /// repair on the next launch would switch the login item back on for somebody
+    /// who had just turned it off.
+    @Test("a stored launch-at-login intent round-trips", arguments: [true, false])
+    func launchAtLoginRoundTrips(value: Bool) throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let preferences = UserDefaultsPreferences(defaults: defaults)
+        preferences.setLaunchAtLoginRequested(value)
+        #expect(preferences.launchAtLoginRequested() == value)
     }
 
     // MARK: - Appearance

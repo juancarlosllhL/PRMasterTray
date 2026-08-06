@@ -27,6 +27,10 @@ struct PRListView: View {
     /// reading the property inside `palette` lets `@Observable` track it and
     /// re-render when it flips. Same reason `updates` is a plain `let`.
     let appearance: AppearanceStore
+    /// Read live for the same reason as `appearance`, and with more need of it:
+    /// this one's truth lives in System Settings, where the user can change it
+    /// behind the app's back.
+    let launchAtLogin: LaunchAtLoginStore
 
     /// Not `private`: a private stored property would make the synthesised
     /// memberwise initialiser private too, and `AppDelegate` builds this view.
@@ -164,6 +168,24 @@ struct PRListView: View {
             // offering a switch for a feature that cannot run would be a lie.
             if canAutoUpdate {
                 Toggle("Auto-update behind branches", isOn: $store.autoUpdateEnabled)
+            }
+            // Not gated on a debug override: unlike everything else in this menu
+            // it neither writes to GitHub nor touches the bundle.
+            //
+            // Bound through the store rather than to a stored property, because
+            // macOS owns this switch — see `LaunchAtLoginStore`.
+            Toggle("Open at login", isOn: Binding(
+                get: { launchAtLogin.isEnabled },
+                set: { launchAtLogin.setEnabled($0) }
+            ))
+            // Only while macOS is actually holding it up. Same shape as the
+            // failed-update line above: a state the user cannot otherwise work
+            // out, and the one action that resolves it.
+            if launchAtLogin.state == .needsApproval {
+                Button("Approve in Login Items…") { launchAtLogin.openSystemSettings() }
+            }
+            if let failure = launchAtLogin.lastFailure {
+                Text(verbatim: "Couldn't change it — \(failure)")
             }
             Divider()
             Button("Quit PR Master Tray", action: onQuit)
