@@ -31,10 +31,16 @@ struct ShipmentRowView: View {
                     Text(verbatim: "\(pr.repo) #\(pr.number)")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
-                        .layoutPriority(1)
+                        .truncationMode(.middle)
                     // A version is whatever the release was tagged, and a check
                     // name is whatever CI called it. Neither is a format string.
                     Text(verbatim: statusLabel)
+                        // Wins the squeeze against the repository name, which is
+                        // the opposite of the call PRRowView makes and for the
+                        // opposite reason: a version truncated to "Rele…" loses
+                        // the one thing this row exists to tell you, while a
+                        // repository name is still recognisable clipped.
+                        .layoutPriority(1)
                         // Semibold once colour is gone, the same trick the open
                         // rows use: in monochrome the words carry this alone.
                         .font(.system(

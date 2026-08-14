@@ -355,14 +355,27 @@ struct PRListView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 2)
 
-            LazyVStack(spacing: 2) {
-                ForEach(store.shipments) { shipment in
-                    ShipmentRowView(shipment: shipment) { onOpenShipment(shipment) }
-                }
+            // Capped like the open list above it. A busy day can merge dozens,
+            // and an uncapped section would push the popover off the screen.
+            if store.shipments.count > Self.mergedRowsBeforeScrolling {
+                ScrollView { mergedRows }
+                    .frame(height: 220)
+            } else {
+                mergedRows
             }
-            .padding(.horizontal, 4)
-            .padding(.bottom, 4)
         }
+    }
+
+    private static let mergedRowsBeforeScrolling = 5
+
+    private var mergedRows: some View {
+        LazyVStack(spacing: 2) {
+            ForEach(store.shipments) { shipment in
+                ShipmentRowView(shipment: shipment) { onOpenShipment(shipment) }
+            }
+        }
+        .padding(.horizontal, 4)
+        .padding(.bottom, 4)
     }
 
     // MARK: - Stale banner
