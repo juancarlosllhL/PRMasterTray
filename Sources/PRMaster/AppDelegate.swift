@@ -55,6 +55,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // real head oid, and this path writes to GitHub off a timer with
             // no click anywhere in it.
             updater: Debug.overridesActive ? nil : client,
+            // Also absent under an override, but for a duller reason than the
+            // updater above: this only reads, so nothing here can write to
+            // GitHub. A fixture's repository IDs simply are not worth asking
+            // about, and the merged rows still show whether their checks passed.
+            shipmentClient: Debug.overridesActive ? nil : client,
             preferences: UserDefaultsPreferences()
         )
 

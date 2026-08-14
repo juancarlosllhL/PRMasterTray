@@ -32,6 +32,16 @@ public protocol PullRequestBranchUpdating: Sendable {
 
 extension GitHubClient: PullRequestBranchUpdating {}
 
+/// The two lookups that turn merged pull requests into shipments. Separate from
+/// `PullRequestFetching` because they fail separately, and their failure must
+/// not be allowed to look like the list failing.
+public protocol ShipmentFetching: Sendable {
+    func fetchReleases(repoIDs: [String]) async throws -> [String: [Release]]
+    func resolveContainment(_ candidates: [ContainmentCandidate]) async throws -> [ContainmentKey: Bool]
+}
+
+extension GitHubClient: ShipmentFetching {}
+
 /// User-facing settings that outlive a launch.
 public protocol PreferenceStoring: Sendable {
     func autoUpdateEnabled() -> Bool
@@ -82,6 +92,16 @@ public final class PRStore {
     /// PRs currently being brought up to date. This app writes to GitHub with
     /// no user gesture behind it, so it says so while it is happening.
     public private(set) var updatingIDs: Set<String> = []
+    /// What became of the pull requests merged inside the retention window.
+    ///
+    /// Kept through a failed refresh for the same reason `prs` is: a wifi blip
+    /// must not read as "nothing shipped today".
+    public private(set) var shipments: [Shipment] = []
+    /// Set when the release or containment lookup failed. Its own field rather
+    /// than `lastError`, which drives the stale banner over the whole list —
+    /// the open pull requests refreshed fine and must not be reported as stale
+    /// because a version lookup did not.
+    public private(set) var lastShipmentFailure: String?
 
     /// Whether behind PRs are brought up to date automatically. On by default;
     /// the switch exists because the alternative escape hatch is quitting.
@@ -140,6 +160,10 @@ public final class PRStore {
     /// — which carries a real node ID and a real head oid — cannot cause a
     /// commit to be pushed to a real branch with nobody watching.
     private let updater: PullRequestBranchUpdating?
+    /// `nil` under a debug override, where there is no live client to ask. The
+    /// merged rows still resolve from their own checks; they just carry no
+    /// version.
+    private let shipmentClient: ShipmentFetching?
     private let preferences: PreferenceStoring
     private let now: @Sendable () -> Date
     private let sleep: @Sendable (Duration) async throws -> Void
@@ -148,6 +172,10 @@ public final class PRStore {
     /// Deliberately not persisted: a relaunch is a reasonable moment to give a
     /// previously refused update one more chance.
     private var attemptedUpdates: Set<String> = []
+    /// Containment answers already obtained, so a shipment resolved to a
+    /// version is never asked about again. Pruned to the visible merges each
+    /// poll, or it would grow for as long as the app runs.
+    private var containmentAnswers: [ContainmentKey: Bool] = [:]
     private var consecutiveFailures = 0
     private var pollTask: Task<Void, Never>?
 
@@ -156,6 +184,7 @@ public final class PRStore {
         notifier: ReadyPRNotifying,
         idStore: NotifiedIDStore,
         updater: PullRequestBranchUpdating? = nil,
+        shipmentClient: ShipmentFetching? = nil,
         preferences: PreferenceStoring = UserDefaultsPreferences(),
         now: @escaping @Sendable () -> Date = { Date() },
         sleep: @escaping @Sendable (Duration) async throws -> Void = {
@@ -166,6 +195,7 @@ public final class PRStore {
         self.notifier = notifier
         self.idStore = idStore
         self.updater = updater
+        self.shipmentClient = shipmentClient
         self.preferences = preferences
         self.now = now
         self.sleep = sleep
@@ -191,19 +221,26 @@ public final class PRStore {
         isRefreshing = true
         defer { isRefreshing = false }
 
+        var freshMerged: [MergedPullRequest]?
+
         do {
-            let fetched = try await client.fetchMyPullRequests().open
+            let fetched = try await client.fetchMyPullRequests()
             // Everything downstream sees the filtered list, deliberately: a
             // hidden PR must not notify, must not be updated on a timer, and
             // must not sit in the menu bar count. `allPRs` keeps the unfiltered
             // snapshot for the settings window and the hidden count.
-            let fresh = filter.apply(to: fetched)
+            let fresh = filter.apply(to: fetched.open)
+            // Hidden means hidden after the merge too, and the window is the
+            // same one the query asked for.
+            freshMerged = ShipmentRetention.recent(
+                filter.apply(to: fetched.merged), now: now()
+            )
 
             // Only reached on success, which is what guarantees a network flap
             // cannot be mistaken for every PR going ready at once.
             let decision = NotificationDecider.decide(prs: fresh, notified: notifiedIDs)
 
-            allPRs = fetched
+            allPRs = fetched.open
             prs = fresh
             lastSuccessfulFetch = now()
             lastError = nil
@@ -235,6 +272,55 @@ public final class PRStore {
             // `prs` and `lastSuccessfulFetch` are deliberately untouched.
             lastError = error as? PRMasterError ?? .decoding(String(describing: error))
             consecutiveFailures += 1
+        }
+
+        // Deliberately outside the block above. These two lookups fail on their
+        // own account, and a failed version lookup must leave `prs`,
+        // `lastError` and the stale banner exactly as the search left them.
+        // `freshMerged` is nil only when the search itself failed, in which case
+        // the previous shipments stand.
+        if let freshMerged {
+            await resolveShipments(freshMerged)
+        }
+    }
+
+    // MARK: - Shipments
+
+    /// Turns the merged pull requests into shipments, asking GitHub only about
+    /// the releases it has not already answered for.
+    private func resolveShipments(_ merged: [MergedPullRequest]) async {
+        guard let shipmentClient else {
+            // No live client: the rows still say whether CI passed, from the
+            // checks already in hand. They just never carry a version.
+            shipments = ShipmentResolver.resolve(merged: merged, releases: [:], containment: [:])
+            return
+        }
+
+        // Answers about pull requests that have aged out are dropped, so this
+        // cannot grow without bound.
+        let live = Set(merged.map(\.id))
+        containmentAnswers = containmentAnswers.filter { live.contains($0.key.pullRequestID) }
+
+        do {
+            let repoIDs = Array(Set(merged.map(\.repositoryID)))
+            let releases = try await shipmentClient.fetchReleases(repoIDs: repoIDs)
+
+            // Only the unanswered ones: a shipment already resolved to a version
+            // would otherwise be re-compared on every poll for a day.
+            let unanswered = ShipmentResolver
+                .candidates(merged: merged, releases: releases)
+                .filter { containmentAnswers[$0.key] == nil }
+
+            let answers = try await shipmentClient.resolveContainment(unanswered)
+            containmentAnswers.merge(answers) { _, new in new }
+
+            shipments = ShipmentResolver.resolve(
+                merged: merged, releases: releases, containment: containmentAnswers
+            )
+            lastShipmentFailure = nil
+        } catch {
+            // `shipments` is left alone: yesterday's answer beats no answer.
+            lastShipmentFailure = error.localizedDescription
         }
     }
 

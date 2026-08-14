@@ -24,16 +24,23 @@ private func makePR(
 private final class StubClient: PullRequestFetching, @unchecked Sendable {
     private let lock = NSLock()
     private var results: [Result<[PullRequest], PRMasterError>]
+    private let merged: [MergedPullRequest]
     private(set) var calls = 0
 
-    init(_ results: [Result<[PullRequest], PRMasterError>]) { self.results = results }
+    init(
+        _ results: [Result<[PullRequest], PRMasterError>],
+        merged: [MergedPullRequest] = []
+    ) {
+        self.results = results
+        self.merged = merged
+    }
 
     func fetchMyPullRequests() async throws -> PullRequestSnapshot {
         let next: Result<[PullRequest], PRMasterError> = lock.withLock {
             calls += 1
             return results.isEmpty ? .success([]) : results.removeFirst()
         }
-        return PullRequestSnapshot(open: try next.get(), merged: [])
+        return PullRequestSnapshot(open: try next.get(), merged: merged)
     }
 }
 

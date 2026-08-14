@@ -11,6 +11,19 @@
 /// request you open in a new organization would be invisible, and silently
 /// hiding a PR is the one failure this app cannot afford. A blocklist can only
 /// ever hide something the user named.
+/// What the filter needs to know about anything it hides.
+///
+/// Both an open and a merged pull request answer these, which is what makes
+/// hiding survive a merge: an organization the user chose not to see must not
+/// reappear in the section below just because the pull request landed.
+public protocol FilterableRepository {
+    var isPrivate: Bool { get }
+    var organization: String { get }
+}
+
+extension PullRequest: FilterableRepository {}
+extension MergedPullRequest: FilterableRepository {}
+
 public struct PRFilter: Sendable, Equatable {
 
     /// Organization (or account) names whose pull requests are hidden, matched
@@ -36,14 +49,14 @@ public struct PRFilter: Sendable, Equatable {
         !hiddenOrganizations.isEmpty || !showsPrivateRepositories
     }
 
-    public func includes(_ pr: PullRequest) -> Bool {
-        if pr.isPrivate && !showsPrivateRepositories { return false }
-        return !hiddenOrganizations.contains(pr.organization)
+    public func includes(_ item: some FilterableRepository) -> Bool {
+        if item.isPrivate && !showsPrivateRepositories { return false }
+        return !hiddenOrganizations.contains(item.organization)
     }
 
-    public func apply(to prs: [PullRequest]) -> [PullRequest] {
+    public func apply<T: FilterableRepository>(to items: [T]) -> [T] {
         // Ordering is the fetch's, which is GitHub's `sort:updated-desc`.
-        prs.filter(includes)
+        items.filter(includes)
     }
 
     /// Flips one organization, so the UI can bind a checkbox straight to it.
