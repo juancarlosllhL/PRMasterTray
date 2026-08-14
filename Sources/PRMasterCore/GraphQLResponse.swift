@@ -49,6 +49,37 @@ extension CheckConclusion: UnknownTolerantEnum {
     static var unknownFallback: CheckConclusion { .unknown }
 }
 
+/// A value bound to a GraphQL variable.
+///
+/// An enum rather than `Any` because it is the mechanism that keeps remote
+/// strings out of query text: everything the app sends GitHub travels through
+/// here as a typed value, so there is no path by which a tag name could end up
+/// concatenated into a document.
+public enum GraphQLValue: Sendable, Equatable {
+    case string(String)
+    /// A list of node IDs, for `nodes(ids:)`.
+    case ids([String])
+
+    var jsonObject: Any {
+        switch self {
+        case .string(let value): return value
+        case .ids(let values):   return values
+        }
+    }
+}
+
+/// One poll's answer: the open pull requests and the recently merged ones,
+/// decoded from a single response so the two always describe the same moment.
+public struct PullRequestSnapshot: Sendable, Equatable {
+    public let open: [PullRequest]
+    public let merged: [MergedPullRequest]
+
+    public init(open: [PullRequest], merged: [MergedPullRequest]) {
+        self.open = open
+        self.merged = merged
+    }
+}
+
 /// GraphQL envelope. `data` and `errors` can both be present: GitHub returns
 /// partial data alongside errors, and always with HTTP 200.
 struct GraphQLResponse<T: Decodable>: Decodable {
@@ -62,9 +93,11 @@ struct GraphQLError: Decodable {
 
 // MARK: - Wire shape
 
-/// Mirrors the nested search response so the domain model does not have to.
+/// Mirrors the `open:` half of the dual-aliased search so the domain model does
+/// not have to. The `merged:` half is `MergedSearchPayload`; each ignores the
+/// other's key, which is what lets one response feed both.
 struct SearchPayload: Decodable {
-    let search: SearchResults
+    let open: SearchResults
 
     struct SearchResults: Decodable {
         let nodes: [Node]
@@ -234,6 +267,84 @@ struct ContextNode: Decodable {
     }
 }
 
+struct ReleasesPayload: Decodable {
+    /// `null` for a node GitHub could not resolve — a repository that was
+    /// deleted or renamed between the search and this lookup. One of those must
+    /// not take the others' releases down with it.
+    let nodes: [Node?]
+
+    struct Node: Decodable {
+        let id: String
+        let releases: Releases
+
+        struct Releases: Decodable {
+            let nodes: [ReleaseNode]
+
+            struct ReleaseNode: Decodable {
+                let tagName: String
+                let url: URL
+                let createdAt: Date
+                let isDraft: Bool
+                /// `null` when the tag points at something other than a commit.
+                let tagCommit: Commit?
+
+                struct Commit: Decodable { let oid: String }
+
+                /// Drafts are excluded: nothing is running a release that was
+                /// never published, so calling a change shipped in one is false.
+                var domain: Release? {
+                    guard !isDraft, let tagCommit else { return nil }
+                    return Release(
+                        tagName: tagName,
+                        url: url,
+                        tagCommitOid: tagCommit.oid,
+                        createdAt: createdAt
+                    )
+                }
+            }
+        }
+    }
+}
+
+/// GitHub `ComparisonStatus`.
+enum CompareStatus: String, Sendable, CaseIterable {
+    case ahead = "AHEAD"
+    case behind = "BEHIND"
+    case diverged = "DIVERGED"
+    case identical = "IDENTICAL"
+    case unknown
+
+    /// Whether the tag being compared *contains* the commit.
+    ///
+    /// The comparison is made from the tag as base to the merge commit as head,
+    /// so a head that is `behind` the tag is an ancestor of it — which is
+    /// exactly what "this release includes my change" means. `nil` for a status
+    /// this app does not recognise, which the resolver treats as no answer
+    /// rather than as a no.
+    var contains: Bool? {
+        switch self {
+        case .behind, .identical: return true
+        case .ahead, .diverged:   return false
+        case .unknown:            return nil
+        }
+    }
+}
+
+extension CompareStatus: UnknownTolerantEnum {
+    static var unknownFallback: CompareStatus { .unknown }
+}
+
+/// One `t{n}: repository { ref { compare } }` answer.
+struct ContainmentNode: Decodable {
+    /// `null` when GitHub cannot resolve the tag.
+    let ref: Ref?
+
+    struct Ref: Decodable {
+        let compare: Compare?
+        struct Compare: Decodable { let status: CompareStatus }
+    }
+}
+
 // MARK: - Entry point
 
 public enum PullRequestDecoder {
@@ -262,7 +373,7 @@ public enum PullRequestDecoder {
             throw PRMasterError.decoding("response contained neither data nor errors")
         }
 
-        return payload.search.nodes.map(\.domain)
+        return payload.open.nodes.map(\.domain)
     }
 
     /// Decodes the merged half of the same search response.
@@ -293,6 +404,67 @@ public enum PullRequestDecoder {
         }
 
         return payload.merged.nodes.map(\.domain)
+    }
+
+    /// Decodes the releases of several repositories, keyed by node ID.
+    public static func decodeReleases(_ data: Data) throws -> [String: [Release]] {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        let response: GraphQLResponse<ReleasesPayload>
+        do {
+            response = try decoder.decode(GraphQLResponse<ReleasesPayload>.self, from: data)
+        } catch {
+            throw PRMasterError.decoding(String(describing: error))
+        }
+
+        if let errors = response.errors, !errors.isEmpty {
+            throw PRMasterError.graphQL(errors.map(\.message))
+        }
+
+        guard let payload = response.data else {
+            throw PRMasterError.decoding("response contained neither data nor errors")
+        }
+
+        return payload.nodes.compactMap { $0 }.reduce(into: [:]) { result, node in
+            result[node.id] = node.releases.nodes.compactMap(\.domain)
+        }
+    }
+
+    /// Decodes the containment answers, mapping each generated alias back to the
+    /// candidate that produced it.
+    ///
+    /// Aliases are `t0…tN` in candidate order, which is the contract
+    /// `Queries.containment(for:)` establishes and this relies on. A candidate
+    /// with no answer is omitted rather than recorded as `false`: unknown and no
+    /// are different, and only one of them is safe to act on.
+    public static func decodeContainment(
+        _ data: Data,
+        candidates: [ContainmentCandidate]
+    ) throws -> [ContainmentKey: Bool] {
+        let response: GraphQLResponse<[String: ContainmentNode?]>
+        do {
+            response = try JSONDecoder().decode(
+                GraphQLResponse<[String: ContainmentNode?]>.self, from: data
+            )
+        } catch {
+            throw PRMasterError.decoding(String(describing: error))
+        }
+
+        if let errors = response.errors, !errors.isEmpty {
+            throw PRMasterError.graphQL(errors.map(\.message))
+        }
+
+        guard let payload = response.data else {
+            throw PRMasterError.decoding("response contained neither data nor errors")
+        }
+
+        return candidates.enumerated().reduce(into: [:]) { result, pair in
+            let (index, candidate) = pair
+            guard let node = payload["t\(index)"] ?? nil,
+                  let contains = node.ref?.compare?.status.contains else { return }
+            result[candidate.key] = contains
+        }
     }
 
     /// Confirms a merge actually happened.

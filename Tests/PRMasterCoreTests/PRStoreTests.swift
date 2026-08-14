@@ -28,12 +28,12 @@ private final class StubClient: PullRequestFetching, @unchecked Sendable {
 
     init(_ results: [Result<[PullRequest], PRMasterError>]) { self.results = results }
 
-    func fetchMyPullRequests() async throws -> [PullRequest] {
+    func fetchMyPullRequests() async throws -> PullRequestSnapshot {
         let next: Result<[PullRequest], PRMasterError> = lock.withLock {
             calls += 1
             return results.isEmpty ? .success([]) : results.removeFirst()
         }
-        return try next.get()
+        return PullRequestSnapshot(open: try next.get(), merged: [])
     }
 }
 

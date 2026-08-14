@@ -19,9 +19,56 @@ public actor GitHubClient {
 
     // MARK: - API
 
-    public func fetchMyPullRequests() async throws -> [PullRequest] {
-        let data = try await perform(query: Queries.myOpenPullRequests)
-        return try PullRequestDecoder.decodeSearch(data)
+    /// Both halves of the list in one request.
+    ///
+    /// The merged half is decoded from the same body as the open one, so a poll
+    /// still costs a single round trip and the two can never describe different
+    /// moments.
+    public func fetchMyPullRequests() async throws -> PullRequestSnapshot {
+        let data = try await perform(
+            query: Queries.myPullRequests,
+            variables: ["mergedQuery": .string(Self.mergedSearch(now: Date()))]
+        )
+        return PullRequestSnapshot(
+            open: try PullRequestDecoder.decodeSearch(data),
+            merged: try PullRequestDecoder.decodeMergedSearch(data)
+        )
+    }
+
+    static func mergedSearch(now: Date) -> String {
+        "is:pr is:merged author:@me archived:false "
+            + "\(ShipmentRetention.mergedQualifier(now: now)) sort:updated-desc"
+    }
+
+    /// The most recent releases of each repository, keyed by node ID.
+    ///
+    /// Skips the request entirely when nothing merged, which is most of the day:
+    /// a lookup about no repositories is a rate-limit point spent on nothing.
+    public func fetchReleases(repoIDs: [String]) async throws -> [String: [Release]] {
+        guard !repoIDs.isEmpty else { return [:] }
+        let data = try await perform(
+            query: Queries.releases,
+            variables: ["repoIds": .ids(repoIDs)]
+        )
+        return try PullRequestDecoder.decodeReleases(data)
+    }
+
+    /// Asks whether each candidate release contains its pull request's merge
+    /// commit.
+    ///
+    /// A candidate GitHub declines to answer for is left out of the result
+    /// rather than recorded as "not contained": the resolver treats a missing
+    /// answer as unknown and waits, which is the difference between a slow
+    /// answer and a wrong one.
+    public func resolveContainment(
+        _ candidates: [ContainmentCandidate]
+    ) async throws -> [ContainmentKey: Bool] {
+        guard let built = Queries.containment(for: candidates) else { return [:] }
+        let data = try await perform(
+            query: built.query,
+            variables: built.variables.mapValues(GraphQLValue.string)
+        )
+        return try PullRequestDecoder.decodeContainment(data, candidates: candidates)
     }
 
     /// Brings a pull request up to date by merging its base branch into it.
@@ -35,7 +82,7 @@ public actor GitHubClient {
     public func updateBranch(id: String, expectedHeadOid: String) async throws {
         let data = try await perform(
             query: Queries.updateBranch,
-            variables: ["id": id, "oid": expectedHeadOid]
+            variables: ["id": .string(id), "oid": .string(expectedHeadOid)]
         )
         try PullRequestDecoder.decodeBranchUpdate(data)
     }
@@ -50,7 +97,7 @@ public actor GitHubClient {
     /// - Throws: `.closeRejected` carrying GitHub's own message, or the same when
     ///   GitHub answers without confirming the pull request is closed.
     public func closePullRequest(id: String) async throws {
-        let data = try await perform(query: Queries.closePullRequest, variables: ["id": id])
+        let data = try await perform(query: Queries.closePullRequest, variables: ["id": .string(id)])
         try PullRequestDecoder.decodeClose(data)
     }
 
@@ -64,7 +111,7 @@ public actor GitHubClient {
     public func squashMerge(id: String, expectedHeadOid: String) async throws {
         let data = try await perform(
             query: Queries.squashMerge,
-            variables: ["id": id, "oid": expectedHeadOid]
+            variables: ["id": .string(id), "oid": .string(expectedHeadOid)]
         )
         try PullRequestDecoder.decodeMerge(data)
     }
@@ -83,7 +130,7 @@ public actor GitHubClient {
     /// `gh` rotates tokens, so a 401 usually means the cached copy went stale
     /// rather than that access was revoked. One silent re-read is worth it;
     /// retrying in a loop would just hammer GitHub with a dead credential.
-    func perform(query: String, variables: [String: String] = [:]) async throws -> Data {
+    func perform(query: String, variables: [String: GraphQLValue] = [:]) async throws -> Data {
         do {
             return try await send(query: query, variables: variables, token: try token())
         } catch PRMasterError.unauthorized {
@@ -98,7 +145,7 @@ public actor GitHubClient {
         }
     }
 
-    private func send(query: String, variables: [String: String], token: String) async throws -> Data {
+    private func send(query: String, variables: [String: GraphQLValue], token: String) async throws -> Data {
         var request = URLRequest(url: Self.endpoint)
         request.httpMethod = "POST"
         request.setValue("bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -106,7 +153,7 @@ public actor GitHubClient {
         request.setValue("PRMaster", forHTTPHeaderField: "User-Agent")
 
         var payload: [String: Any] = ["query": query]
-        if !variables.isEmpty { payload["variables"] = variables }
+        if !variables.isEmpty { payload["variables"] = variables.mapValues(\.jsonObject) }
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
         let data: Data

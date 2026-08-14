@@ -59,7 +59,7 @@ struct DecodingTests {
     @Test("a node missing createdAt throws rather than defaulting")
     func missingCreatedAtThrows() throws {
         let json = """
-        { "data": { "search": { "nodes": [{
+        { "data": { "open": { "nodes": [{
           "id": "PR_1", "number": 1, "title": "no creation date",
           "url": "https://github.com/acme/widget-service/pull/1",
           "isDraft": false, "headRefOid": "oid",

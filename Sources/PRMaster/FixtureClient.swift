@@ -13,16 +13,23 @@ import PRMasterCore
 struct FixtureClient: PullRequestFetching {
     let path: String
 
-    func fetchMyPullRequests() async throws -> [PullRequest] {
+    func fetchMyPullRequests() async throws -> PullRequestSnapshot {
         let data = try Data(contentsOf: URL(fileURLWithPath: path))
-        return try PullRequestDecoder.decodeSearch(data)
+        return PullRequestSnapshot(
+            open: try PullRequestDecoder.decodeSearch(data),
+            // Tolerated rather than required: a fixture captured before the
+            // merged half existed still drives the open list, and simply shows
+            // no merged rows. This is a debug-only path, so the alternative —
+            // refusing to render anything — costs more than it protects.
+            merged: (try? PullRequestDecoder.decodeMergedSearch(data)) ?? []
+        )
     }
 }
 
 /// Always fails, so the error states can be inspected on demand.
 struct FailingClient: PullRequestFetching {
     let error: PRMasterError
-    func fetchMyPullRequests() async throws -> [PullRequest] { throw error }
+    func fetchMyPullRequests() async throws -> PullRequestSnapshot { throw error }
 }
 
 /// Succeeds `successes` times then fails forever.
@@ -42,7 +49,7 @@ final class FlakyClient: PullRequestFetching, @unchecked Sendable {
         self.error = error
     }
 
-    func fetchMyPullRequests() async throws -> [PullRequest] {
+    func fetchMyPullRequests() async throws -> PullRequestSnapshot {
         let allowed = lock.withLock { () -> Bool in
             guard remaining > 0 else { return false }
             remaining -= 1

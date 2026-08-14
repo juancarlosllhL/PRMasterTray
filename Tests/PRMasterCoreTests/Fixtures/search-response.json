@@ -1,6 +1,6 @@
 {
   "data": {
-    "search": {
+    "open": {
       "nodes": [
         {
           "id": "PR_kwDOAAAAAA71xzWs",
@@ -75,6 +75,7 @@
           "reviews": { "totalCount": 0 }
         }
       ]
-    }
+    },
+    "merged": { "nodes": [] }
   }
 }

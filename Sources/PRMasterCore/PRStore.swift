@@ -3,7 +3,7 @@ import Observation
 
 /// The subset of `GitHubClient` the store needs, so tests can stub it.
 public protocol PullRequestFetching: Sendable {
-    func fetchMyPullRequests() async throws -> [PullRequest]
+    func fetchMyPullRequests() async throws -> PullRequestSnapshot
 }
 
 extension GitHubClient: PullRequestFetching {}
@@ -192,7 +192,7 @@ public final class PRStore {
         defer { isRefreshing = false }
 
         do {
-            let fetched = try await client.fetchMyPullRequests()
+            let fetched = try await client.fetchMyPullRequests().open
             // Everything downstream sees the filtered list, deliberately: a
             // hidden PR must not notify, must not be updated on a timer, and
             // must not sit in the menu bar count. `allPRs` keeps the unfiltered
