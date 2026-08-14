@@ -59,3 +59,51 @@ public struct PromotionFile: Sendable, Equatable {
         return nil
     }
 }
+
+/// The version one region of one environment is running.
+public struct PromotedVersion: Sendable, Equatable {
+    public let file: PromotionFile
+    public let version: String
+
+    public init(file: PromotionFile, version: String) {
+        self.file = file
+        self.version = version
+    }
+}
+
+/// What one environment is running, across all of its regions.
+public struct EnvironmentPromotion: Sendable, Equatable {
+    public let environment: DeployEnvironment
+    /// Every region's version, deduplicated. Kept whole rather than reduced to
+    /// `displayVersion` so that whether a change reached this environment can be
+    /// answered per region, without inheriting an ordering it must not depend on.
+    public let versions: [String]
+
+    public init(environment: DeployEnvironment, versions: [String]) {
+        self.environment = environment
+        self.versions = versions
+    }
+
+    public var regionsAgree: Bool { versions.count <= 1 }
+
+    /// The lowest version, because a rollout that has reached one region has not
+    /// reached the environment. Ordered numerically: sorted as strings, `1.10.0`
+    /// lands below `1.9.0`.
+    public var displayVersion: String? {
+        versions.min { ReleaseVersion.isNewer($1, than: $0) }
+    }
+
+    /// Staging first, so a row reads in the order a change actually travels. An
+    /// environment nobody promoted to is left out rather than carried as empty.
+    public static func collapse(_ promoted: [PromotedVersion]) -> [EnvironmentPromotion] {
+        [DeployEnvironment.staging, .production].compactMap { environment in
+            let versions = promoted
+                .filter { $0.file.environment == environment }
+                .reduce(into: [String]()) { unique, entry in
+                    if !unique.contains(entry.version) { unique.append(entry.version) }
+                }
+            guard !versions.isEmpty else { return nil }
+            return EnvironmentPromotion(environment: environment, versions: versions)
+        }
+    }
+}
