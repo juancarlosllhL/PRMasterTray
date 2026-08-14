@@ -1,0 +1,129 @@
+{
+  "data": {
+    "open": {
+      "nodes": []
+    },
+    "merged": {
+      "nodes": [
+        {
+          "id": "PR_kwDOAAAAAA80mQrs",
+          "number": 1204,
+          "title": "paginate the widget catalogue endpoint",
+          "url": "https://github.com/acme/widget-service/pull/1204",
+          "mergedAt": "2026-08-14T07:22:45Z",
+          "repository": {
+            "id": "R_kgDOAAAAAQ",
+            "nameWithOwner": "acme/widget-service",
+            "isPrivate": false
+          },
+          "mergeCommit": {
+            "oid": "9f4c1ab7e0d25c3184bb6f70a1e5d8c92374ef60",
+            "statusCheckRollup": {
+              "state": "PENDING",
+              "contexts": {
+                "nodes": [
+                  {
+                    "__typename": "CheckRun",
+                    "name": "CD",
+                    "status": "IN_PROGRESS",
+                    "conclusion": null,
+                    "detailsUrl": "https://app.circleci.com/workflow/7c1d0e42-5b93-4a17-9e60-2f8db4c1a305"
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "on_master",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "detailsUrl": "https://app.circleci.com/workflow/1a9b7c33-6d20-49fe-8c41-b57e0af2d918"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "ci/circleci: build",
+                    "state": "SUCCESS",
+                    "targetUrl": "https://circleci.com/gh/acme/widget-service/14835"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "ci/circleci: build-and-push-image",
+                    "state": "PENDING",
+                    "targetUrl": "https://circleci.com/gh/acme/widget-service/14841"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "ci/circleci: tests",
+                    "state": "SUCCESS",
+                    "targetUrl": "https://circleci.com/gh/acme/widget-service/14836"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": "PR_kwDOAAAAAA81pTvd",
+          "number": 318,
+          "title": "drop the unused session cache",
+          "url": "https://github.com/acme/chat-assistant/pull/318",
+          "mergedAt": "2026-08-14T07:29:37Z",
+          "repository": {
+            "id": "R_kgDOAAAAAg",
+            "nameWithOwner": "acme/chat-assistant",
+            "isPrivate": true
+          },
+          "mergeCommit": null
+        },
+        {
+          "id": "PR_kwDOAAAAAA82rXbe",
+          "number": 77,
+          "title": "correct the retention note in the runbook",
+          "url": "https://github.com/acme/runbooks/pull/77",
+          "mergedAt": "2026-08-14T06:11:02Z",
+          "repository": {
+            "id": "R_kgDOAAAAAw",
+            "nameWithOwner": "acme/runbooks",
+            "isPrivate": false
+          },
+          "mergeCommit": {
+            "oid": "3b8e07d5c94a26f1e83b0d4759ac6182f0e7b3d4",
+            "statusCheckRollup": null
+          }
+        },
+        {
+          "id": "PR_kwDOAAAAAA83sYcf",
+          "number": 902,
+          "title": "raise the ingest batch size",
+          "url": "https://github.com/acme/ingest-worker/pull/902",
+          "mergedAt": "2026-08-14T05:48:19Z",
+          "repository": {
+            "id": "R_kgDOAAAAAA",
+            "nameWithOwner": "acme/ingest-worker",
+            "isPrivate": false
+          },
+          "mergeCommit": {
+            "oid": "c027d419b6e5f83a1d94c7602be8f5310a7d94e2",
+            "statusCheckRollup": {
+              "state": "SUCCESS",
+              "contexts": {
+                "nodes": [
+                  {
+                    "__typename": "CheckRun",
+                    "name": "CD",
+                    "status": "COMPLETED",
+                    "conclusion": "MOON_PHASE_UNFAVOURABLE",
+                    "detailsUrl": "https://app.circleci.com/workflow/44e2b0c8-9f31-4d7a-b215-6c0e83af7d19"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "ci/circleci: release",
+                    "state": "SUCCESS",
+                    "targetUrl": null
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
