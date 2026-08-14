@@ -42,6 +42,22 @@ public protocol ShipmentFetching: Sendable {
 
 extension GitHubClient: ShipmentFetching {}
 
+/// Reading which version each environment is running, out of the deployments
+/// repositories Kargo promotes into.
+///
+/// Split from `ShipmentFetching` for the same reason that one is split from
+/// `PullRequestFetching`: a deployments lookup failing must be reportable
+/// without taking the merged rows down with it.
+public protocol DeploymentFetching: Sendable {
+    /// The app folders that a service repository ships into, or an empty array
+    /// when it ships into none that can be found.
+    func discover(repo: String) async throws -> [AppLocation]
+    /// Every region's promoted version, per app folder.
+    func promotions(for locations: [AppLocation]) async throws -> [AppLocation: [PromotedVersion]]
+}
+
+extension GitHubClient: DeploymentFetching {}
+
 /// User-facing settings that outlive a launch.
 public protocol PreferenceStoring: Sendable {
     func autoUpdateEnabled() -> Bool

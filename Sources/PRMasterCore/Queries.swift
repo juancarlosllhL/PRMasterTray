@@ -140,6 +140,21 @@ enum Queries {
         return (query, variables)
     }
 
+    /// The text of one file at a repository's default branch.
+    ///
+    /// A constant document with every value bound, so nothing is assembled here
+    /// at all. Used to read a service repository's CircleCI config, which names
+    /// the image that joins it to its deployments folders.
+    static let fileText = """
+    query($owner: String!, $name: String!, $expression: String!) {
+      repository(owner: $owner, name: $name) {
+        object(expression: $expression) {
+          ... on Blob { text }
+        }
+      }
+    }
+    """
+
     /// Lists each app folder in a deployments repository, with an oid per entry.
     ///
     /// Assembled from remote data on the same terms as `containment(for:)`:

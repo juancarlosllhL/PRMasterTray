@@ -337,6 +337,27 @@ extension CompareStatus: UnknownTolerantEnum {
     static var unknownFallback: CompareStatus { .unknown }
 }
 
+struct FileTextPayload: Decodable {
+    let repository: Repository?
+
+    struct Repository: Decodable {
+        let object: Blob?
+        struct Blob: Decodable { let text: String? }
+    }
+}
+
+/// One code-search hit, in the shape GitHub's REST search returns.
+struct CodeSearchPayload: Decodable {
+    let items: [Item]
+
+    struct Item: Decodable {
+        let path: String
+        let repository: Repository
+
+        struct Repository: Decodable { let fullName: String }
+    }
+}
+
 /// One `t{n}: repository { object { entries } }` answer.
 struct PromotionTreeNode: Decodable {
     /// `null` when the app folder does not resolve at HEAD.
@@ -565,6 +586,30 @@ public enum PullRequestDecoder {
         }
 
         return payload
+    }
+
+    /// Decodes the text of a single file.
+    ///
+    /// `nil` when the file does not exist, which is not a failure: a repository
+    /// with no CircleCI config simply cannot be joined to a deployments folder
+    /// this way.
+    public static func decodeFileText(_ data: Data) throws -> String? {
+        let response: GraphQLResponse<FileTextPayload>
+        do {
+            response = try JSONDecoder().decode(GraphQLResponse<FileTextPayload>.self, from: data)
+        } catch {
+            throw PRMasterError.decoding(String(describing: error))
+        }
+
+        if let errors = response.errors, !errors.isEmpty {
+            throw PRMasterError.graphQL(errors.map(\.message))
+        }
+
+        guard let payload = response.data else {
+            throw PRMasterError.decoding("response contained neither data nor errors")
+        }
+
+        return payload.repository?.object?.text
     }
 
     /// Confirms a merge actually happened.
