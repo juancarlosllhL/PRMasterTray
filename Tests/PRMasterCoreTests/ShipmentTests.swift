@@ -199,6 +199,27 @@ struct ShipmentTests {
         #expect(shipments.first?.status == .building(workflowURL))
     }
 
+    // MARK: where the row goes
+
+    /// The pipeline while it is worth watching, the release once there is one,
+    /// and never nowhere.
+    @Test("each status has a destination worth opening")
+    func destinations() {
+        let pr = merged()
+        let releaseURL = URL(string: "https://github.com/acme/widget-service/releases/tag/v1")!
+
+        #expect(Shipment(pr: pr, status: .pending).destination == pr.url)
+        #expect(Shipment(pr: pr, status: .building(workflowURL)).destination == workflowURL)
+        #expect(
+            Shipment(pr: pr, status: .failed(name: "CD", url: workflowURL)).destination
+                == workflowURL
+        )
+        #expect(
+            Shipment(pr: pr, status: .released(version: "v1", url: releaseURL)).destination
+                == releaseURL
+        )
+    }
+
     // MARK: candidates
 
     /// Containment is only worth asking about for releases that could possibly

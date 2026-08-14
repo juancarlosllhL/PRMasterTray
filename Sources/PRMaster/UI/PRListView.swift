@@ -6,6 +6,9 @@ struct PRListView: View {
     let onOpen: (PullRequest) -> Void
     let onMerge: (PullRequest) -> Void
     let onClose: (PullRequest) -> Void
+    /// Opens whatever the row is about: the pipeline while it runs, the release
+    /// once there is one.
+    let onOpenShipment: (Shipment) -> Void
     let onOpenSettings: () -> Void
     let onQuit: () -> Void
     /// False while a debug override is active, so the app never offers an
@@ -48,6 +51,13 @@ struct PRListView: View {
             header
             Divider()
             content
+            // Outside `content` on purpose: a day with nothing open but
+            // something merged is exactly when this section is worth having,
+            // and putting it inside would hide it behind the empty state.
+            if !store.shipments.isEmpty {
+                Divider()
+                mergedSection
+            }
             // A denied permission silently disables the whole point of the
             // app, so it gets a permanent row rather than a transient hint.
             if notifications.isDenied {
@@ -62,6 +72,13 @@ struct PRListView: View {
             }
             // Not retried while the head commit is unchanged, so without this
             // the PR would just sit there behind its base branch, silently.
+            if let failure = store.lastShipmentFailure {
+                Divider()
+                warningRow(
+                    icon: "shippingbox",
+                    text: "Couldn't check what shipped — \(failure)"
+                )
+            }
             if let failure = store.lastUpdateFailure {
                 Divider()
                 warningRow(
@@ -325,6 +342,27 @@ struct PRListView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 28)
+    }
+
+    // MARK: - Recently merged
+
+    private var mergedSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Recently merged")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+                .padding(.bottom, 2)
+
+            LazyVStack(spacing: 2) {
+                ForEach(store.shipments) { shipment in
+                    ShipmentRowView(shipment: shipment) { onOpenShipment(shipment) }
+                }
+            }
+            .padding(.horizontal, 4)
+            .padding(.bottom, 4)
+        }
     }
 
     // MARK: - Stale banner

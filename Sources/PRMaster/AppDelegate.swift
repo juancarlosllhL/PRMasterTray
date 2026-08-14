@@ -314,6 +314,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 onClose: { [weak self] pr in
                     self?.confirmClose(id: pr.id, title: pr.displayTitle, url: pr.url)
                 },
+                onOpenShipment: { [weak self] shipment in
+                    self?.open(shipment.destination)
+                    self?.popover.performClose(nil)
+                },
                 onOpenSettings: { [weak self] in
                     guard let self else { return }
                     // Closed explicitly rather than left to `.transient`: the

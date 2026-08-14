@@ -61,6 +61,20 @@ public struct Shipment: Identifiable, Sendable, Equatable {
         self.pr = pr
         self.status = status
     }
+
+    /// Where the row goes when it is clicked.
+    ///
+    /// The pipeline while there is one worth watching, and the release once
+    /// there is one: a finished workflow is the least useful page of the three
+    /// by the time a version exists, and the version is what the user came for.
+    public var destination: URL {
+        switch status {
+        case .pending:
+            return pr.url
+        case .building(let url), .failed(_, let url), .released(_, let url):
+            return url
+        }
+    }
 }
 
 /// Turns a merged pull request, its checks and its repository's releases into

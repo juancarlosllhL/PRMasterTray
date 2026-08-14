@@ -1,6 +1,6 @@
 {
   "data": {
-    "search": {
+    "open": {
       "nodes": [
         {
           "id": "PR_1",
@@ -217,6 +217,103 @@
           },
           "reviews": {
             "totalCount": 1
+          }
+        }
+      ]
+    },
+    "merged": {
+      "nodes": [
+        {
+          "id": "PR_demo_merged_1",
+          "number": 1198,
+          "title": ":sparkles: cache the widget catalogue lookup",
+          "url": "https://github.com/acme/widget-service/pull/1198",
+          "mergedAt": "2026-08-14T07:50:16Z",
+          "repository": {
+            "id": "R_demo_1",
+            "nameWithOwner": "acme/widget-service",
+            "isPrivate": false
+          },
+          "mergeCommit": {
+            "oid": "9f4c1ab7e0d25c3184bb6f70a1e5d8c92374ef60",
+            "statusCheckRollup": {
+              "state": "PENDING",
+              "contexts": {
+                "nodes": [
+                  {
+                    "__typename": "CheckRun",
+                    "name": "CD",
+                    "status": "IN_PROGRESS",
+                    "conclusion": null,
+                    "detailsUrl": "https://app.circleci.com/workflow/7c1d0e42-5b93-4a17-9e60-2f8db4c1a305"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "ci/circleci: build",
+                    "state": "SUCCESS",
+                    "targetUrl": "https://circleci.com/gh/acme/widget-service/14835"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": "PR_demo_merged_2",
+          "number": 312,
+          "title": ":bug: stop the session cache leaking between tenants",
+          "url": "https://github.com/acme/chat-assistant/pull/312",
+          "mergedAt": "2026-08-14T06:50:16Z",
+          "repository": {
+            "id": "R_demo_2",
+            "nameWithOwner": "acme/chat-assistant",
+            "isPrivate": false
+          },
+          "mergeCommit": {
+            "oid": "3b8e07d5c94a26f1e83b0d4759ac6182f0e7b3d4",
+            "statusCheckRollup": {
+              "state": "FAILURE",
+              "contexts": {
+                "nodes": [
+                  {
+                    "__typename": "CheckRun",
+                    "name": "CD",
+                    "status": "COMPLETED",
+                    "conclusion": "FAILURE",
+                    "detailsUrl": "https://app.circleci.com/workflow/44e2b0c8-9f31-4d7a-b215-6c0e83af7d19"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": "PR_demo_merged_3",
+          "number": 244,
+          "title": ":recycle: split the ingest worker's retry policy out",
+          "url": "https://github.com/acme/infra/pull/244",
+          "mergedAt": "2026-08-14T04:25:16Z",
+          "repository": {
+            "id": "R_demo_3",
+            "nameWithOwner": "acme/infra",
+            "isPrivate": false
+          },
+          "mergeCommit": {
+            "oid": "c027d419b6e5f83a1d94c7602be8f5310a7d94e2",
+            "statusCheckRollup": {
+              "state": "SUCCESS",
+              "contexts": {
+                "nodes": [
+                  {
+                    "__typename": "CheckRun",
+                    "name": "CD",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "detailsUrl": "https://app.circleci.com/workflow/1a9b7c33-6d20-49fe-8c41-b57e0af2d918"
+                  }
+                ]
+              }
+            }
           }
         }
       ]

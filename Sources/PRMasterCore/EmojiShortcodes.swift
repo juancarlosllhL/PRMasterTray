@@ -96,3 +96,9 @@ extension PullRequest {
     /// only appropriate where the exact bytes matter.
     public var displayTitle: String { EmojiShortcodes.render(title) }
 }
+
+extension MergedPullRequest {
+    /// The same rule as the open rows above it: a merged row sits directly
+    /// under them, so a raw `:sparkles:` there reads as a bug in the list.
+    public var displayTitle: String { EmojiShortcodes.render(title) }
+}
