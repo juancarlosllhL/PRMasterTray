@@ -48,21 +48,26 @@ struct ShipmentRowView: View {
                             weight: palette.isMonochrome ? .semibold : .regular
                         ))
                         .foregroundStyle(palette.color(tint))
+                }
+                .lineLimit(1)
 
-                    ForEach(shipment.environments, id: \.environment) { state in
-                        if let chip = chipLabel(for: state) {
+                // A line of their own: sharing one with the repository name
+                // made the answer this row exists for compete for width with
+                // the least interesting thing on it.
+                if !chips.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(chips) { chip in
                             // verbatim: the version comes from a values file.
-                            Text(verbatim: chip)
+                            Text(verbatim: chip.label)
                                 .font(.system(
                                     size: 11,
                                     weight: palette.isMonochrome ? .semibold : .regular
                                 ))
-                                .foregroundStyle(palette.color(chipTint(for: state.status)))
-                                .layoutPriority(1)
+                                .foregroundStyle(palette.color(chip.tint))
                         }
                     }
+                    .lineLimit(1)
                 }
-                .lineLimit(1)
             }
             .help(pr.displayTitle)
 
@@ -110,6 +115,21 @@ struct ShipmentRowView: View {
         case .building:               return "Building…"
         case .failed(let name, _):    return "\(name) failed"
         case .released(let version, _): return "Released \(version)"
+        }
+    }
+
+    private struct Chip: Identifiable {
+        let id: DeployEnvironment
+        let label: String
+        let tint: ReadinessTint
+    }
+
+    /// Only the environments something is known about. An empty list means the
+    /// row keeps its original two-line shape rather than reserving a blank line.
+    private var chips: [Chip] {
+        shipment.environments.compactMap { state in
+            guard let label = chipLabel(for: state) else { return nil }
+            return Chip(id: state.environment, label: label, tint: chipTint(for: state.status))
         }
     }
 
