@@ -136,6 +136,16 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
     func mergedWindow() -> MergedWindow { lock.withLock { storedMergedWindow } }
     func setMergedWindow(_ value: MergedWindow) { lock.withLock { storedMergedWindow = value } }
 
+    private var storedAppLocations: [String: [AppLocation]] = [:]
+    var appLocationWrites = 0
+    func appLocations() -> [String: [AppLocation]] { lock.withLock { storedAppLocations } }
+    func setAppLocations(_ value: [String: [AppLocation]]) {
+        lock.withLock {
+            storedAppLocations = value
+            appLocationWrites += 1
+        }
+    }
+
     func staleThreshold() -> StaleThreshold { lock.withLock { storedThreshold } }
     func setStaleThreshold(_ value: StaleThreshold) {
         lock.withLock { storedThreshold = value }

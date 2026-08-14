@@ -74,6 +74,11 @@ public protocol PreferenceStoring: Sendable {
     func setStaleThreshold(_ value: StaleThreshold)
     func mergedWindow() -> MergedWindow
     func setMergedWindow(_ value: MergedWindow)
+    /// Discovered app folders, keyed by service repository. An empty array is a
+    /// real answer — that repository was searched and deploys nothing findable —
+    /// so it is stored rather than retried on every poll.
+    func appLocations() -> [String: [AppLocation]]
+    func setAppLocations(_ value: [String: [AppLocation]])
     /// Whether the user asked for the app to open at login. Not whether it will —
     /// macOS owns that, and `LaunchAtLoginStore` reads it from there. This records
     /// the intent, which is the only thing that can tell a registration lost to an
@@ -120,6 +125,10 @@ public final class PRStore {
     /// the open pull requests refreshed fine and must not be reported as stale
     /// because a version lookup did not.
     public private(set) var lastShipmentFailure: String?
+    /// Set when the deployments lookup failed. Its own field again, and for the
+    /// same reason: not knowing which environment is running a version says
+    /// nothing about whether the version itself is right.
+    public private(set) var lastDeploymentFailure: String?
 
     /// Whether behind PRs are brought up to date automatically. On by default;
     /// the switch exists because the alternative escape hatch is quitting.
@@ -151,6 +160,7 @@ public final class PRStore {
             if mergedWindow == .off {
                 shipments = []
                 lastShipmentFailure = nil
+                lastDeploymentFailure = nil
             }
             Task { await refresh() }
         }
@@ -202,6 +212,10 @@ public final class PRStore {
     /// merged rows still resolve from their own checks; they just carry no
     /// version.
     private let shipmentClient: ShipmentFetching?
+    /// `nil` under a debug override, and whenever there is no live client to ask.
+    /// The merged rows still carry their version; they just say nothing about
+    /// which environment is running it.
+    private let deploymentClient: DeploymentFetching?
     private let preferences: PreferenceStoring
     private let now: @Sendable () -> Date
     private let sleep: @Sendable (Duration) async throws -> Void
@@ -214,6 +228,14 @@ public final class PRStore {
     /// version is never asked about again. Pruned to the visible merges each
     /// poll, or it would grow for as long as the app runs.
     private var containmentAnswers: [ContainmentKey: Bool] = [:]
+    /// Discovered app folders per repository, loaded once and written back as
+    /// repositories are searched. Searching costs a code-search call, which is
+    /// rate-limited to roughly ten a minute, so it happens once per repository
+    /// and never again — including when the answer was "none".
+    private var appLocations: [String: [AppLocation]]
+    /// Promoted versions per repository, replaced only on a successful lookup:
+    /// yesterday's answer beats no answer, the same rule `shipments` follows.
+    private var promotions: [String: [PromotedVersion]] = [:]
     private var consecutiveFailures = 0
     private var pollTask: Task<Void, Never>?
 
@@ -223,6 +245,7 @@ public final class PRStore {
         idStore: NotifiedIDStore,
         updater: PullRequestBranchUpdating? = nil,
         shipmentClient: ShipmentFetching? = nil,
+        deploymentClient: DeploymentFetching? = nil,
         preferences: PreferenceStoring = UserDefaultsPreferences(),
         now: @escaping @Sendable () -> Date = { Date() },
         sleep: @escaping @Sendable (Duration) async throws -> Void = {
@@ -234,7 +257,9 @@ public final class PRStore {
         self.idStore = idStore
         self.updater = updater
         self.shipmentClient = shipmentClient
+        self.deploymentClient = deploymentClient
         self.preferences = preferences
+        self.appLocations = preferences.appLocations()
         self.now = now
         self.sleep = sleep
         self.notifiedIDs = idStore.load()
@@ -333,13 +358,19 @@ public final class PRStore {
         guard !merged.isEmpty else {
             shipments = []
             lastShipmentFailure = nil
+            lastDeploymentFailure = nil
+            promotions = [:]
             return
         }
+
+        await refreshPromotions(for: merged)
 
         guard let shipmentClient else {
             // No live client: the rows still say whether CI passed, from the
             // checks already in hand. They just never carry a version.
-            shipments = ShipmentResolver.resolve(merged: merged, releases: [:], containment: [:])
+            shipments = ShipmentResolver.resolve(
+                merged: merged, releases: [:], containment: [:], promotions: promotions
+            )
             return
         }
 
@@ -364,12 +395,54 @@ public final class PRStore {
             containmentAnswers.merge(answers) { _, new in new }
 
             shipments = ShipmentResolver.resolve(
-                merged: merged, releases: releases, containment: containmentAnswers
+                merged: merged,
+                releases: releases,
+                containment: containmentAnswers,
+                promotions: promotions
             )
             lastShipmentFailure = nil
         } catch {
             // `shipments` is left alone: yesterday's answer beats no answer.
             lastShipmentFailure = error.localizedDescription
+        }
+    }
+
+    // MARK: - Deployments
+
+    /// Reads what each environment is running, for the repositories in view.
+    ///
+    /// Kept apart from the release lookup above so the two fail independently: a
+    /// deployments repository being unreachable must still leave a row saying
+    /// which version was cut, and `promotions` is replaced only on success so a
+    /// flap does not blank chips that were right a minute ago.
+    private func refreshPromotions(for merged: [MergedPullRequest]) async {
+        guard let deploymentClient else { return }
+
+        let repos = Set(merged.map(\.repo))
+        do {
+            // Once per repository, ever — including a repository that turned out
+            // to deploy nothing, which is stored as an empty array rather than
+            // re-searched against a rate-limited endpoint every poll.
+            var discovered = false
+            for repo in repos where appLocations[repo] == nil {
+                appLocations[repo] = try await deploymentClient.discover(repo: repo)
+                discovered = true
+            }
+            if discovered { preferences.setAppLocations(appLocations) }
+
+            let locations = Array(Set(repos.flatMap { appLocations[$0] ?? [] }))
+            let byLocation = try await deploymentClient.promotions(for: locations)
+
+            // Re-keyed onto the repository, so a repository backing several apps
+            // is answered across all of them at once.
+            promotions = repos.reduce(into: [:]) { result, repo in
+                let versions = (appLocations[repo] ?? []).flatMap { byLocation[$0] ?? [] }
+                if !versions.isEmpty { result[repo] = versions }
+            }
+            lastDeploymentFailure = nil
+        } catch {
+            // `promotions` is left alone, for the same reason `shipments` is.
+            lastDeploymentFailure = error.localizedDescription
         }
     }
 
@@ -466,6 +539,7 @@ public struct UserDefaultsPreferences: PreferenceStoring {
     private let popoverBackgroundKey = "popoverBackground"
     private let staleThresholdKey = "staleThreshold"
     private let mergedWindowKey = "mergedWindow"
+    private let appLocationsKey = "appLocations"
     private let launchAtLoginKey = "launchAtLoginRequested"
     // UserDefaults is documented as thread-safe but predates Sendable.
     nonisolated(unsafe) private let defaults: UserDefaults
@@ -562,6 +636,20 @@ public struct UserDefaultsPreferences: PreferenceStoring {
 
     public func setMergedWindow(_ value: MergedWindow) {
         defaults.set(value.rawValue, forKey: mergedWindowKey)
+    }
+
+    public func appLocations() -> [String: [AppLocation]] {
+        // Unreadable or written by an older shape means "nothing discovered yet",
+        // which costs one search per repository to rebuild — the safe direction.
+        guard let data = defaults.data(forKey: appLocationsKey),
+              let stored = try? JSONDecoder().decode([String: [AppLocation]].self, from: data)
+        else { return [:] }
+        return stored
+    }
+
+    public func setAppLocations(_ value: [String: [AppLocation]]) {
+        guard let data = try? JSONEncoder().encode(value) else { return }
+        defaults.set(data, forKey: appLocationsKey)
     }
 
     public func launchAtLoginRequested() -> Bool {
