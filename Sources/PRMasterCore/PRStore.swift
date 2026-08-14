@@ -158,6 +158,7 @@ public final class PRStore {
             // Emptied on the spot. Waiting for a round trip to clear a section
             // the user just switched off reads as the switch not working.
             if mergedWindow == .off {
+                cancelPromotionRefresh()
                 shipments = []
                 lastShipmentFailure = nil
                 lastDeploymentFailure = nil
@@ -236,6 +237,15 @@ public final class PRStore {
     /// Promoted versions per repository, replaced only on a successful lookup:
     /// yesterday's answer beats no answer, the same rule `shipments` follows.
     private var promotions: [String: [PromotedVersion]] = [:]
+    /// The inputs the visible shipments were built from, kept so the chips can be
+    /// folded in when the deployments lookup finishes without waiting for the
+    /// next poll to re-derive everything.
+    private var resolvedMerged: [MergedPullRequest] = []
+    private var resolvedReleases: [String: [Release]] = [:]
+    /// The deployments lookup in flight, if any. At most one: on a cold cache it
+    /// takes a code search plus a read per hit, which is longer than the poll
+    /// interval, and queuing them would spend a rate-limited search every poll.
+    private var promotionTask: Task<Void, Never>?
     private var consecutiveFailures = 0
     private var pollTask: Task<Void, Never>?
 
@@ -356,21 +366,29 @@ public final class PRStore {
         // the client's own empty guard would work but would leave the intent
         // living in the adapter rather than in the decision.
         guard !merged.isEmpty else {
+            cancelPromotionRefresh()
             shipments = []
             lastShipmentFailure = nil
             lastDeploymentFailure = nil
             promotions = [:]
+            resolvedMerged = []
+            resolvedReleases = [:]
             return
         }
 
-        await refreshPromotions(for: merged)
+        // Deliberately not awaited. The deployments lookup is the slow half —
+        // on a cold cache it is a code search plus a read per hit — and making
+        // the list wait for it left the popover empty for seconds to say
+        // something the rows do not depend on. It folds its answer in when it
+        // arrives.
+        defer { startPromotionRefresh(for: merged) }
 
         guard let shipmentClient else {
             // No live client: the rows still say whether CI passed, from the
             // checks already in hand. They just never carry a version.
-            shipments = ShipmentResolver.resolve(
-                merged: merged, releases: [:], containment: [:], promotions: promotions
-            )
+            resolvedMerged = merged
+            resolvedReleases = [:]
+            rebuildShipments()
             return
         }
 
@@ -394,17 +412,29 @@ public final class PRStore {
             let answers = try await shipmentClient.resolveContainment(unanswered)
             containmentAnswers.merge(answers) { _, new in new }
 
-            shipments = ShipmentResolver.resolve(
-                merged: merged,
-                releases: releases,
-                containment: containmentAnswers,
-                promotions: promotions
-            )
+            resolvedMerged = merged
+            resolvedReleases = releases
+            rebuildShipments()
             lastShipmentFailure = nil
         } catch {
             // `shipments` is left alone: yesterday's answer beats no answer.
             lastShipmentFailure = error.localizedDescription
         }
+    }
+
+    /// Rebuilds the visible rows from the last good snapshot.
+    ///
+    /// Called both when the release lookup lands and, later, when the
+    /// deployments lookup does — so chips appear on their own rather than on
+    /// the next poll.
+    private func rebuildShipments() {
+        guard !resolvedMerged.isEmpty else { return }
+        shipments = ShipmentResolver.resolve(
+            merged: resolvedMerged,
+            releases: resolvedReleases,
+            containment: containmentAnswers,
+            promotions: promotions
+        )
     }
 
     // MARK: - Deployments
@@ -415,6 +445,32 @@ public final class PRStore {
     /// deployments repository being unreachable must still leave a row saying
     /// which version was cut, and `promotions` is replaced only on success so a
     /// flap does not blank chips that were right a minute ago.
+    /// Starts a lookup unless one is already running.
+    ///
+    /// Skipped rather than queued while one is in flight: a cold discovery
+    /// outlasts the poll interval, and stacking them would spend a rate-limited
+    /// code search per poll to learn the same thing.
+    private func startPromotionRefresh(for merged: [MergedPullRequest]) {
+        guard deploymentClient != nil, promotionTask == nil else { return }
+        promotionTask = Task { [weak self] in
+            await self?.refreshPromotions(for: merged)
+            self?.promotionTask = nil
+        }
+    }
+
+    private func cancelPromotionRefresh() {
+        promotionTask?.cancel()
+        promotionTask = nil
+    }
+
+    /// Awaits the lookup in flight.
+    ///
+    /// Exists so tests can be deterministic without sleeping. Nothing in the app
+    /// calls it — the whole point of the lookup is that nothing waits on it.
+    func awaitPromotions() async {
+        await promotionTask?.value
+    }
+
     private func refreshPromotions(for merged: [MergedPullRequest]) async {
         guard let deploymentClient else { return }
 
@@ -435,11 +491,21 @@ public final class PRStore {
 
             // Re-keyed onto the repository, so a repository backing several apps
             // is answered across all of them at once.
+            // Switched off, or the merged list moved on, while this was in the
+            // air. Writing the answer now would put chips back on a section the
+            // user has already emptied.
+            guard !Task.isCancelled else { return }
+
             promotions = repos.reduce(into: [:]) { result, repo in
                 let versions = (appLocations[repo] ?? []).flatMap { byLocation[$0] ?? [] }
                 if !versions.isEmpty { result[repo] = versions }
             }
             lastDeploymentFailure = nil
+            // Folded into the visible rows now rather than at the next poll,
+            // which is what makes the chips arrive on their own.
+            rebuildShipments()
+        } catch is CancellationError {
+            // Nothing to report: the section this belonged to is gone.
         } catch {
             // `promotions` is left alone, for the same reason `shipments` is.
             lastDeploymentFailure = error.localizedDescription

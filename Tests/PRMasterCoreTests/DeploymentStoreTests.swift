@@ -89,6 +89,46 @@ private final class SpyDeploymentClient: DeploymentFetching, @unchecked Sendable
     }
 }
 
+/// Holds the promotions lookup open until the test lets it go, so "the list did
+/// not wait" can be asserted rather than raced.
+private final class GatedDeploymentClient: DeploymentFetching, @unchecked Sendable {
+    private let lock = NSLock()
+    private let versions: [AppLocation: [PromotedVersion]]
+    private var waiting: CheckedContinuation<Void, Never>?
+    private var opened = false
+    private var _calls = 0
+
+    init(versions: [AppLocation: [PromotedVersion]]) {
+        self.versions = versions
+    }
+
+    var calls: Int { lock.withLock { _calls } }
+
+    func discover(repo: String) async throws -> [AppLocation] { [widgets] }
+
+    func promotions(for locations: [AppLocation]) async throws -> [AppLocation: [PromotedVersion]] {
+        lock.withLock { _calls += 1 }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let alreadyOpen = lock.withLock { () -> Bool in
+                if opened { return true }
+                waiting = continuation
+                return false
+            }
+            if alreadyOpen { continuation.resume() }
+        }
+        return versions
+    }
+
+    func open() {
+        let continuation = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+            opened = true
+            defer { waiting = nil }
+            return waiting
+        }
+        continuation?.resume()
+    }
+}
+
 private func promoted(_ environment: DeployEnvironment, _ region: String, _ version: String) -> PromotedVersion {
     PromotedVersion(
         file: PromotionFile(environment: environment, region: region),
@@ -102,7 +142,7 @@ struct DeploymentStoreTests {
 
     private func makeStore(
         merged: [MergedPullRequest] = [mergedPR("PR_1")],
-        deploymentClient: SpyDeploymentClient?,
+        deploymentClient: DeploymentFetching?,
         preferences: MemoryPreferences = MemoryPreferences()
     ) -> PRStore {
         PRStore(
@@ -125,6 +165,7 @@ struct DeploymentStoreTests {
         let store = makeStore(deploymentClient: SpyDeploymentClient(promotionsFail: true))
 
         await store.refresh()
+        await store.awaitPromotions()
 
         #expect(store.lastDeploymentFailure != nil)
         #expect(store.lastError == nil)
@@ -137,6 +178,7 @@ struct DeploymentStoreTests {
         let store = makeStore(deploymentClient: SpyDeploymentClient(discoverFails: true))
 
         await store.refresh()
+        await store.awaitPromotions()
 
         #expect(store.lastDeploymentFailure != nil)
         #expect(store.lastError == nil)
@@ -151,13 +193,16 @@ struct DeploymentStoreTests {
         let good = SpyDeploymentClient(versions: [widgets: [promoted(.staging, "euw1", "3.32.0")]])
         let store = makeStore(deploymentClient: good, preferences: preferences)
         await store.refresh()
+        await store.awaitPromotions()
         #expect(store.shipments.first?.environments.isEmpty == false)
 
         // A second store standing in for the next poll, with the lookup refusing.
         let failing = SpyDeploymentClient(promotionsFail: true)
         let next = makeStore(deploymentClient: failing, preferences: preferences)
         await next.refresh()
+        await next.awaitPromotions()
         await next.refresh()
+        await next.awaitPromotions()
 
         #expect(next.lastDeploymentFailure != nil)
     }
@@ -168,7 +213,65 @@ struct DeploymentStoreTests {
             deploymentClient: SpyDeploymentClient(versions: [widgets: [promoted(.staging, "euw1", "3.32.0")]])
         )
         await store.refresh()
+        await store.awaitPromotions()
         #expect(store.lastDeploymentFailure == nil)
+    }
+
+    // MARK: the list does not wait
+
+    /// The point of the change. On a cold cache the lookup is a code search plus
+    /// a read per hit, and the popover used to sit empty for all of it to say
+    /// something the rows do not depend on.
+    @Test("the rows are ready before the deployments lookup finishes")
+    func listDoesNotWaitForDeployments() async {
+        let gate = GatedDeploymentClient(versions: [widgets: [promoted(.staging, "euw1", "3.32.0")]])
+        let store = makeStore(deploymentClient: gate)
+
+        await store.refresh()
+
+        // The lookup is still held open, and the row is already here.
+        #expect(store.shipments.count == 1)
+        #expect(store.shipments.first?.environments.isEmpty == true)
+
+        gate.open()
+        await store.awaitPromotions()
+
+        // And the chips arrived on their own, with no second poll.
+        #expect(store.shipments.first?.environments.isEmpty == false)
+    }
+
+    /// A poll arriving while the previous lookup is still out must not start a
+    /// second one: on a cold cache that would spend a rate-limited code search
+    /// per poll to learn the same thing.
+    @Test("a poll during a lookup does not start a second one")
+    func lookupsDoNotPileUp() async {
+        // Gated, so the first lookup is provably still in flight when the second
+        // poll arrives rather than merely likely to be.
+        let gate = GatedDeploymentClient(versions: [:])
+        let store = makeStore(deploymentClient: gate)
+
+        await store.refresh()
+        await store.refresh()
+        await store.refresh()
+        #expect(gate.calls == 1)
+
+        gate.open()
+        await store.awaitPromotions()
+    }
+
+    /// Switching the section off while a lookup is in the air must not let its
+    /// answer put chips back afterwards.
+    @Test("switching the window off cancels the lookup in flight")
+    func windowOffCancelsInFlight() async {
+        let gate = GatedDeploymentClient(versions: [widgets: [promoted(.staging, "euw1", "3.32.0")]])
+        let store = makeStore(deploymentClient: gate)
+
+        await store.refresh()
+        store.mergedWindow = .off
+        gate.open()
+        await store.awaitPromotions()
+
+        #expect(store.shipments.isEmpty)
     }
 
     // MARK: discovery happens once
@@ -179,7 +282,9 @@ struct DeploymentStoreTests {
         let store = makeStore(deploymentClient: spy)
 
         await store.refresh()
+        await store.awaitPromotions()
         await store.refresh()
+        await store.awaitPromotions()
 
         #expect(spy.discovered == ["acme/widget-service"])
         // The promotions read still happens every poll — that is the cheap half.
@@ -194,7 +299,9 @@ struct DeploymentStoreTests {
         let store = makeStore(deploymentClient: spy)
 
         await store.refresh()
+        await store.awaitPromotions()
         await store.refresh()
+        await store.awaitPromotions()
 
         #expect(spy.discovered == ["acme/widget-service"])
     }
@@ -203,11 +310,15 @@ struct DeploymentStoreTests {
     func mappingSurvivesRelaunch() async {
         let preferences = MemoryPreferences()
         let first = SpyDeploymentClient()
-        await makeStore(deploymentClient: first, preferences: preferences).refresh()
+        let firstStore = makeStore(deploymentClient: first, preferences: preferences)
+        await firstStore.refresh()
+        await firstStore.awaitPromotions()
         #expect(preferences.appLocations() == ["acme/widget-service": [widgets]])
 
         let second = SpyDeploymentClient()
-        await makeStore(deploymentClient: second, preferences: preferences).refresh()
+        let secondStore = makeStore(deploymentClient: second, preferences: preferences)
+        await secondStore.refresh()
+        await secondStore.awaitPromotions()
         #expect(second.discovered.isEmpty)
     }
 
@@ -219,7 +330,9 @@ struct DeploymentStoreTests {
         let store = makeStore(deploymentClient: SpyDeploymentClient(), preferences: preferences)
 
         await store.refresh()
+        await store.awaitPromotions()
         await store.refresh()
+        await store.awaitPromotions()
 
         #expect(preferences.appLocationWrites == 1)
     }
@@ -232,6 +345,7 @@ struct DeploymentStoreTests {
         let store = makeStore(merged: [], deploymentClient: spy)
 
         await store.refresh()
+        await store.awaitPromotions()
 
         #expect(spy.discovered.isEmpty)
         #expect(spy.promotionCalls == 0)
@@ -247,6 +361,7 @@ struct DeploymentStoreTests {
         let store = makeStore(deploymentClient: spy, preferences: preferences)
 
         await store.refresh()
+        await store.awaitPromotions()
 
         #expect(spy.discovered.isEmpty)
         #expect(spy.promotionCalls == 0)
@@ -258,6 +373,7 @@ struct DeploymentStoreTests {
         let store = makeStore(deploymentClient: nil)
 
         await store.refresh()
+        await store.awaitPromotions()
 
         #expect(store.lastDeploymentFailure == nil)
         #expect(store.shipments.first?.environments.isEmpty == true)
