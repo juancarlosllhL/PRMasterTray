@@ -14,6 +14,34 @@ public struct AppLocation: Sendable, Hashable, Codable {
     }
 }
 
+/// One entry in an app folder, with the oid of its content.
+///
+/// The oid is what makes a values file skippable: unchanged content means an
+/// unchanged promoted version, so a steady-state poll never re-reads the text.
+public struct TreeEntry: Sendable, Equatable {
+    public let name: String
+    public let oid: String
+
+    public init(name: String, oid: String) {
+        self.name = name
+        self.oid = oid
+    }
+}
+
+/// One values file worth reading, identified by the oid its text will be cached
+/// under.
+public struct BlobRequest: Sendable, Hashable {
+    public let location: AppLocation
+    public let file: String
+    public let oid: String
+
+    public init(location: AppLocation, file: String, oid: String) {
+        self.location = location
+        self.file = file
+        self.oid = oid
+    }
+}
+
 /// Finding which app folders belong to a service repository.
 ///
 /// The mapping cannot be derived from names. `LECAnalyticsAssetsConsumerV2`

@@ -337,6 +337,37 @@ extension CompareStatus: UnknownTolerantEnum {
     static var unknownFallback: CompareStatus { .unknown }
 }
 
+/// One `t{n}: repository { object { entries } }` answer.
+struct PromotionTreeNode: Decodable {
+    /// `null` when the app folder does not resolve at HEAD.
+    let object: Tree?
+
+    struct Tree: Decodable {
+        let entries: [Entry]?
+
+        struct Entry: Decodable {
+            let name: String
+            /// `null` for an entry with no addressable content.
+            let object: Content?
+
+            struct Content: Decodable { let oid: String }
+
+            var domain: TreeEntry? {
+                object.map { TreeEntry(name: name, oid: $0.oid) }
+            }
+        }
+    }
+}
+
+/// One `b{n}: repository { object { text } }` answer.
+struct PromotionBlobNode: Decodable {
+    /// `null` when the path does not resolve, and `text` is itself null for a
+    /// binary blob.
+    let object: Blob?
+
+    struct Blob: Decodable { let text: String? }
+}
+
 /// One `t{n}: repository { ref { compare } }` answer.
 struct ContainmentNode: Decodable {
     /// `null` when GitHub cannot resolve the tag.
@@ -468,6 +499,72 @@ public enum PullRequestDecoder {
                   let contains = node.ref?.compare?.status.contains else { return }
             result[candidate.key] = contains
         }
+    }
+
+    /// Decodes the entries of each app folder, mapping each generated alias back
+    /// to the location that produced it.
+    ///
+    /// Aliases are `t0…tN` in location order, the contract
+    /// `Queries.promotionTrees(for:)` establishes. A folder GitHub could not
+    /// resolve is omitted rather than recorded as empty: an app whose tree failed
+    /// to load has not been shown to have no promotions.
+    public static func decodePromotionTrees(
+        _ data: Data,
+        locations: [AppLocation]
+    ) throws -> [AppLocation: [TreeEntry]] {
+        let payload = try aliased(PromotionTreeNode.self, from: data)
+
+        return locations.enumerated().reduce(into: [:]) { result, pair in
+            let (index, location) = pair
+            guard let node = payload["t\(index)"] ?? nil, let entries = node.object?.entries
+            else { return }
+            result[location] = entries.compactMap(\.domain)
+        }
+    }
+
+    /// Decodes the text of each values file, keyed by the oid it was asked for.
+    ///
+    /// Keyed by oid rather than by path because that is what the cache is keyed
+    /// by, and because identical content anywhere is the same promoted version.
+    /// A blob GitHub did not return is omitted rather than recorded as empty
+    /// text, which would parse as an app with no promoted version at all.
+    public static func decodePromotionBlobs(
+        _ data: Data,
+        requests: [BlobRequest]
+    ) throws -> [String: String] {
+        let payload = try aliased(PromotionBlobNode.self, from: data)
+
+        return requests.enumerated().reduce(into: [:]) { result, pair in
+            let (index, request) = pair
+            guard let node = payload["b\(index)"] ?? nil, let text = node.object?.text
+            else { return }
+            result[request.oid] = text
+        }
+    }
+
+    /// The envelope handling both aliased promotion responses share: errors
+    /// first, because GitHub reports an SSO failure as a 200 with a null
+    /// payload, which would otherwise read as nothing promoted anywhere.
+    private static func aliased<Node: Decodable>(
+        _ node: Node.Type,
+        from data: Data
+    ) throws -> [String: Node?] {
+        let response: GraphQLResponse<[String: Node?]>
+        do {
+            response = try JSONDecoder().decode(GraphQLResponse<[String: Node?]>.self, from: data)
+        } catch {
+            throw PRMasterError.decoding(String(describing: error))
+        }
+
+        if let errors = response.errors, !errors.isEmpty {
+            throw PRMasterError.graphQL(errors.map(\.message))
+        }
+
+        guard let payload = response.data else {
+            throw PRMasterError.decoding("response contained neither data nor errors")
+        }
+
+        return payload
     }
 
     /// Confirms a merge actually happened.
