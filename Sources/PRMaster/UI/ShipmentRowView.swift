@@ -48,6 +48,19 @@ struct ShipmentRowView: View {
                             weight: palette.isMonochrome ? .semibold : .regular
                         ))
                         .foregroundStyle(palette.color(tint))
+
+                    ForEach(shipment.environments, id: \.environment) { state in
+                        if let chip = chipLabel(for: state) {
+                            // verbatim: the version comes from a values file.
+                            Text(verbatim: chip)
+                                .font(.system(
+                                    size: 11,
+                                    weight: palette.isMonochrome ? .semibold : .regular
+                                ))
+                                .foregroundStyle(palette.color(chipTint(for: state.status)))
+                                .layoutPriority(1)
+                        }
+                    }
                 }
                 .lineLimit(1)
             }
@@ -100,6 +113,37 @@ struct ShipmentRowView: View {
         }
     }
 
+    /// `nil` renders nothing at all. An environment nobody can answer for is
+    /// better left silent than shown as a chip that means "we do not know".
+    private func chipLabel(for state: EnvironmentState) -> String? {
+        switch state.status {
+        case .unknown:
+            return nil
+        case .awaiting(let version), .carrying(let version):
+            // The version shown is the lowest across the regions, so a trailing
+            // "+" is what distinguishes "everywhere on this" from "at least
+            // this, and further along elsewhere".
+            let rollout = state.regionsAgree ? "" : "+"
+            return "\(name(of: state.environment)) \(version)\(rollout)"
+        }
+    }
+
+    private func name(of environment: DeployEnvironment) -> String {
+        switch environment {
+        case .staging:    return "stg"
+        case .production: return "prod"
+        }
+    }
+
+    /// Green only for a change proven to be there. Everything else is grey:
+    /// "not yet" is not a fault, so red would be a lie about a healthy rollout.
+    private func chipTint(for status: EnvironmentStatus) -> ReadinessTint {
+        switch status {
+        case .carrying: return .green
+        case .awaiting, .unknown: return .gray
+        }
+    }
+
     /// Says where the click goes, because the row gives no other clue and the
     /// destination differs by state.
     private var helpText: String {
@@ -111,6 +155,28 @@ struct ShipmentRowView: View {
     }
 
     private var accessibilityDescription: String {
-        "\(pr.repo) pull request \(pr.number), \(pr.displayTitle), \(statusLabel)"
+        let chips = shipment.environments.compactMap(spokenChip)
+        return ([
+            "\(pr.repo) pull request \(pr.number)", pr.displayTitle, statusLabel,
+        ] + chips).joined(separator: ", ")
+    }
+
+    /// Spelled out rather than read as "stg": the abbreviations are for the eye,
+    /// and "promoted to" is the honest verb — the version reached the
+    /// deployments repository, which is not the same as the cluster running it.
+    private func spokenChip(for state: EnvironmentState) -> String? {
+        let environment = state.environment == .staging ? "staging" : "production"
+        switch state.status {
+        case .unknown:
+            return nil
+        case .carrying(let version):
+            return "\(version) promoted to \(environment)\(rolloutNote(for: state))"
+        case .awaiting(let version):
+            return "\(environment) is on \(version), which does not carry this change"
+        }
+    }
+
+    private func rolloutNote(for state: EnvironmentState) -> String {
+        state.regionsAgree ? "" : ", rollout still in flight"
     }
 }

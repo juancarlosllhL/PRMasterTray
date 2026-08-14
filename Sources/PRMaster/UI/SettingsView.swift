@@ -132,7 +132,8 @@ struct SettingsView: View {
             } footer: {
                 // The claim this feature must not overstate. Said plainly here
                 // because it is the one thing somebody could act on wrongly.
-                footnote(Text("A version means the release whose tag contains your merge commit — that it was cut, not that it reached staging or production. Repositories that cut no releases show how their checks did and nothing more."))
+                footnote(Text("A version means the release whose tag contains your merge commit — that it was cut. Repositories that cut no releases show how their checks did and nothing more."))
+                footnote(Text("An **stg** or **prod** chip means Kargo committed that version to the deployments repository, and green means your merge commit is provably inside it. Promoted is not deployed: Argo CD syncs separately, so a failed sync or a crash-looping pod still shows as promoted. No chip means nothing could be established, which is never the same as nothing being there."))
             }
         }
         .formStyle(.grouped)

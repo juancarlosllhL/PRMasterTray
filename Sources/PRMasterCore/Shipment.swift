@@ -64,10 +64,19 @@ public enum EnvironmentStatus: Sendable, Equatable {
 public struct EnvironmentState: Sendable, Equatable {
     public let environment: DeployEnvironment
     public let status: EnvironmentStatus
+    /// False while the regions hold different versions, which is what a rollout
+    /// mid-flight looks like. The version reported is the lowest of them, so
+    /// this is what says "at least this, and further along elsewhere".
+    public let regionsAgree: Bool
 
-    public init(environment: DeployEnvironment, status: EnvironmentStatus) {
+    public init(
+        environment: DeployEnvironment,
+        status: EnvironmentStatus,
+        regionsAgree: Bool = true
+    ) {
         self.environment = environment
         self.status = status
+        self.regionsAgree = regionsAgree
     }
 }
 
@@ -171,7 +180,11 @@ public enum ShipmentResolver {
             } else {
                 status = .carrying(version: version)
             }
-            return EnvironmentState(environment: promotion.environment, status: status)
+            return EnvironmentState(
+                environment: promotion.environment,
+                status: status,
+                regionsAgree: promotion.regionsAgree
+            )
         }
     }
 

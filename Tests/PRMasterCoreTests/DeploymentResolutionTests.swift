@@ -214,6 +214,38 @@ struct DeploymentResolutionTests {
         #expect(states.first?.status == .unknown)
     }
 
+    // MARK: a rollout still in flight
+
+    /// The version reported is the lowest across the regions, so the row needs
+    /// to know the regions disagreed or "prod 3.31.1" reads as settled when one
+    /// region has already moved past it.
+    @Test("regions holding different versions are reported as not agreeing")
+    func rolloutInFlightIsVisible() {
+        let states = environments(
+            promotions: [
+                promoted(.staging, "euw1", "3.32.0"),
+                promoted(.staging, "use2", "3.31.2"),
+            ],
+            releases: [release("v3.31.2", createdAt: 1_500), release("v3.32.0", createdAt: 2_000)],
+            containment: [key("v3.32.0"): true, key("v3.31.2"): true]
+        )
+        #expect(states.first?.regionsAgree == false)
+        #expect(states.first?.status == .carrying(version: "3.31.2"))
+    }
+
+    @Test("regions holding the same version agree")
+    func settledRolloutAgrees() {
+        let states = environments(
+            promotions: [
+                promoted(.staging, "euw1", "3.32.0"),
+                promoted(.staging, "use2", "3.32.0"),
+            ],
+            releases: [release("v3.32.0", createdAt: 2_000)],
+            containment: [key("v3.32.0"): true]
+        )
+        #expect(states.first?.regionsAgree == true)
+    }
+
     // MARK: absence
 
     @Test("a repository with no known apps reports no environments at all")

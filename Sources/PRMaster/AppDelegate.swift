@@ -60,6 +60,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // GitHub. A fixture's repository IDs simply are not worth asking
             // about, and the merged rows still show whether their checks passed.
             shipmentClient: Debug.overridesActive ? nil : client,
+            // Absent under an override for the same reason, and with one more:
+            // discovery spends a code-search call, which is rate-limited to
+            // roughly ten a minute, and a fixture's repository names would spend
+            // them looking for deployments repositories that do not exist.
+            deploymentClient: Debug.overridesActive ? nil : client,
             preferences: UserDefaultsPreferences()
         )
 
