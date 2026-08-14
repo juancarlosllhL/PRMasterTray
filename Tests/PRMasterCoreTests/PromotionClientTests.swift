@@ -169,15 +169,57 @@ struct PromotionClientTests {
           {"path":".stages/stg-euw1-core/widget-service/values.yaml","repository":{"full_name":"acme/widget-deployments"}}
         ]}
         """
-        let (client, stub) = makeClient([json(config), json(hits)])
+        let declaring = #"{"data":{"repository":{"object":{"text":"appName: acme-widget\n"}}}}"#
+        // Only the real hit is read: the rendered copy is dropped before costing
+        // a request.
+        let (client, stub) = makeClient([json(config), json(hits), json(declaring)])
 
         let locations = try await client.discover(repo: "acme/widget-service")
 
         #expect(locations == [widgets])
-        let search = try #require(stub.requests.last?.url?.absoluteString)
+        #expect(stub.requests.count == 3)
+        let search = try #require(stub.requests[1].url?.absoluteString)
         #expect(search.contains("search/code"))
         // Scoped to the service repository's own organisation.
         #expect(search.contains("acme"))
+    }
+
+    /// Code search matches substrings, so a file whose only occurrence of the
+    /// image is inside an unrelated secret name comes back as a hit. Accepting
+    /// it would put one service's versions on another service's rows.
+    @Test("a hit that only mentions the image in passing is rejected")
+    func mentionOnlyHitIsRejected() async throws {
+        let config = #"{"data":{"repository":{"object":{"text":"    repository: acme-widget\n"}}}}"#
+        let hits = """
+        {"total_count":2,"items":[
+          {"path":"widget-service/values.yaml","repository":{"full_name":"acme/widget-deployments"}},
+          {"path":"gadget-service/values.yaml","repository":{"full_name":"acme/widget-deployments"}}
+        ]}
+        """
+        let declaring = #"{"data":{"repository":{"object":{"text":"appName: acme-widget\n"}}}}"#
+        let mentioning = #"""
+        {"data":{"repository":{"object":{"text":"appName: acme-gadget\nsecretName: ch-acme-widget-credentials\n"}}}}
+        """#
+        let (client, stub) = makeClient([json(config), json(hits), json(declaring), json(mentioning)])
+
+        #expect(try await client.discover(repo: "acme/widget-service") == [widgets])
+        #expect(stub.requests.count == 4)
+    }
+
+    @Test("a hit whose file cannot be read is dropped rather than trusted")
+    func unreadableHitIsDropped() async throws {
+        let config = #"{"data":{"repository":{"object":{"text":"    repository: acme-widget\n"}}}}"#
+        let hits = """
+        {"total_count":1,"items":[
+          {"path":"widget-service/values.yaml","repository":{"full_name":"acme/widget-deployments"}}
+        ]}
+        """
+        let (client, stub) = makeClient([
+            json(config), json(hits), json(#"{"data":{"repository":{"object":null}}}"#),
+        ])
+
+        #expect(try await client.discover(repo: "acme/widget-service").isEmpty)
+        #expect(stub.requests.count == 3)
     }
 
     @Test("the search query is url encoded rather than pasted together")

@@ -72,6 +72,38 @@ public enum AppDiscovery {
             }
     }
 
+    /// Whether a values file *declares* the image, rather than merely mentioning
+    /// it somewhere.
+    ///
+    /// Code search is token-based, so an image name matches files that only
+    /// contain it as a substring of something else — a real example being
+    /// `secretName: clickhouseuser-ch-lec-ai-chat-assistant-credentials` in an
+    /// unrelated service, which would otherwise put that service's versions on
+    /// this one's rows.
+    ///
+    /// Three keys count as a declaration, and all three are needed: `appName`
+    /// and the image disagree whenever a chart is named in the plural and its
+    /// image in the singular, and only the Kargo subscription is present in a
+    /// `kargo/values.yaml`.
+    public static func declares(image: String, in text: String) -> Bool {
+        for line in text.split(separator: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "- "))
+            guard let colon = trimmed.firstIndex(of: ":") else { continue }
+
+            let key = String(trimmed[trimmed.startIndex..<colon])
+            guard key == "appName" || key == "repositoryName" || key == "imageTag" else { continue }
+
+            let value = trimmed[trimmed.index(after: colon)...]
+                .trimmingCharacters(in: .whitespaces)
+                .trimmingCharacters(in: quotes)
+            // The tag is a registry path; the name is the last segment of it.
+            let named = value.split(separator: "/").last.map(String.init) ?? value
+            if named == image { return true }
+        }
+        return false
+    }
+
     /// The app folders behind a set of code-search hits.
     ///
     /// `.stages/` holds a rendered copy of every app, one per cluster. Kargo

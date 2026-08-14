@@ -94,21 +94,36 @@ public actor GitHubClient {
     /// throwing when the repository has no CircleCI config or names no image:
     /// plenty of repositories deploy nothing, and that is not an error.
     public func discover(repo: String) async throws -> [AppLocation] {
+        guard let config = try await fileText(repo: repo, path: ".circleci/config.yml")
+        else { return [] }
+
+        var verified: [(repo: String, path: String)] = []
+        for image in AppDiscovery.imageNames(inCircleCIConfig: config) {
+            for hit in try await searchCode(image: image, org: Self.owner(of: repo)) {
+                // Rendered copies are dropped before being read: they would
+                // declare the image just as truthfully and cost a request each.
+                guard !hit.path.hasPrefix(".stages/") else { continue }
+                // Search matches a substring; only a declaration counts. A file
+                // that cannot be read is dropped rather than trusted.
+                guard let text = try await fileText(repo: hit.repo, path: hit.path),
+                      AppDiscovery.declares(image: image, in: text)
+                else { continue }
+                verified.append(hit)
+            }
+        }
+        return AppDiscovery.locations(fromSearchPaths: verified)
+    }
+
+    private func fileText(repo: String, path: String) async throws -> String? {
         let data = try await perform(
             query: Queries.fileText,
             variables: [
                 "owner": .string(Self.owner(of: repo)),
                 "name": .string(Self.name(of: repo)),
-                "expression": .string("HEAD:.circleci/config.yml"),
+                "expression": .string("HEAD:\(path)"),
             ]
         )
-        guard let config = try PullRequestDecoder.decodeFileText(data) else { return [] }
-
-        var hits: [(repo: String, path: String)] = []
-        for image in AppDiscovery.imageNames(inCircleCIConfig: config) {
-            hits += try await searchCode(image: image, org: Self.owner(of: repo))
-        }
-        return AppDiscovery.locations(fromSearchPaths: hits)
+        return try PullRequestDecoder.decodeFileText(data)
     }
 
     /// Every region's promoted version, per app folder.

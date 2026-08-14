@@ -152,6 +152,69 @@ struct AppDiscoveryTests {
         #expect(AppDiscovery.locations(fromSearchPaths: []).isEmpty)
     }
 
+    // MARK: a hit has to declare the image, not just mention it
+
+    /// The case that made this necessary. Code search is token-based, so
+    /// `lec-ai-chat-assistant` matches a file whose only occurrence of it is
+    /// inside an unrelated ClickHouse secret name. Accepting that hit would put
+    /// one service's versions on another service's rows.
+    @Test("an image named only inside a secret is not a declaration")
+    func mentionInsideASecretIsRejected() {
+        let values = """
+        appName: lec-analytics-assets-consumer-v2
+        imageTag: "{{ .Values.ecrRegistryUrl }}/lec-analytics-asset-consumer-v2"
+        clickhouse:
+          secretName: clickhouseuser-ch-lec-ai-chat-assistant-credentials
+        """
+        #expect(AppDiscovery.declares(image: "lec-ai-chat-assistant", in: values) == false)
+    }
+
+    @Test("appName naming the image exactly is a declaration")
+    func appNameDeclares() {
+        #expect(AppDiscovery.declares(image: "lec-ai-chat-assistant", in: "appName: lec-ai-chat-assistant"))
+    }
+
+    /// The plural mismatch: this chart's `appName` is not the image it runs, so
+    /// the image tag is what identifies it. Rejecting this would lose a real app.
+    @Test("imageTag ending in the image is a declaration even when appName differs")
+    func imageTagDeclares() {
+        let values = """
+        appName: lec-analytics-assets-consumer-v2
+        imageTag: "{{ .Values.ecrRegistryUrl }}/lec-analytics-asset-consumer-v2"
+        """
+        #expect(AppDiscovery.declares(image: "lec-analytics-asset-consumer-v2", in: values))
+        // And the plural spelling is not this app's image, however close it looks.
+        #expect(AppDiscovery.declares(image: "lec-analytics-assets-consumer", in: values) == false)
+    }
+
+    @Test("a kargo subscription naming the image is a declaration")
+    func repositoryNameDeclares() {
+        let kargo = """
+        app-kargo:
+          imageSubscriptions:
+            - repositoryName: lec-analytics-asset-consumer-v2
+              updateKeys: ["stableVersion"]
+        """
+        #expect(AppDiscovery.declares(image: "lec-analytics-asset-consumer-v2", in: kargo))
+    }
+
+    /// A longer name that merely starts with the image is a different image.
+    @Test("a longer image name is not the same declaration")
+    func prefixIsNotAMatch() {
+        #expect(AppDiscovery.declares(image: "lec-ai-chat", in: "appName: lec-ai-chat-assistant") == false)
+        #expect(
+            AppDiscovery.declares(
+                image: "lec-ai-chat",
+                in: "imageTag: \"{{ .Values.ecrRegistryUrl }}/lec-ai-chat-assistant\""
+            ) == false
+        )
+    }
+
+    @Test("a file mentioning the image nowhere declares nothing")
+    func noMentionNoDeclaration() {
+        #expect(AppDiscovery.declares(image: "lec-ai-chat-assistant", in: "host: eu.example.com") == false)
+    }
+
     // MARK: persistence
 
     /// Discovered mappings are cached to UserDefaults, so the shape has to
