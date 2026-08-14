@@ -35,7 +35,7 @@ private final class StubClient: PullRequestFetching, @unchecked Sendable {
         self.merged = merged
     }
 
-    func fetchMyPullRequests() async throws -> PullRequestSnapshot {
+    func fetchMyPullRequests(mergedWindow: MergedWindow) async throws -> PullRequestSnapshot {
         let next: Result<[PullRequest], PRMasterError> = lock.withLock {
             calls += 1
             return results.isEmpty ? .success([]) : results.removeFirst()
@@ -98,6 +98,7 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
     private var storedMonochrome: Bool
     private var storedBackground: PopoverBackground
     private var storedThreshold: StaleThreshold
+    private var storedMergedWindow: MergedWindow
     private var storedLaunchAtLogin: Bool
 
     init(
@@ -107,6 +108,7 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
         monochrome: Bool = false,
         background: PopoverBackground = .liquidGlass,
         staleThreshold: StaleThreshold = .oneMonth,
+        mergedWindow: MergedWindow = .oneDay,
         launchAtLogin: Bool = false
     ) {
         enabled = autoUpdate
@@ -115,6 +117,7 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
         storedMonochrome = monochrome
         storedBackground = background
         storedThreshold = staleThreshold
+        storedMergedWindow = mergedWindow
         storedLaunchAtLogin = launchAtLogin
     }
 
@@ -130,6 +133,9 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
     func setPopoverBackground(_ value: PopoverBackground) {
         lock.withLock { storedBackground = value }
     }
+    func mergedWindow() -> MergedWindow { lock.withLock { storedMergedWindow } }
+    func setMergedWindow(_ value: MergedWindow) { lock.withLock { storedMergedWindow = value } }
+
     func staleThreshold() -> StaleThreshold { lock.withLock { storedThreshold } }
     func setStaleThreshold(_ value: StaleThreshold) {
         lock.withLock { storedThreshold = value }

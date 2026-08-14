@@ -59,11 +59,14 @@ public enum GraphQLValue: Sendable, Equatable {
     case string(String)
     /// A list of node IDs, for `nodes(ids:)`.
     case ids([String])
+    /// A page size, for `first:`.
+    case int(Int)
 
     var jsonObject: Any {
         switch self {
         case .string(let value): return value
         case .ids(let values):   return values
+        case .int(let value):    return value
         }
     }
 }

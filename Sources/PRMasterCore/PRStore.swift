@@ -3,7 +3,7 @@ import Observation
 
 /// The subset of `GitHubClient` the store needs, so tests can stub it.
 public protocol PullRequestFetching: Sendable {
-    func fetchMyPullRequests() async throws -> PullRequestSnapshot
+    func fetchMyPullRequests(mergedWindow: MergedWindow) async throws -> PullRequestSnapshot
 }
 
 extension GitHubClient: PullRequestFetching {}
@@ -36,7 +36,7 @@ extension GitHubClient: PullRequestBranchUpdating {}
 /// `PullRequestFetching` because they fail separately, and their failure must
 /// not be allowed to look like the list failing.
 public protocol ShipmentFetching: Sendable {
-    func fetchReleases(repoIDs: [String]) async throws -> [String: [Release]]
+    func fetchReleases(repoIDs: [String], depth: Int) async throws -> [String: [Release]]
     func resolveContainment(_ candidates: [ContainmentCandidate]) async throws -> [ContainmentKey: Bool]
 }
 
@@ -56,6 +56,8 @@ public protocol PreferenceStoring: Sendable {
     func setPopoverBackground(_ value: PopoverBackground)
     func staleThreshold() -> StaleThreshold
     func setStaleThreshold(_ value: StaleThreshold)
+    func mergedWindow() -> MergedWindow
+    func setMergedWindow(_ value: MergedWindow)
     /// Whether the user asked for the app to open at login. Not whether it will —
     /// macOS owns that, and `LaunchAtLoginStore` reads it from there. This records
     /// the intent, which is the only thing that can tell a registration lost to an
@@ -116,6 +118,26 @@ public final class PRStore {
     /// state here to recompute, so unlike `filter` this setter only has to persist.
     public var staleThreshold: StaleThreshold {
         didSet { preferences.setStaleThreshold(staleThreshold) }
+    }
+
+    /// How far back the merged section reaches.
+    ///
+    /// Unlike `staleThreshold`, this one cannot be answered from the snapshot in
+    /// hand: widening it asks for merges the last search never requested. So it
+    /// persists and then kicks a refresh, rather than re-deriving in place and
+    /// showing a wider window with nothing new in it.
+    public var mergedWindow: MergedWindow {
+        didSet {
+            guard mergedWindow != oldValue else { return }
+            preferences.setMergedWindow(mergedWindow)
+            // Emptied on the spot. Waiting for a round trip to clear a section
+            // the user just switched off reads as the switch not working.
+            if mergedWindow == .off {
+                shipments = []
+                lastShipmentFailure = nil
+            }
+            Task { await refresh() }
+        }
     }
 
     /// Which pull requests the user wants to see. Writing to it re-derives the
@@ -203,6 +225,7 @@ public final class PRStore {
         self.autoUpdateEnabled = preferences.autoUpdateEnabled()
         self.filter = preferences.filter()
         self.staleThreshold = preferences.staleThreshold()
+        self.mergedWindow = preferences.mergedWindow()
     }
 
     /// How long the loop will wait before the next refresh.
@@ -224,7 +247,7 @@ public final class PRStore {
         var freshMerged: [MergedPullRequest]?
 
         do {
-            let fetched = try await client.fetchMyPullRequests()
+            let fetched = try await client.fetchMyPullRequests(mergedWindow: mergedWindow)
             // Everything downstream sees the filtered list, deliberately: a
             // hidden PR must not notify, must not be updated on a timer, and
             // must not sit in the menu bar count. `allPRs` keeps the unfiltered
@@ -232,9 +255,7 @@ public final class PRStore {
             let fresh = filter.apply(to: fetched.open)
             // Hidden means hidden after the merge too, and the window is the
             // same one the query asked for.
-            freshMerged = ShipmentRetention.recent(
-                filter.apply(to: fetched.merged), now: now()
-            )
+            freshMerged = mergedWindow.recent(filter.apply(to: fetched.merged), now: now())
 
             // Only reached on success, which is what guarantees a network flap
             // cannot be mistaken for every PR going ready at once.
@@ -289,6 +310,16 @@ public final class PRStore {
     /// Turns the merged pull requests into shipments, asking GitHub only about
     /// the releases it has not already answered for.
     private func resolveShipments(_ merged: [MergedPullRequest]) async {
+        // Nothing in view — the window is off, or everything aged out. The
+        // section empties, and no request goes out to establish that. Relying on
+        // the client's own empty guard would work but would leave the intent
+        // living in the adapter rather than in the decision.
+        guard !merged.isEmpty else {
+            shipments = []
+            lastShipmentFailure = nil
+            return
+        }
+
         guard let shipmentClient else {
             // No live client: the rows still say whether CI passed, from the
             // checks already in hand. They just never carry a version.
@@ -303,7 +334,9 @@ public final class PRStore {
 
         do {
             let repoIDs = Array(Set(merged.map(\.repositoryID)))
-            let releases = try await shipmentClient.fetchReleases(repoIDs: repoIDs)
+            let releases = try await shipmentClient.fetchReleases(
+                repoIDs: repoIDs, depth: mergedWindow.releaseDepth
+            )
 
             // Only the unanswered ones: a shipment already resolved to a version
             // would otherwise be re-compared on every poll for a day.
@@ -416,6 +449,7 @@ public struct UserDefaultsPreferences: PreferenceStoring {
     private let monochromeKey = "highContrastMonochrome"
     private let popoverBackgroundKey = "popoverBackground"
     private let staleThresholdKey = "staleThreshold"
+    private let mergedWindowKey = "mergedWindow"
     private let launchAtLoginKey = "launchAtLoginRequested"
     // UserDefaults is documented as thread-safe but predates Sendable.
     nonisolated(unsafe) private let defaults: UserDefaults
@@ -499,6 +533,19 @@ public struct UserDefaultsPreferences: PreferenceStoring {
 
     public func setStaleThreshold(_ value: StaleThreshold) {
         defaults.set(value.rawValue, forKey: staleThresholdKey)
+    }
+
+    public func mergedWindow() -> MergedWindow {
+        // Absent means one day, which is what the section did before this
+        // setting existed. Unrecognised falls back the same way rather than to
+        // `off`: a downgrade or a stray `defaults write` must not silently empty
+        // the section, which is the one failure nobody would notice.
+        defaults.string(forKey: mergedWindowKey)
+            .flatMap(MergedWindow.init(rawValue:)) ?? .oneDay
+    }
+
+    public func setMergedWindow(_ value: MergedWindow) {
+        defaults.set(value.rawValue, forKey: mergedWindowKey)
     }
 
     public func launchAtLoginRequested() -> Bool {

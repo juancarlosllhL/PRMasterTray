@@ -24,10 +24,14 @@ public actor GitHubClient {
     /// The merged half is decoded from the same body as the open one, so a poll
     /// still costs a single round trip and the two can never describe different
     /// moments.
-    public func fetchMyPullRequests() async throws -> PullRequestSnapshot {
+    public func fetchMyPullRequests(
+        mergedWindow: MergedWindow = .oneDay
+    ) async throws -> PullRequestSnapshot {
         let data = try await perform(
             query: Queries.myPullRequests,
-            variables: ["mergedQuery": .string(Self.mergedSearch(now: Date()))]
+            variables: [
+                "mergedQuery": .string(Self.mergedSearch(window: mergedWindow, now: Date()))
+            ]
         )
         return PullRequestSnapshot(
             open: try PullRequestDecoder.decodeSearch(data),
@@ -35,20 +39,22 @@ public actor GitHubClient {
         )
     }
 
-    static func mergedSearch(now: Date) -> String {
+    static func mergedSearch(window: MergedWindow, now: Date) -> String {
         "is:pr is:merged author:@me archived:false "
-            + "\(ShipmentRetention.mergedQualifier(now: now)) sort:updated-desc"
+            + "\(window.mergedQualifier(now: now)) sort:updated-desc"
     }
 
     /// The most recent releases of each repository, keyed by node ID.
     ///
     /// Skips the request entirely when nothing merged, which is most of the day:
     /// a lookup about no repositories is a rate-limit point spent on nothing.
-    public func fetchReleases(repoIDs: [String]) async throws -> [String: [Release]] {
-        guard !repoIDs.isEmpty else { return [:] }
+    public func fetchReleases(
+        repoIDs: [String], depth: Int = 5
+    ) async throws -> [String: [Release]] {
+        guard !repoIDs.isEmpty, depth > 0 else { return [:] }
         let data = try await perform(
             query: Queries.releases,
-            variables: ["repoIds": .ids(repoIDs)]
+            variables: ["repoIds": .ids(repoIDs), "first": .int(depth)]
         )
         return try PullRequestDecoder.decodeReleases(data)
     }

@@ -9,16 +9,19 @@ import PRMasterCore
 /// or `AppearanceStore`, both of which persist and take effect on the spot — so
 /// there is no Save button, and nothing to undo but the switch itself.
 ///
-/// Two tabs, because those are two unrelated jobs. Which pull requests exist has
-/// nothing to do with what colour they are, and the appearance controls arrived
-/// last, which had them sitting underneath an organization list of unbounded
-/// length — the one place in the window nobody scrolls to.
+/// Three tabs, because those are three unrelated jobs. Which pull requests exist
+/// has nothing to do with what colour they are, and the appearance controls
+/// arrived last, which had them sitting underneath an organization list of
+/// unbounded length — the one place in the window nobody scrolls to. Merged gets
+/// its own rather than joining Pull Requests: everything on that tab is about
+/// what is still open, and burying the one control about what already shipped at
+/// the bottom of it would be the same mistake again.
 struct SettingsView: View {
     @Bindable var store: PRStore
     @Bindable var appearance: AppearanceStore
 
     private enum Tab: String {
-        case pullRequests, appearance
+        case pullRequests, merged, appearance
     }
 
     /// Only ever moved by a click, except under `PRMASTER_SETTINGS_TAB`, which is
@@ -30,6 +33,9 @@ struct SettingsView: View {
             pullRequests
                 .tabItem { Label("Pull Requests", systemImage: "arrow.triangle.pull") }
                 .tag(Tab.pullRequests)
+            mergedSettings
+                .tabItem { Label("Merged", systemImage: "shippingbox") }
+                .tag(Tab.merged)
             appearanceSettings
                 .tabItem { Label("Appearance", systemImage: "paintbrush") }
                 .tag(Tab.appearance)
@@ -98,6 +104,55 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    /// What happens to them after they are merged.
+    private var mergedSettings: some View {
+        Form {
+            Section {
+                Picker("Keep merged pull requests for", selection: $store.mergedWindow) {
+                    ForEach(MergedWindow.allCases, id: \.self) { window in
+                        Text(verbatim: window.label).tag(window)
+                    }
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text("Recently merged")
+            } footer: {
+                // Three things a user cannot work out by looking: where the
+                // section is, what the version actually means, and that Off is
+                // how you get rid of it.
+                footnote(Text("The popover lists what you merged inside this window and what became of it — its pipeline still building, the check that failed, or the version it went out in. Measured from when a pull request was merged, so the section empties itself on this schedule. Off hides it entirely."))
+            }
+
+            Section {
+                footnote(Text(verbatim: versionSummary))
+            } header: {
+                Text("About the version")
+            } footer: {
+                // The claim this feature must not overstate. Said plainly here
+                // because it is the one thing somebody could act on wrongly.
+                footnote(Text("A version means the release whose tag contains your merge commit — that it was cut, not that it reached staging or production. Repositories that cut no releases show how their checks did and nothing more."))
+            }
+        }
+        .formStyle(.grouped)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    /// Says what the setting is worth right now, the same way the private
+    /// repositories footer does — a window with nothing in it is the difference
+    /// between a setting that does nothing and one somebody is looking for.
+    private var versionSummary: String {
+        guard store.mergedWindow != .off else {
+            return "The section is switched off, so nothing merged is listed."
+        }
+        let count = store.shipments.count
+        switch count {
+        case 0: return "Nothing of yours has merged inside this window."
+        case 1: return "1 merged pull request is listed right now."
+        default: return "\(count) merged pull requests are listed right now."
+        }
     }
 
     /// How those pull requests are drawn.

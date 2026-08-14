@@ -65,14 +65,15 @@ enum Queries {
     ///
     /// Keyed by node ID rather than by owner and name: the merged search already
     /// returns `repository { id }`, so the IDs are in hand and no remote string
-    /// has to be interpolated anywhere. Five is enough to cover a repository that
-    /// cut several releases while a pipeline was running.
+    /// has to be interpolated anywhere. How many to ask for is the window's
+    /// call — see `MergedWindow.releaseDepth`, where it is a correctness matter
+    /// rather than a tuning one.
     static let releases = """
-    query($repoIds: [ID!]!) {
+    query($repoIds: [ID!]!, $first: Int!) {
       nodes(ids: $repoIds) {
         ... on Repository {
           id
-          releases(first: 5, orderBy: {field: CREATED_AT, direction: DESC}) {
+          releases(first: $first, orderBy: {field: CREATED_AT, direction: DESC}) {
             nodes {
               tagName
               url

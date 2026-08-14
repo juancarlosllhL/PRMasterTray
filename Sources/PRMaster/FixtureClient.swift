@@ -13,7 +13,7 @@ import PRMasterCore
 struct FixtureClient: PullRequestFetching {
     let path: String
 
-    func fetchMyPullRequests() async throws -> PullRequestSnapshot {
+    func fetchMyPullRequests(mergedWindow: MergedWindow) async throws -> PullRequestSnapshot {
         let data = try Data(contentsOf: URL(fileURLWithPath: path))
         return PullRequestSnapshot(
             open: try PullRequestDecoder.decodeSearch(data),
@@ -29,7 +29,7 @@ struct FixtureClient: PullRequestFetching {
 /// Always fails, so the error states can be inspected on demand.
 struct FailingClient: PullRequestFetching {
     let error: PRMasterError
-    func fetchMyPullRequests() async throws -> PullRequestSnapshot { throw error }
+    func fetchMyPullRequests(mergedWindow: MergedWindow) async throws -> PullRequestSnapshot { throw error }
 }
 
 /// Succeeds `successes` times then fails forever.
@@ -49,14 +49,14 @@ final class FlakyClient: PullRequestFetching, @unchecked Sendable {
         self.error = error
     }
 
-    func fetchMyPullRequests() async throws -> PullRequestSnapshot {
+    func fetchMyPullRequests(mergedWindow: MergedWindow) async throws -> PullRequestSnapshot {
         let allowed = lock.withLock { () -> Bool in
             guard remaining > 0 else { return false }
             remaining -= 1
             return true
         }
         guard allowed else { throw error }
-        return try await base.fetchMyPullRequests()
+        return try await base.fetchMyPullRequests(mergedWindow: mergedWindow)
     }
 }
 

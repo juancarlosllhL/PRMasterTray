@@ -59,7 +59,7 @@ private final class SnapshotClient: PullRequestFetching, @unchecked Sendable {
         self.merged = merged
     }
 
-    func fetchMyPullRequests() async throws -> PullRequestSnapshot {
+    func fetchMyPullRequests(mergedWindow: MergedWindow) async throws -> PullRequestSnapshot {
         let next: Result<[PullRequest], PRMasterError> = lock.withLock {
             results.isEmpty ? .success([]) : results.removeFirst()
         }
@@ -79,6 +79,7 @@ private final class SpyShipmentClient: ShipmentFetching, @unchecked Sendable {
     private let releasesFail: Bool
     private var _containmentAsks: [[ContainmentCandidate]] = []
     private var _releaseCalls = 0
+    private var _depthsAsked: [Int] = []
 
     init(
         releases: [String: [Release]] = [:],
@@ -92,9 +93,13 @@ private final class SpyShipmentClient: ShipmentFetching, @unchecked Sendable {
 
     var containmentAsks: [[ContainmentCandidate]] { lock.withLock { _containmentAsks } }
     var releaseCalls: Int { lock.withLock { _releaseCalls } }
+    var depthsAsked: [Int] { lock.withLock { _depthsAsked } }
 
-    func fetchReleases(repoIDs: [String]) async throws -> [String: [Release]] {
-        lock.withLock { _releaseCalls += 1 }
+    func fetchReleases(repoIDs: [String], depth: Int) async throws -> [String: [Release]] {
+        lock.withLock {
+            _releaseCalls += 1
+            _depthsAsked.append(depth)
+        }
         if releasesFail { throw ReleaseFailure() }
         return releases
     }
@@ -115,14 +120,15 @@ struct ShipmentStoreTests {
         open: [Result<[PullRequest], PRMasterError>] = [.success([])],
         merged: [MergedPullRequest] = [],
         shipmentClient: SpyShipmentClient? = SpyShipmentClient(),
-        filter: PRFilter = PRFilter()
+        filter: PRFilter = PRFilter(),
+        preferences: MemoryPreferences? = nil
     ) -> (PRStore, SpyShipmentClient?) {
         let store = PRStore(
             client: SnapshotClient(open, merged: merged),
             notifier: SilentNotifier(),
             idStore: EmptyIDStore(),
             shipmentClient: shipmentClient,
-            preferences: MemoryPreferences(filter: filter),
+            preferences: preferences ?? MemoryPreferences(filter: filter),
             now: { pollTime },
             sleep: { _ in }
         )
@@ -245,6 +251,74 @@ struct ShipmentStoreTests {
 
         await store.refresh()
         #expect(store.shipments.map(\.id) == ["fresh"])
+    }
+
+    // MARK: the window setting
+
+    /// Off means off: no rows, and no requests spent finding out about rows
+    /// nobody is going to see.
+    @Test("off produces no shipments and asks GitHub nothing about releases")
+    func offAsksNothing() async {
+        let client = SpyShipmentClient(releases: ["R_1": [release("v1.226.0")]])
+        let store = PRStore(
+            client: SnapshotClient([.success([])], merged: [mergedPR("m1")]),
+            notifier: SilentNotifier(),
+            idStore: EmptyIDStore(),
+            shipmentClient: client,
+            preferences: MemoryPreferences(mergedWindow: .off),
+            now: { pollTime },
+            sleep: { _ in }
+        )
+
+        await store.refresh()
+
+        #expect(store.shipments.isEmpty)
+        #expect(client.releaseCalls == 0, "nothing merged in view, so nothing to look up")
+    }
+
+    /// Switching it off must empty the section on the spot. Waiting for a round
+    /// trip to clear rows the user just dismissed reads as the switch not working.
+    @Test("switching the window off clears the section immediately")
+    func switchingOffClearsAtOnce() async {
+        let client = SpyShipmentClient(
+            releases: ["R_1": [release("v1.226.0")]],
+            answers: [ContainmentKey(pullRequestID: "m1", tagName: "v1.226.0"): true]
+        )
+        let (store, _) = makeStore(merged: [mergedPR("m1")], shipmentClient: client)
+
+        await store.refresh()
+        #expect(store.shipments.count == 1)
+
+        store.mergedWindow = .off
+        #expect(store.shipments.isEmpty, "cleared without waiting for a refresh")
+    }
+
+    /// A wider window reaches back past merges the narrower one dropped.
+    @Test("a wider window keeps merges the default would have dropped")
+    func widerWindowKeepsMore() async {
+        let twoDaysAgo = pollTime.addingTimeInterval(-48 * 3600)
+        let (store, _) = makeStore(
+            merged: [mergedPR("fresh"), mergedPR("older", mergedAt: twoDaysAgo)],
+            preferences: MemoryPreferences(mergedWindow: .threeDays)
+        )
+
+        await store.refresh()
+        #expect(store.shipments.map(\.id) == ["fresh", "older"])
+    }
+
+    /// The page size is the window's call, because containment is only ever
+    /// decided among the releases actually fetched.
+    @Test("the releases page size follows the window")
+    func releaseDepthFollowsWindow() async {
+        let client = SpyShipmentClient(releases: [:])
+        let (store, _) = makeStore(
+            merged: [mergedPR("m1")],
+            shipmentClient: client,
+            preferences: MemoryPreferences(mergedWindow: .oneWeek)
+        )
+
+        await store.refresh()
+        #expect(client.depthsAsked == [MergedWindow.oneWeek.releaseDepth])
     }
 
     // MARK: no live client

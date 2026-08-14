@@ -23,10 +23,11 @@ GitHub would merge right now.
   month, three months or six months.
 - Pull requests that fall behind their base branch are brought up to date
   automatically. Can be turned off from the gear menu.
-- **Recently merged** lists what you merged in the last day and what became of
+- **Recently merged** lists what you merged recently and what became of
   it: its CircleCI pipeline still building, the name of the check that failed,
   or the version it went out in. Clicking a row opens the pipeline while there
-  is one worth watching, and the release once there is one. The version is the
+  is one worth watching, and the release once there is one. How far back it
+  reaches is a setting: off, one day, three days or one week. The version is the
   release whose tag contains your merge commit — that it was cut, not that it
   reached staging or production. Repositories that cut no releases show how
   their checks did and nothing more.
