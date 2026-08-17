@@ -129,6 +129,10 @@ public final class PRStore {
     /// same reason: not knowing which environment is running a version says
     /// nothing about whether the version itself is right.
     public private(set) var lastDeploymentFailure: String?
+    /// Whether a deployments lookup is in flight, so a row with no chips yet can
+    /// say it is still looking rather than reading as a repository that deploys
+    /// nowhere — which is what the two look like otherwise.
+    public private(set) var isLoadingDeployments = false
 
     /// Whether behind PRs are brought up to date automatically. On by default;
     /// the switch exists because the alternative escape hatch is quitting.
@@ -452,15 +456,18 @@ public final class PRStore {
     /// code search per poll to learn the same thing.
     private func startPromotionRefresh(for merged: [MergedPullRequest]) {
         guard deploymentClient != nil, promotionTask == nil else { return }
+        isLoadingDeployments = true
         promotionTask = Task { [weak self] in
             await self?.refreshPromotions(for: merged)
             self?.promotionTask = nil
+            self?.isLoadingDeployments = false
         }
     }
 
     private func cancelPromotionRefresh() {
         promotionTask?.cancel()
         promotionTask = nil
+        isLoadingDeployments = false
     }
 
     /// Awaits the lookup in flight.

@@ -371,7 +371,10 @@ struct PRListView: View {
     private var mergedRows: some View {
         LazyVStack(spacing: 2) {
             ForEach(store.shipments) { shipment in
-                ShipmentRowView(shipment: shipment) { onOpenShipment(shipment) }
+                ShipmentRowView(
+                    shipment: shipment,
+                    isLoadingEnvironments: store.isLoadingDeployments
+                ) { onOpenShipment(shipment) }
             }
         }
         .padding(.horizontal, 4)

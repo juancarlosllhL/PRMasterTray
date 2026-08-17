@@ -3,6 +3,9 @@ import PRMasterCore
 
 struct ShipmentRowView: View {
     let shipment: Shipment
+    /// Only meaningful while this row has no chips: once it has them, a poll
+    /// refreshing them in the background is not worth flashing an indicator for.
+    var isLoadingEnvironments = false
     let onOpen: () -> Void
 
     @State private var isHovering = false
@@ -54,7 +57,19 @@ struct ShipmentRowView: View {
                 // A line of their own: sharing one with the repository name
                 // made the answer this row exists for compete for width with
                 // the least interesting thing on it.
-                if !chips.isEmpty {
+                if chips.isEmpty {
+                    if isLoadingEnvironments {
+                        HStack(spacing: 5) {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .scaleEffect(0.7)
+                            Text("Checking stg and prod…")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        .accessibilityHidden(true)
+                    }
+                } else {
                     HStack(spacing: 6) {
                         ForEach(chips) { chip in
                             // verbatim: the version comes from a values file.

@@ -95,7 +95,9 @@ private final class GatedDeploymentClient: DeploymentFetching, @unchecked Sendab
     private let lock = NSLock()
     private let versions: [AppLocation: [PromotedVersion]]
     private var waiting: CheckedContinuation<Void, Never>?
+    private var entering: CheckedContinuation<Void, Never>?
     private var opened = false
+    private var hasEntered = false
     private var _calls = 0
 
     init(versions: [AppLocation: [PromotedVersion]]) {
@@ -106,8 +108,31 @@ private final class GatedDeploymentClient: DeploymentFetching, @unchecked Sendab
 
     func discover(repo: String) async throws -> [AppLocation] { [widgets] }
 
+    /// Returns once the lookup has actually started.
+    ///
+    /// Without this, "a second poll while one is in flight" is only ever a
+    /// guess about whether the detached task got a turn on the main actor
+    /// before the assertion ran — which is a coin toss, not a test.
+    func waitUntilCalled() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let already = lock.withLock { () -> Bool in
+                if hasEntered { return true }
+                entering = continuation
+                return false
+            }
+            if already { continuation.resume() }
+        }
+    }
+
     func promotions(for locations: [AppLocation]) async throws -> [AppLocation: [PromotedVersion]] {
-        lock.withLock { _calls += 1 }
+        let announce = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+            _calls += 1
+            hasEntered = true
+            defer { entering = nil }
+            return entering
+        }
+        announce?.resume()
+
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             let alreadyOpen = lock.withLock { () -> Bool in
                 if opened { return true }
@@ -245,12 +270,14 @@ struct DeploymentStoreTests {
     /// per poll to learn the same thing.
     @Test("a poll during a lookup does not start a second one")
     func lookupsDoNotPileUp() async {
-        // Gated, so the first lookup is provably still in flight when the second
-        // poll arrives rather than merely likely to be.
         let gate = GatedDeploymentClient(versions: [:])
         let store = makeStore(deploymentClient: gate)
 
         await store.refresh()
+        // Waited for rather than assumed: the lookup has provably started and is
+        // held open, so the polls below genuinely arrive during one.
+        await gate.waitUntilCalled()
+
         await store.refresh()
         await store.refresh()
         #expect(gate.calls == 1)
@@ -272,6 +299,54 @@ struct DeploymentStoreTests {
         await store.awaitPromotions()
 
         #expect(store.shipments.isEmpty)
+    }
+
+    /// A row with no chips and a lookup still running is not the same thing as a
+    /// repository that deploys nowhere, and the two look identical without this.
+    @Test("the lookup is flagged while it runs and cleared when it lands")
+    func loadingIsFlagged() async {
+        let gate = GatedDeploymentClient(versions: [widgets: [promoted(.staging, "euw1", "3.32.0")]])
+        let store = makeStore(deploymentClient: gate)
+
+        await store.refresh()
+        #expect(store.isLoadingDeployments)
+
+        gate.open()
+        await store.awaitPromotions()
+        #expect(store.isLoadingDeployments == false)
+    }
+
+    /// Including when it found nothing: an indicator that never stops is worse
+    /// than one that never starts.
+    @Test("a lookup that fails still clears the indicator")
+    func loadingClearsOnFailure() async {
+        let store = makeStore(deploymentClient: SpyDeploymentClient(promotionsFail: true))
+
+        await store.refresh()
+        await store.awaitPromotions()
+
+        #expect(store.isLoadingDeployments == false)
+    }
+
+    @Test("a cancelled lookup clears the indicator rather than leaving it spinning")
+    func loadingClearsOnCancellation() async {
+        let gate = GatedDeploymentClient(versions: [:])
+        let store = makeStore(deploymentClient: gate)
+
+        await store.refresh()
+        store.mergedWindow = .off
+
+        #expect(store.isLoadingDeployments == false)
+        gate.open()
+    }
+
+    @Test("no deployments client never raises the indicator")
+    func noClientNeverLoads() async {
+        let store = makeStore(deploymentClient: nil)
+
+        await store.refresh()
+
+        #expect(store.isLoadingDeployments == false)
     }
 
     // MARK: discovery happens once
