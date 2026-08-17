@@ -1,0 +1,19 @@
+{
+  "data": {
+    "t0": {
+      "object": {
+        "entries": [
+          { "name": "Chart.yaml", "object": { "oid": "1f0a9c7d2b3e4f5a6b7c8d9e0f1a2b3c4d5e6f70" } },
+          { "name": "values.yaml", "object": { "oid": "2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a31" } },
+          { "name": "values.stg.euw1.yaml", "object": { "oid": "3b2c1d0e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b42" } },
+          { "name": "values.stg.use2.yaml", "object": { "oid": "4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c53" } },
+          { "name": "values.prd.euw1.yaml", "object": { "oid": "5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d64" } },
+          { "name": "kargo", "object": { "oid": "6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0c9d8e75" } }
+        ]
+      }
+    },
+    "t1": {
+      "object": null
+    }
+  }
+}

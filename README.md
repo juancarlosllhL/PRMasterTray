@@ -28,9 +28,16 @@ GitHub would merge right now.
   or the version it went out in. Clicking a row opens the pipeline while there
   is one worth watching, and the release once there is one. How far back it
   reaches is a setting: off, one day, three days or one week. The version is the
-  release whose tag contains your merge commit — that it was cut, not that it
-  reached staging or production. Repositories that cut no releases show how
-  their checks did and nothing more.
+  release whose tag contains your merge commit — that it was cut. Repositories
+  that cut no releases show how their checks did and nothing more.
+- **stg** and **prod** chips say which version each environment was promoted to,
+  read from the `stableVersion` Kargo commits into the deployments repository.
+  A chip is green only when your merge commit is provably inside that version,
+  by comparing commits rather than version numbers: an environment can sit on a
+  higher version cut from another branch that does not carry your change at all.
+  Promoted is not deployed — Argo CD syncs separately, so a failed sync or a
+  crash-looping pod still reads as promoted. No chip means nothing could be
+  established, which is never the same as nothing being there.
 - **Settings…** in the gear menu chooses what the list is made of: which
   organizations to include, and whether pull requests from private repositories
   show at all. Hidden ones are left out of the count, never notify, and are never

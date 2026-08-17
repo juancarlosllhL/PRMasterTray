@@ -50,16 +50,53 @@ public enum ShipStatus: Sendable, Equatable {
     case released(version: String, url: URL)
 }
 
+/// Whether a change has reached one environment.
+public enum EnvironmentStatus: Sendable, Equatable {
+    /// No mapping, no release matching what is promoted there, or no answer yet.
+    /// Never a guess in either direction.
+    case unknown
+    /// That environment is running something that does not contain this change.
+    case awaiting(version: String)
+    /// This change is in what is promoted there.
+    case carrying(version: String)
+}
+
+public struct EnvironmentState: Sendable, Equatable {
+    public let environment: DeployEnvironment
+    public let status: EnvironmentStatus
+    /// False while the regions hold different versions, which is what a rollout
+    /// mid-flight looks like. The version reported is the lowest of them, so
+    /// this is what says "at least this, and further along elsewhere".
+    public let regionsAgree: Bool
+
+    public init(
+        environment: DeployEnvironment,
+        status: EnvironmentStatus,
+        regionsAgree: Bool = true
+    ) {
+        self.environment = environment
+        self.status = status
+        self.regionsAgree = regionsAgree
+    }
+}
+
 /// A merged pull request together with what became of it.
 public struct Shipment: Identifiable, Sendable, Equatable {
     public let pr: MergedPullRequest
     public let status: ShipStatus
+    /// Staging first, and only the environments something is known about.
+    public let environments: [EnvironmentState]
 
     public var id: String { pr.id }
 
-    public init(pr: MergedPullRequest, status: ShipStatus) {
+    public init(
+        pr: MergedPullRequest,
+        status: ShipStatus,
+        environments: [EnvironmentState] = []
+    ) {
         self.pr = pr
         self.status = status
+        self.environments = environments
     }
 
     /// Where the row goes when it is clicked.
@@ -89,17 +126,83 @@ public enum ShipmentResolver {
     ///   - releases: keyed by `MergedPullRequest.repositoryID`.
     ///   - containment: answers already obtained. A missing entry means "not
     ///     known", which is never treated as "not contained".
+    ///   - promotions: every region of every app that ships from a repository,
+    ///     keyed by `MergedPullRequest.repo`. Collapsed here, so a repository
+    ///     backing several apps is answered across all of them at once.
     public static func resolve(
         merged: [MergedPullRequest],
         releases: [String: [Release]],
-        containment: [ContainmentKey: Bool]
+        containment: [ContainmentKey: Bool],
+        promotions: [String: [PromotedVersion]] = [:]
     ) -> [Shipment] {
         merged.map { pr in
-            Shipment(
+            let repoReleases = releases[pr.repositoryID] ?? []
+            return Shipment(
                 pr: pr,
-                status: status(for: pr, releases: releases[pr.repositoryID] ?? [], containment: containment)
+                status: status(for: pr, releases: repoReleases, containment: containment),
+                environments: environments(
+                    for: pr,
+                    promotions: EnvironmentPromotion.collapse(promotions[pr.repo] ?? []),
+                    releases: repoReleases,
+                    containment: containment
+                )
             )
         }
+    }
+
+    /// Whether each environment is carrying the change.
+    ///
+    /// Decided by containment, never by comparing version numbers: an
+    /// environment can sit on a *higher* version that was cut from another
+    /// branch and does not include this merge at all.
+    ///
+    /// An environment counts as carrying only when every one of its regions
+    /// does. A region proven to lack the change settles the environment even if
+    /// another has no answer — proof outranks an unknown, but an unknown is
+    /// never rounded into a yes.
+    static func environments(
+        for pr: MergedPullRequest,
+        promotions: [EnvironmentPromotion],
+        releases: [Release],
+        containment: [ContainmentKey: Bool]
+    ) -> [EnvironmentState] {
+        promotions.map { promotion in
+            let answers = promotion.versions.map {
+                carries(pr: pr, version: $0, releases: releases, containment: containment)
+            }
+            let version = promotion.displayVersion ?? ""
+
+            let status: EnvironmentStatus
+            if answers.contains(false) {
+                status = .awaiting(version: version)
+            } else if answers.contains(nil) {
+                status = .unknown
+            } else {
+                status = .carrying(version: version)
+            }
+            return EnvironmentState(
+                environment: promotion.environment,
+                status: status,
+                regionsAgree: promotion.regionsAgree
+            )
+        }
+    }
+
+    /// Whether the release a region is running contains the merge.
+    ///
+    /// `nil` when nothing identifies that version, or when the comparison has
+    /// not come back. A release cut before the merge is settled from the clock
+    /// alone, without spending a request.
+    private static func carries(
+        pr: MergedPullRequest,
+        version: String,
+        releases: [Release],
+        containment: [ContainmentKey: Bool]
+    ) -> Bool? {
+        guard let release = releases.first(where: { ReleaseVersion.strip($0.tagName) == version })
+        else { return nil }
+        guard release.createdAt >= pr.mergedAt else { return false }
+        return containment[ContainmentKey(pullRequestID: pr.id, tagName: release.tagName)]
     }
 
     private static func status(

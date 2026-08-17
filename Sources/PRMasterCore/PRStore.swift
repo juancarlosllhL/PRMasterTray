@@ -42,6 +42,22 @@ public protocol ShipmentFetching: Sendable {
 
 extension GitHubClient: ShipmentFetching {}
 
+/// Reading which version each environment is running, out of the deployments
+/// repositories Kargo promotes into.
+///
+/// Split from `ShipmentFetching` for the same reason that one is split from
+/// `PullRequestFetching`: a deployments lookup failing must be reportable
+/// without taking the merged rows down with it.
+public protocol DeploymentFetching: Sendable {
+    /// The app folders that a service repository ships into, or an empty array
+    /// when it ships into none that can be found.
+    func discover(repo: String) async throws -> [AppLocation]
+    /// Every region's promoted version, per app folder.
+    func promotions(for locations: [AppLocation]) async throws -> [AppLocation: [PromotedVersion]]
+}
+
+extension GitHubClient: DeploymentFetching {}
+
 /// User-facing settings that outlive a launch.
 public protocol PreferenceStoring: Sendable {
     func autoUpdateEnabled() -> Bool
@@ -58,6 +74,11 @@ public protocol PreferenceStoring: Sendable {
     func setStaleThreshold(_ value: StaleThreshold)
     func mergedWindow() -> MergedWindow
     func setMergedWindow(_ value: MergedWindow)
+    /// Discovered app folders, keyed by service repository. An empty array is a
+    /// real answer — that repository was searched and deploys nothing findable —
+    /// so it is stored rather than retried on every poll.
+    func appLocations() -> [String: [AppLocation]]
+    func setAppLocations(_ value: [String: [AppLocation]])
     /// Whether the user asked for the app to open at login. Not whether it will —
     /// macOS owns that, and `LaunchAtLoginStore` reads it from there. This records
     /// the intent, which is the only thing that can tell a registration lost to an
@@ -104,6 +125,14 @@ public final class PRStore {
     /// the open pull requests refreshed fine and must not be reported as stale
     /// because a version lookup did not.
     public private(set) var lastShipmentFailure: String?
+    /// Set when the deployments lookup failed. Its own field again, and for the
+    /// same reason: not knowing which environment is running a version says
+    /// nothing about whether the version itself is right.
+    public private(set) var lastDeploymentFailure: String?
+    /// Whether a deployments lookup is in flight, so a row with no chips yet can
+    /// say it is still looking rather than reading as a repository that deploys
+    /// nowhere — which is what the two look like otherwise.
+    public private(set) var isLoadingDeployments = false
 
     /// Whether behind PRs are brought up to date automatically. On by default;
     /// the switch exists because the alternative escape hatch is quitting.
@@ -133,8 +162,10 @@ public final class PRStore {
             // Emptied on the spot. Waiting for a round trip to clear a section
             // the user just switched off reads as the switch not working.
             if mergedWindow == .off {
+                cancelPromotionRefresh()
                 shipments = []
                 lastShipmentFailure = nil
+                lastDeploymentFailure = nil
             }
             Task { await refresh() }
         }
@@ -186,6 +217,10 @@ public final class PRStore {
     /// merged rows still resolve from their own checks; they just carry no
     /// version.
     private let shipmentClient: ShipmentFetching?
+    /// `nil` under a debug override, and whenever there is no live client to ask.
+    /// The merged rows still carry their version; they just say nothing about
+    /// which environment is running it.
+    private let deploymentClient: DeploymentFetching?
     private let preferences: PreferenceStoring
     private let now: @Sendable () -> Date
     private let sleep: @Sendable (Duration) async throws -> Void
@@ -198,6 +233,23 @@ public final class PRStore {
     /// version is never asked about again. Pruned to the visible merges each
     /// poll, or it would grow for as long as the app runs.
     private var containmentAnswers: [ContainmentKey: Bool] = [:]
+    /// Discovered app folders per repository, loaded once and written back as
+    /// repositories are searched. Searching costs a code-search call, which is
+    /// rate-limited to roughly ten a minute, so it happens once per repository
+    /// and never again — including when the answer was "none".
+    private var appLocations: [String: [AppLocation]]
+    /// Promoted versions per repository, replaced only on a successful lookup:
+    /// yesterday's answer beats no answer, the same rule `shipments` follows.
+    private var promotions: [String: [PromotedVersion]] = [:]
+    /// The inputs the visible shipments were built from, kept so the chips can be
+    /// folded in when the deployments lookup finishes without waiting for the
+    /// next poll to re-derive everything.
+    private var resolvedMerged: [MergedPullRequest] = []
+    private var resolvedReleases: [String: [Release]] = [:]
+    /// The deployments lookup in flight, if any. At most one: on a cold cache it
+    /// takes a code search plus a read per hit, which is longer than the poll
+    /// interval, and queuing them would spend a rate-limited search every poll.
+    private var promotionTask: Task<Void, Never>?
     private var consecutiveFailures = 0
     private var pollTask: Task<Void, Never>?
 
@@ -207,6 +259,7 @@ public final class PRStore {
         idStore: NotifiedIDStore,
         updater: PullRequestBranchUpdating? = nil,
         shipmentClient: ShipmentFetching? = nil,
+        deploymentClient: DeploymentFetching? = nil,
         preferences: PreferenceStoring = UserDefaultsPreferences(),
         now: @escaping @Sendable () -> Date = { Date() },
         sleep: @escaping @Sendable (Duration) async throws -> Void = {
@@ -218,7 +271,9 @@ public final class PRStore {
         self.idStore = idStore
         self.updater = updater
         self.shipmentClient = shipmentClient
+        self.deploymentClient = deploymentClient
         self.preferences = preferences
+        self.appLocations = preferences.appLocations()
         self.now = now
         self.sleep = sleep
         self.notifiedIDs = idStore.load()
@@ -315,15 +370,29 @@ public final class PRStore {
         // the client's own empty guard would work but would leave the intent
         // living in the adapter rather than in the decision.
         guard !merged.isEmpty else {
+            cancelPromotionRefresh()
             shipments = []
             lastShipmentFailure = nil
+            lastDeploymentFailure = nil
+            promotions = [:]
+            resolvedMerged = []
+            resolvedReleases = [:]
             return
         }
+
+        // Deliberately not awaited. The deployments lookup is the slow half —
+        // on a cold cache it is a code search plus a read per hit — and making
+        // the list wait for it left the popover empty for seconds to say
+        // something the rows do not depend on. It folds its answer in when it
+        // arrives.
+        defer { startPromotionRefresh(for: merged) }
 
         guard let shipmentClient else {
             // No live client: the rows still say whether CI passed, from the
             // checks already in hand. They just never carry a version.
-            shipments = ShipmentResolver.resolve(merged: merged, releases: [:], containment: [:])
+            resolvedMerged = merged
+            resolvedReleases = [:]
+            rebuildShipments()
             return
         }
 
@@ -347,13 +416,106 @@ public final class PRStore {
             let answers = try await shipmentClient.resolveContainment(unanswered)
             containmentAnswers.merge(answers) { _, new in new }
 
-            shipments = ShipmentResolver.resolve(
-                merged: merged, releases: releases, containment: containmentAnswers
-            )
+            resolvedMerged = merged
+            resolvedReleases = releases
+            rebuildShipments()
             lastShipmentFailure = nil
         } catch {
             // `shipments` is left alone: yesterday's answer beats no answer.
             lastShipmentFailure = error.localizedDescription
+        }
+    }
+
+    /// Rebuilds the visible rows from the last good snapshot.
+    ///
+    /// Called both when the release lookup lands and, later, when the
+    /// deployments lookup does — so chips appear on their own rather than on
+    /// the next poll.
+    private func rebuildShipments() {
+        guard !resolvedMerged.isEmpty else { return }
+        shipments = ShipmentResolver.resolve(
+            merged: resolvedMerged,
+            releases: resolvedReleases,
+            containment: containmentAnswers,
+            promotions: promotions
+        )
+    }
+
+    // MARK: - Deployments
+
+    /// Reads what each environment is running, for the repositories in view.
+    ///
+    /// Kept apart from the release lookup above so the two fail independently: a
+    /// deployments repository being unreachable must still leave a row saying
+    /// which version was cut, and `promotions` is replaced only on success so a
+    /// flap does not blank chips that were right a minute ago.
+    /// Starts a lookup unless one is already running.
+    ///
+    /// Skipped rather than queued while one is in flight: a cold discovery
+    /// outlasts the poll interval, and stacking them would spend a rate-limited
+    /// code search per poll to learn the same thing.
+    private func startPromotionRefresh(for merged: [MergedPullRequest]) {
+        guard deploymentClient != nil, promotionTask == nil else { return }
+        isLoadingDeployments = true
+        promotionTask = Task { [weak self] in
+            await self?.refreshPromotions(for: merged)
+            self?.promotionTask = nil
+            self?.isLoadingDeployments = false
+        }
+    }
+
+    private func cancelPromotionRefresh() {
+        promotionTask?.cancel()
+        promotionTask = nil
+        isLoadingDeployments = false
+    }
+
+    /// Awaits the lookup in flight.
+    ///
+    /// Exists so tests can be deterministic without sleeping. Nothing in the app
+    /// calls it — the whole point of the lookup is that nothing waits on it.
+    func awaitPromotions() async {
+        await promotionTask?.value
+    }
+
+    private func refreshPromotions(for merged: [MergedPullRequest]) async {
+        guard let deploymentClient else { return }
+
+        let repos = Set(merged.map(\.repo))
+        do {
+            // Once per repository, ever — including a repository that turned out
+            // to deploy nothing, which is stored as an empty array rather than
+            // re-searched against a rate-limited endpoint every poll.
+            var discovered = false
+            for repo in repos where appLocations[repo] == nil {
+                appLocations[repo] = try await deploymentClient.discover(repo: repo)
+                discovered = true
+            }
+            if discovered { preferences.setAppLocations(appLocations) }
+
+            let locations = Array(Set(repos.flatMap { appLocations[$0] ?? [] }))
+            let byLocation = try await deploymentClient.promotions(for: locations)
+
+            // Re-keyed onto the repository, so a repository backing several apps
+            // is answered across all of them at once.
+            // Switched off, or the merged list moved on, while this was in the
+            // air. Writing the answer now would put chips back on a section the
+            // user has already emptied.
+            guard !Task.isCancelled else { return }
+
+            promotions = repos.reduce(into: [:]) { result, repo in
+                let versions = (appLocations[repo] ?? []).flatMap { byLocation[$0] ?? [] }
+                if !versions.isEmpty { result[repo] = versions }
+            }
+            lastDeploymentFailure = nil
+            // Folded into the visible rows now rather than at the next poll,
+            // which is what makes the chips arrive on their own.
+            rebuildShipments()
+        } catch is CancellationError {
+            // Nothing to report: the section this belonged to is gone.
+        } catch {
+            // `promotions` is left alone, for the same reason `shipments` is.
+            lastDeploymentFailure = error.localizedDescription
         }
     }
 
@@ -450,6 +612,7 @@ public struct UserDefaultsPreferences: PreferenceStoring {
     private let popoverBackgroundKey = "popoverBackground"
     private let staleThresholdKey = "staleThreshold"
     private let mergedWindowKey = "mergedWindow"
+    private let appLocationsKey = "appLocations"
     private let launchAtLoginKey = "launchAtLoginRequested"
     // UserDefaults is documented as thread-safe but predates Sendable.
     nonisolated(unsafe) private let defaults: UserDefaults
@@ -546,6 +709,20 @@ public struct UserDefaultsPreferences: PreferenceStoring {
 
     public func setMergedWindow(_ value: MergedWindow) {
         defaults.set(value.rawValue, forKey: mergedWindowKey)
+    }
+
+    public func appLocations() -> [String: [AppLocation]] {
+        // Unreadable or written by an older shape means "nothing discovered yet",
+        // which costs one search per repository to rebuild — the safe direction.
+        guard let data = defaults.data(forKey: appLocationsKey),
+              let stored = try? JSONDecoder().decode([String: [AppLocation]].self, from: data)
+        else { return [:] }
+        return stored
+    }
+
+    public func setAppLocations(_ value: [String: [AppLocation]]) {
+        guard let data = try? JSONEncoder().encode(value) else { return }
+        defaults.set(data, forKey: appLocationsKey)
     }
 
     public func launchAtLoginRequested() -> Bool {

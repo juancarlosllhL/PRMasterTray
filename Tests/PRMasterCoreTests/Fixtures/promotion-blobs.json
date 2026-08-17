@@ -1,0 +1,17 @@
+{
+  "data": {
+    "b0": {
+      "object": {
+        "text": "stableVersion: 3.32.0\nhost: eu.example.com\ninternalGateway:\n  enabled: true\n"
+      }
+    },
+    "b1": {
+      "object": {
+        "text": "# Keep stableVersion above 3.20.1 here; a rollback below crash-loops.\nstableVersion: 3.31.1\nenableCustomDebugLogs: true\n"
+      }
+    },
+    "b2": {
+      "object": null
+    }
+  }
+}

@@ -77,6 +77,142 @@ public actor GitHubClient {
         return try PullRequestDecoder.decodeContainment(data, candidates: candidates)
     }
 
+    // MARK: - Deployments
+
+    /// Promoted versions already read, keyed by the blob oid they came from.
+    /// Unchanged content is the same version, so a steady-state poll costs one
+    /// tree listing and no blob reads at all.
+    private var promotedVersions: [String: String] = [:]
+    /// Oids already looked at, including those whose file named no version, so a
+    /// file without one is not re-read on every poll.
+    private var parsedOids: Set<String> = []
+
+    /// The app folders a service repository ships into.
+    ///
+    /// Joined on the image name, which is the one string that appears verbatim
+    /// on both sides — see `AppDiscovery`. Returns an empty array rather than
+    /// throwing when the repository has no CircleCI config or names no image:
+    /// plenty of repositories deploy nothing, and that is not an error.
+    public func discover(repo: String) async throws -> [AppLocation] {
+        guard let config = try await fileText(repo: repo, path: ".circleci/config.yml")
+        else { return [] }
+
+        var verified: [(repo: String, path: String)] = []
+        for image in AppDiscovery.imageNames(inCircleCIConfig: config) {
+            for hit in try await searchCode(image: image, org: Self.owner(of: repo)) {
+                // Rendered copies are dropped before being read: they would
+                // declare the image just as truthfully and cost a request each.
+                guard !hit.path.hasPrefix(".stages/") else { continue }
+                // Search matches a substring; only a declaration counts. A file
+                // that cannot be read is dropped rather than trusted.
+                guard let text = try await fileText(repo: hit.repo, path: hit.path),
+                      AppDiscovery.declares(image: image, in: text)
+                else { continue }
+                verified.append(hit)
+            }
+        }
+        return AppDiscovery.locations(fromSearchPaths: verified)
+    }
+
+    private func fileText(repo: String, path: String) async throws -> String? {
+        let data = try await perform(
+            query: Queries.fileText,
+            variables: [
+                "owner": .string(Self.owner(of: repo)),
+                "name": .string(Self.name(of: repo)),
+                "expression": .string("HEAD:\(path)"),
+            ]
+        )
+        return try PullRequestDecoder.decodeFileText(data)
+    }
+
+    /// Every region's promoted version, per app folder.
+    ///
+    /// Two round trips at most: the tree listing always, and a blob read only
+    /// for content not already parsed.
+    public func promotions(
+        for locations: [AppLocation]
+    ) async throws -> [AppLocation: [PromotedVersion]] {
+        guard let tree = Queries.promotionTrees(for: locations) else { return [:] }
+        let treeData = try await perform(
+            query: tree.query, variables: tree.variables.mapValues(GraphQLValue.string)
+        )
+        let trees = try PullRequestDecoder.decodePromotionTrees(treeData, locations: locations)
+
+        // Only the region-qualified files are promotions; the rest of the folder
+        // is charts and templates.
+        let wanted: [(location: AppLocation, file: PromotionFile, entry: TreeEntry)] =
+            locations.flatMap { location in
+                (trees[location] ?? []).compactMap { entry in
+                    PromotionFile.parse(name: entry.name).map { (location, $0, entry) }
+                }
+            }
+
+        try await readUnparsedBlobs(in: wanted)
+
+        // Pruned to what is still in play, so a long-running app cannot grow the
+        // cache without bound as versions move on.
+        let live = Set(wanted.map(\.entry.oid))
+        promotedVersions = promotedVersions.filter { live.contains($0.key) }
+        parsedOids = parsedOids.intersection(live)
+
+        return wanted.reduce(into: [:]) { result, item in
+            guard let version = promotedVersions[item.entry.oid] else { return }
+            result[item.location, default: []].append(
+                PromotedVersion(file: item.file, version: version)
+            )
+        }
+    }
+
+    private func readUnparsedBlobs(
+        in wanted: [(location: AppLocation, file: PromotionFile, entry: TreeEntry)]
+    ) async throws {
+        var requests: [BlobRequest] = []
+        var queued: Set<String> = []
+        for item in wanted where !parsedOids.contains(item.entry.oid) {
+            guard queued.insert(item.entry.oid).inserted else { continue }
+            requests.append(
+                BlobRequest(location: item.location, file: item.entry.name, oid: item.entry.oid)
+            )
+        }
+
+        guard let blobs = Queries.promotionBlobs(for: requests) else { return }
+        let data = try await perform(
+            query: blobs.query, variables: blobs.variables.mapValues(GraphQLValue.string)
+        )
+        let texts = try PullRequestDecoder.decodePromotionBlobs(data, requests: requests)
+
+        for request in requests {
+            guard let text = texts[request.oid] else { continue }
+            parsedOids.insert(request.oid)
+            if let version = PromotionFile.stableVersion(in: text) {
+                promotedVersions[request.oid] = version
+            }
+        }
+    }
+
+    /// Where an image name appears in the org's values files.
+    ///
+    /// REST rather than GraphQL because GitHub exposes code search only there.
+    private func searchCode(image: String, org: String) async throws -> [(repo: String, path: String)] {
+        var components = URLComponents(string: "https://api.github.com/search/code")!
+        components.queryItems = [
+            URLQueryItem(name: "q", value: "\"\(image)\" org:\(org) filename:values.yaml"),
+            URLQueryItem(name: "per_page", value: "50"),
+        ]
+
+        let data = try await get(components.url!)
+        let payload: CodeSearchPayload
+        do {
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            payload = try decoder.decode(CodeSearchPayload.self, from: data)
+        } catch {
+            throw PRMasterError.decoding(String(describing: error))
+        }
+        return payload.items.map { (repo: $0.repository.fullName, path: $0.path) }
+    }
+
     /// Brings a pull request up to date by merging its base branch into it.
     ///
     /// `expectedHeadOid` is the same control it is on the merge: this runs
@@ -148,6 +284,52 @@ public actor GitHubClient {
             } catch PRMasterError.unauthorized {
                 throw PRMasterError.unauthorized
             }
+        }
+    }
+
+    static func owner(of repo: String) -> String { String(repo.prefix { $0 != "/" }) }
+    static func name(of repo: String) -> String { String(repo.drop { $0 != "/" }.dropFirst()) }
+
+    /// Sends a REST GET, retrying once on 401 on the same terms as `perform`.
+    private func get(_ url: URL) async throws -> Data {
+        do {
+            return try await sendGET(url, token: try token())
+        } catch PRMasterError.unauthorized {
+            cachedToken = nil
+            let refreshed = try tokenProvider.token()
+            cachedToken = refreshed
+            return try await sendGET(url, token: refreshed)
+        }
+    }
+
+    private func sendGET(_ url: URL, token: String) async throws -> Data {
+        var request = URLRequest(url: url)
+        request.setValue("bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.setValue("PRMaster", forHTTPHeaderField: "User-Agent")
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let error as URLError {
+            throw PRMasterError.network(error)
+        }
+
+        guard let http = response as? HTTPURLResponse else { return data }
+
+        switch http.statusCode {
+        case 200:
+            guard Self.looksLikeJSON(data) else { throw PRMasterError.notJSON }
+            return data
+        case 401:
+            throw PRMasterError.unauthorized
+        // Code search is rate-limited far more tightly than the rest of the API,
+        // and reports the secondary limit as a 403 rather than a 429.
+        case 403, 429:
+            throw PRMasterError.rateLimited(until: Self.resetDate(from: http))
+        default:
+            throw PRMasterError.httpError(status: http.statusCode)
         }
     }
 

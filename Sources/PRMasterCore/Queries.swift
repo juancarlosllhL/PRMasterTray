@@ -140,6 +140,109 @@ enum Queries {
         return (query, variables)
     }
 
+    /// The text of one file at a repository's default branch.
+    ///
+    /// A constant document with every value bound, so nothing is assembled here
+    /// at all. Used to read a service repository's CircleCI config, which names
+    /// the image that joins it to its deployments folders.
+    static let fileText = """
+    query($owner: String!, $name: String!, $expression: String!) {
+      repository(owner: $owner, name: $name) {
+        object(expression: $expression) {
+          ... on Blob { text }
+        }
+      }
+    }
+    """
+
+    /// Lists each app folder in a deployments repository, with an oid per entry.
+    ///
+    /// Assembled from remote data on the same terms as `containment(for:)`:
+    /// aliases and variable *names* are generated, and every remote value —
+    /// owner, name, path — rides as a GraphQL variable.
+    ///
+    /// Addressed at `HEAD` rather than at `main`: nothing guarantees every
+    /// deployments repository names its default branch the same way, and a
+    /// wrong branch would read as an app nobody has ever promoted to.
+    ///
+    /// The entry oids are what make the blob reads skippable — see
+    /// `promotionBlobs(for:)`.
+    ///
+    /// - Returns: `nil` when there is nothing to ask.
+    static func promotionTrees(
+        for locations: [AppLocation]
+    ) -> (query: String, variables: [String: String])? {
+        guard !locations.isEmpty else { return nil }
+
+        var declarations: [String] = []
+        var fields: [String] = []
+        var variables: [String: String] = [:]
+
+        for (index, location) in locations.enumerated() {
+            declarations.append(
+                "$owner\(index): String!, $name\(index): String!, $tree\(index): String!"
+            )
+            fields.append("""
+              t\(index): repository(owner: $owner\(index), name: $name\(index)) {
+                object(expression: $tree\(index)) {
+                  ... on Tree { entries { name object { oid } } }
+                }
+              }
+            """)
+
+            let repo = location.deploymentsRepo
+            variables["owner\(index)"] = String(repo.prefix { $0 != "/" })
+            variables["name\(index)"] = String(repo.drop { $0 != "/" }.dropFirst())
+            variables["tree\(index)"] = "HEAD:\(location.appPath)"
+        }
+
+        return (document(declarations, fields), variables)
+    }
+
+    /// Reads the text of specific values files.
+    ///
+    /// Only the blobs whose oid the caller has not already parsed need asking
+    /// for, which is what keeps a steady-state poll to one tree listing.
+    ///
+    /// - Returns: `nil` when there is nothing to ask.
+    static func promotionBlobs(
+        for requests: [BlobRequest]
+    ) -> (query: String, variables: [String: String])? {
+        guard !requests.isEmpty else { return nil }
+
+        var declarations: [String] = []
+        var fields: [String] = []
+        var variables: [String: String] = [:]
+
+        for (index, request) in requests.enumerated() {
+            declarations.append(
+                "$owner\(index): String!, $name\(index): String!, $blob\(index): String!"
+            )
+            fields.append("""
+              b\(index): repository(owner: $owner\(index), name: $name\(index)) {
+                object(expression: $blob\(index)) {
+                  ... on Blob { text }
+                }
+              }
+            """)
+
+            let repo = request.location.deploymentsRepo
+            variables["owner\(index)"] = String(repo.prefix { $0 != "/" })
+            variables["name\(index)"] = String(repo.drop { $0 != "/" }.dropFirst())
+            variables["blob\(index)"] = "HEAD:\(request.location.appPath)/\(request.file)"
+        }
+
+        return (document(declarations, fields), variables)
+    }
+
+    private static func document(_ declarations: [String], _ fields: [String]) -> String {
+        """
+        query(\(declarations.joined(separator: ", "))) {
+        \(fields.joined(separator: "\n"))
+        }
+        """
+    }
+
     /// Merges the base branch into a PR that is behind it, refusing if the head
     /// has moved since the snapshot.
     ///
