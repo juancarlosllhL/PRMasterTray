@@ -79,6 +79,17 @@ struct PRListView: View {
                     text: "Couldn't check what shipped — \(failure)"
                 )
             }
+            // Its own row rather than the one above, and worth one at all because
+            // the alternative is indistinguishable from a repository that deploys
+            // nowhere: an unauthorized token, a rate-limited code search and an
+            // SSO refusal all end with the chips simply not appearing.
+            if let failure = store.lastDeploymentFailure {
+                Divider()
+                warningRow(
+                    icon: "square.stack.3d.up",
+                    text: "Couldn't check stg and prod — \(failure)"
+                )
+            }
             if let failure = store.lastUpdateFailure {
                 Divider()
                 warningRow(
