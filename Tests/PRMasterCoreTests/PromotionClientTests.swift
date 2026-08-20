@@ -27,6 +27,10 @@ private let widgets = AppLocation(
     deploymentsRepo: "acme/widget-deployments",
     appPath: "widget-service"
 )
+private let gadgets = AppLocation(
+    deploymentsRepo: "acme/gadget-deployments",
+    appPath: "widget-service"
+)
 
 /// The tree listing the cache tests reuse: two region-qualified files plus a
 /// chart that is not a promotion, in a folder Kargo promotes into.
@@ -113,6 +117,34 @@ struct PromotionClientTests {
 
         #expect(try await client.promotions(for: [widgets]).isEmpty)
         #expect(stub.requests.count == 1)
+    }
+
+    /// The real shape of it: one image backs a live app and an abandoned copy of
+    /// the same app in another domain's repository. Only the live one is read, so
+    /// the frozen version never reaches the environment the live one answers for.
+    @Test("an abandoned folder beside a live one contributes nothing")
+    func abandonedFolderBesideALiveOne() async throws {
+        let both = """
+        {"data":{
+          "t0":{"object":{"entries":[
+            {"name":"kargo","object":{"oid":"kargo"}},
+            {"name":"values.stg.euw1.yaml","object":{"oid":"oid-live"}}
+          ]}},
+          "t1":{"object":{"entries":[
+            {"name":"Chart.yaml","object":{"oid":"chart"}},
+            {"name":"values.stg.euw1.yaml","object":{"oid":"oid-frozen"}}
+          ]}}
+        }}
+        """
+        // One blob, for the live folder alone.
+        let live = #"{"data":{"b0":{"object":{"text":"stableVersion: 3.40.0\n"}}}}"#
+        let (client, stub) = makeClient([json(both), json(live)])
+
+        let promotions = try await client.promotions(for: [widgets, gadgets])
+
+        #expect(stub.requests.count == 2)
+        #expect(promotions[gadgets] == nil)
+        #expect(promotions[widgets]?.map(\.version) == ["3.40.0"])
     }
 
     /// A folder holding no region-qualified file has nothing to read, so the

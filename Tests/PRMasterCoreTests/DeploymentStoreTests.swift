@@ -200,7 +200,14 @@ private func release(_ tag: String, createdAt: Date) -> Release {
 /// identified from a promoted version reaches the comparison" is read.
 private final class SpyShipmentClient: ShipmentFetching, @unchecked Sendable {
     private let lock = NSLock()
+    private let answer: Bool?
     private var _asked: [[ContainmentCandidate]] = []
+
+    /// - Parameter answer: given for every candidate. `nil` answers none, which
+    ///   is what an environment with no answer yet looks like.
+    init(answer: Bool? = nil) {
+        self.answer = answer
+    }
 
     var asked: [[ContainmentCandidate]] { lock.withLock { _asked } }
 
@@ -211,7 +218,8 @@ private final class SpyShipmentClient: ShipmentFetching, @unchecked Sendable {
         _ candidates: [ContainmentCandidate]
     ) async throws -> [ContainmentKey: Bool] {
         lock.withLock { _asked.append(candidates) }
-        return [:]
+        guard let answer else { return [:] }
+        return candidates.reduce(into: [:]) { $0[$1.key] = answer }
     }
 }
 
@@ -620,6 +628,28 @@ struct DeploymentStoreTests {
         await store.awaitPromotions()
 
         #expect(shipments.asked.last?.map(\.release.tagName) == ["v3.40.0"])
+    }
+
+    /// The green half, end to end: identified from the promoted version, compared
+    /// on the next poll, and only then coloured — by the comparison, never by the
+    /// version being higher.
+    @Test("an identified release carrying the merge turns the chip green")
+    func identifiedReleaseCanCarry() async {
+        let shipments = SpyShipmentClient(answer: true)
+        let spy = SpyDeploymentClient(
+            versions: [widgets: [promoted(.staging, "euw1", "3.40.0")]],
+            tagReleases: ["R_1": [release("v3.40.0", createdAt: pollTime.addingTimeInterval(-300))]]
+        )
+        let store = makeStore(deploymentClient: spy, shipmentClient: shipments)
+
+        await store.refresh()
+        await store.awaitPromotions()
+        await store.refresh()
+        await store.awaitPromotions()
+
+        #expect(store.shipments.first?.environments == [
+            EnvironmentState(environment: .staging, status: .carrying(version: "3.40.0"))
+        ])
     }
 
     /// Pruned with the rows they belonged to, or a long-running app would keep
