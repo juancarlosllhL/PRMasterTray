@@ -58,23 +58,35 @@ private final class SpyDeploymentClient: DeploymentFetching, @unchecked Sendable
     private let versions: [AppLocation: [PromotedVersion]]
     private let discoverFails: Bool
     private let promotionsFail: Bool
+    private let tagReleases: [String: [Release]]
+    /// Which call the tag lookup starts refusing on. `0` refuses from the first,
+    /// `1` answers once and then refuses — which is how "a version identified
+    /// once survives a later failure" is set up.
+    private let tagsFailFrom: Int?
     private var _discovered: [String] = []
     private var _promotionCalls = 0
+    private var _tagRequests: [[ReleaseTagRequest]] = []
 
     init(
         found: [AppLocation] = [widgets],
         versions: [AppLocation: [PromotedVersion]] = [:],
+        tagReleases: [String: [Release]] = [:],
         discoverFails: Bool = false,
-        promotionsFail: Bool = false
+        promotionsFail: Bool = false,
+        tagsFailFrom: Int? = nil
     ) {
         self.found = found
         self.versions = versions
+        self.tagReleases = tagReleases
         self.discoverFails = discoverFails
         self.promotionsFail = promotionsFail
+        self.tagsFailFrom = tagsFailFrom
     }
 
     var discovered: [String] { lock.withLock { _discovered } }
     var promotionCalls: Int { lock.withLock { _promotionCalls } }
+    /// One entry per call, so both "asked once" and "asked for what" can be read.
+    var tagRequests: [[ReleaseTagRequest]] { lock.withLock { _tagRequests } }
 
     func discover(repo: String) async throws -> [AppLocation] {
         lock.withLock { _discovered.append(repo) }
@@ -89,7 +101,13 @@ private final class SpyDeploymentClient: DeploymentFetching, @unchecked Sendable
     }
 
     func releases(forTags requests: [ReleaseTagRequest]) async throws -> [String: [Release]] {
-        [:]
+        let calls = lock.withLock { () -> Int in
+            let previous = _tagRequests.count
+            _tagRequests.append(requests)
+            return previous
+        }
+        if let tagsFailFrom, calls >= tagsFailFrom { throw DeploymentFailure() }
+        return tagReleases
     }
 }
 
@@ -169,6 +187,34 @@ private func promoted(_ environment: DeployEnvironment, _ region: String, _ vers
     )
 }
 
+private func release(_ tag: String, createdAt: Date) -> Release {
+    Release(
+        tagName: tag,
+        url: URL(string: "https://github.com/acme/widget-service/releases/tag/\(tag)")!,
+        tagCommitOid: "ffff",
+        createdAt: createdAt
+    )
+}
+
+/// Records the containment questions the store asks, which is how "the release
+/// identified from a promoted version reaches the comparison" is read.
+private final class SpyShipmentClient: ShipmentFetching, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _asked: [[ContainmentCandidate]] = []
+
+    var asked: [[ContainmentCandidate]] { lock.withLock { _asked } }
+
+    /// None: the point of these tests is the releases the depth never reaches.
+    func fetchReleases(repoIDs: [String], depth: Int) async throws -> [String: [Release]] { [:] }
+
+    func resolveContainment(
+        _ candidates: [ContainmentCandidate]
+    ) async throws -> [ContainmentKey: Bool] {
+        lock.withLock { _asked.append(candidates) }
+        return [:]
+    }
+}
+
 @Suite("PRStore deployments")
 @MainActor
 struct DeploymentStoreTests {
@@ -176,12 +222,14 @@ struct DeploymentStoreTests {
     private func makeStore(
         merged: [MergedPullRequest] = [mergedPR("PR_1")],
         deploymentClient: DeploymentFetching?,
+        shipmentClient: ShipmentFetching? = nil,
         preferences: MemoryPreferences = MemoryPreferences()
     ) -> PRStore {
         PRStore(
             client: onlyMerged(merged),
             notifier: QuietNotifier(),
             idStore: NoIDStore(),
+            shipmentClient: shipmentClient,
             deploymentClient: deploymentClient,
             preferences: preferences,
             now: { pollTime },
@@ -460,6 +508,145 @@ struct DeploymentStoreTests {
 
         #expect(store.lastDeploymentFailure == nil)
         #expect(store.shipments.first?.environments.isEmpty == true)
+    }
+
+    // MARK: an environment lagging past the fetched depth
+
+    /// The chips production never had. Its version is many releases behind, so
+    /// the window's depth never reaches it, and a version nothing identifies is
+    /// silently no chip at all rather than a lag.
+    @Test("a promoted version outside the fetched releases is identified and reported")
+    func laggingVersionIsIdentified() async {
+        let spy = SpyDeploymentClient(
+            versions: [widgets: [promoted(.production, "euw1", "3.31.1")]],
+            tagReleases: ["R_1": [release("v3.31.1", createdAt: pollTime.addingTimeInterval(-1_200))]]
+        )
+        let store = makeStore(deploymentClient: spy)
+
+        await store.refresh()
+        await store.awaitPromotions()
+
+        #expect(spy.tagRequests == [[
+            ReleaseTagRequest(repo: "acme/widget-service", repositoryID: "R_1", version: "3.31.1")
+        ]])
+        // Cut before the merge, so the clock settles it without a comparison.
+        #expect(store.shipments.first?.environments == [
+            EnvironmentState(environment: .production, status: .awaiting(version: "3.31.1"))
+        ])
+    }
+
+    /// Identified once and then in hand: re-asking every minute would spend a
+    /// request all day to be told the same tag.
+    @Test("a version already identified is not asked about again")
+    func identifiedVersionIsNotReAsked() async {
+        let spy = SpyDeploymentClient(
+            versions: [widgets: [promoted(.production, "euw1", "3.31.1")]],
+            tagReleases: ["R_1": [release("v3.31.1", createdAt: pollTime.addingTimeInterval(-1_200))]]
+        )
+        let store = makeStore(deploymentClient: spy)
+
+        await store.refresh()
+        await store.awaitPromotions()
+        await store.refresh()
+        await store.awaitPromotions()
+
+        #expect(spy.tagRequests.count == 1)
+    }
+
+    @Test("a failing tag lookup is reported without taking the rows down")
+    func tagFailureIsIsolated() async {
+        let spy = SpyDeploymentClient(
+            versions: [widgets: [promoted(.production, "euw1", "3.31.1")]],
+            tagsFailFrom: 0
+        )
+        let store = makeStore(deploymentClient: spy)
+
+        await store.refresh()
+        await store.awaitPromotions()
+
+        #expect(store.lastDeploymentFailure != nil)
+        #expect(store.lastError == nil)
+        #expect(store.shipments.count == 1)
+    }
+
+    /// Yesterday's answer beats no answer here too: a flap must not blank a chip
+    /// that was right a minute ago.
+    @Test("a version identified once survives a later failure")
+    func identifiedVersionSurvivesFailure() async {
+        let spy = SpyDeploymentClient(
+            versions: [widgets: [promoted(.production, "euw1", "3.31.1")]],
+            tagReleases: ["R_1": [release("v3.31.1", createdAt: pollTime.addingTimeInterval(-1_200))]],
+            tagsFailFrom: 1
+        )
+        let store = makeStore(deploymentClient: spy)
+
+        let awaiting = [
+            EnvironmentState(environment: .production, status: .awaiting(version: "3.31.1"))
+        ]
+
+        await store.refresh()
+        await store.awaitPromotions()
+        #expect(store.shipments.first?.environments == awaiting)
+
+        // The second poll would refuse — but the version is in hand, so it is
+        // never asked, and the chip stands.
+        await store.refresh()
+        await store.awaitPromotions()
+
+        #expect(store.shipments.first?.environments == awaiting)
+        #expect(store.lastDeploymentFailure == nil)
+    }
+
+    /// A release the environment is on that was cut *after* the merge is a real
+    /// containment question, and identifying it is what puts it in front of the
+    /// comparison at all. The answer arrives on the following poll, which is the
+    /// one lag this accepts.
+    @Test("a release identified from a promoted version becomes a containment candidate")
+    func identifiedReleaseIsCompared() async {
+        let shipments = SpyShipmentClient()
+        let spy = SpyDeploymentClient(
+            versions: [widgets: [promoted(.staging, "euw1", "3.40.0")]],
+            tagReleases: ["R_1": [release("v3.40.0", createdAt: pollTime.addingTimeInterval(-300))]]
+        )
+        let store = makeStore(deploymentClient: spy, shipmentClient: shipments)
+
+        await store.refresh()
+        await store.awaitPromotions()
+        // Nothing to compare yet: the release was not in hand when this poll's
+        // candidates were worked out.
+        #expect(shipments.asked.flatMap { $0 }.isEmpty)
+
+        await store.refresh()
+        await store.awaitPromotions()
+
+        #expect(shipments.asked.last?.map(\.release.tagName) == ["v3.40.0"])
+    }
+
+    /// Pruned with the rows they belonged to, or a long-running app would keep
+    /// every release it has ever identified.
+    @Test("identified releases are dropped when the section empties")
+    func identifiedReleasesArePruned() async {
+        let spy = SpyDeploymentClient(
+            versions: [widgets: [promoted(.production, "euw1", "3.31.1")]],
+            tagReleases: ["R_1": [release("v3.31.1", createdAt: pollTime.addingTimeInterval(-1_200))]]
+        )
+        let store = makeStore(deploymentClient: spy)
+
+        await store.refresh()
+        await store.awaitPromotions()
+        #expect(spy.tagRequests.count == 1)
+
+        store.mergedWindow = .off
+        await store.refresh()
+        await store.awaitPromotions()
+        #expect(store.shipments.isEmpty)
+
+        store.mergedWindow = .oneDay
+        await store.refresh()
+        await store.awaitPromotions()
+
+        // Asked again, because nothing identified for an empty section was kept.
+        #expect(spy.tagRequests.count == 2)
     }
 
     // MARK: persistence shape

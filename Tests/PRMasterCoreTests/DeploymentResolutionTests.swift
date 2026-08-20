@@ -260,10 +260,12 @@ struct DeploymentResolutionTests {
 
     // MARK: no new request
 
-    /// Environment versions need no candidates of their own: every release newer
-    /// than the merge is already asked about, which is exactly the set an
-    /// environment can be on and have the change. Adding them again would spend
-    /// a second request to learn what the first already answered.
+    /// A release inside the window's depth needs no candidate of its own: every
+    /// release newer than the merge is already asked about, which is exactly the
+    /// set an environment can be on and have the change. Adding it again would
+    /// spend a second request to learn what the first already answered. One
+    /// identified by tag from outside that depth is the exception, and the store
+    /// folds it into the same candidate set — see `identifiedReleaseIsCompared`.
     @Test("the release an environment is on is already a containment candidate")
     func environmentReleasesAreAlreadyAsked() {
         let candidates = ShipmentResolver.candidates(

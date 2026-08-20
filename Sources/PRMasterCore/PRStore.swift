@@ -244,6 +244,13 @@ public final class PRStore {
     /// Promoted versions per repository, replaced only on a successful lookup:
     /// yesterday's answer beats no answer, the same rule `shipments` follows.
     private var promotions: [String: [PromotedVersion]] = [:]
+    /// Releases identified from a promoted version rather than from the window's
+    /// depth, keyed by repository node ID.
+    ///
+    /// Kept apart from `resolvedReleases`, which is replaced wholesale on every
+    /// successful poll and would drop them each time — and then ask for them
+    /// again a minute later.
+    private var promotedReleases: [String: [Release]] = [:]
     /// The inputs the visible shipments were built from, kept so the chips can be
     /// folded in when the deployments lookup finishes without waiting for the
     /// next poll to re-derive everything.
@@ -378,6 +385,7 @@ public final class PRStore {
             lastShipmentFailure = nil
             lastDeploymentFailure = nil
             promotions = [:]
+            promotedReleases = [:]
             resolvedMerged = []
             resolvedReleases = [:]
             return
@@ -411,9 +419,12 @@ public final class PRStore {
             )
 
             // Only the unanswered ones: a shipment already resolved to a version
-            // would otherwise be re-compared on every poll for a day.
+            // would otherwise be re-compared on every poll for a day. The
+            // releases identified from a promoted version join the fetched ones,
+            // or a release an environment is on that the depth never reached
+            // would be identified and then never compared.
             let unanswered = ShipmentResolver
-                .candidates(merged: merged, releases: releases)
+                .candidates(merged: merged, releases: Self.merging(releases, with: promotedReleases))
                 .filter { containmentAnswers[$0.key] == nil }
 
             let answers = try await shipmentClient.resolveContainment(unanswered)
@@ -438,10 +449,27 @@ public final class PRStore {
         guard !resolvedMerged.isEmpty else { return }
         shipments = ShipmentResolver.resolve(
             merged: resolvedMerged,
-            releases: resolvedReleases,
+            releases: effectiveReleases,
             containment: containmentAnswers,
             promotions: promotions
         )
+    }
+
+    /// The releases in hand: the ones the window's depth fetched, plus the ones
+    /// identified from a version an environment is promoted to.
+    private var effectiveReleases: [String: [Release]] {
+        Self.merging(resolvedReleases, with: promotedReleases)
+    }
+
+    /// Deduplicated by tag: a version can be both inside the depth and asked for
+    /// by name, and the same release twice would be compared twice.
+    private static func merging(
+        _ fetched: [String: [Release]],
+        with identified: [String: [Release]]
+    ) -> [String: [Release]] {
+        fetched.merging(identified) { inHand, extra in
+            inHand + extra.filter { release in !inHand.contains { $0.tagName == release.tagName } }
+        }
     }
 
     // MARK: - Deployments
@@ -501,15 +529,31 @@ public final class PRStore {
 
             // Re-keyed onto the repository, so a repository backing several apps
             // is answered across all of them at once.
+            let resolved: [String: [PromotedVersion]] = repos.reduce(into: [:]) { result, repo in
+                let versions = (appLocations[repo] ?? []).flatMap { byLocation[$0] ?? [] }
+                if !versions.isEmpty { result[repo] = versions }
+            }
+
+            // A version the window's depth never reached cannot be matched to a
+            // release, and an unmatched version is silently no chip at all. Asked
+            // for by name, once — a version already in hand is not asked again.
+            let unidentified = ShipmentResolver.unidentifiedVersions(
+                merged: merged, releases: effectiveReleases, promotions: resolved
+            )
+            let identified = unidentified.isEmpty
+                ? [:] : try await deploymentClient.releases(forTags: unidentified)
+
             // Switched off, or the merged list moved on, while this was in the
             // air. Writing the answer now would put chips back on a section the
             // user has already emptied.
             guard !Task.isCancelled else { return }
 
-            promotions = repos.reduce(into: [:]) { result, repo in
-                let versions = (appLocations[repo] ?? []).flatMap { byLocation[$0] ?? [] }
-                if !versions.isEmpty { result[repo] = versions }
-            }
+            // Both assigned together and only here: a failure anywhere above
+            // leaves every one of them as the last good poll left it.
+            let live = Set(merged.map(\.repositoryID))
+            promotions = resolved
+            promotedReleases = Self.merging(promotedReleases, with: identified)
+                .filter { live.contains($0.key) }
             lastDeploymentFailure = nil
             // Folded into the visible rows now rather than at the next poll,
             // which is what makes the chips arrive on their own.
