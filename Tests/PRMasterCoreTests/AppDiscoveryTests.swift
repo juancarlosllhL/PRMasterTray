@@ -215,6 +215,45 @@ struct AppDiscoveryTests {
         #expect(AppDiscovery.declares(image: "lec-ai-chat-assistant", in: "host: eu.example.com") == false)
     }
 
+    // MARK: a folder nothing promotes into
+
+    /// The case that made this necessary. A decommissioned app folder keeps its
+    /// chart and its values files, so it goes on declaring the image and goes on
+    /// naming a `stableVersion` — frozen at whatever was promoted the day it was
+    /// switched off. The Kargo subscription is what tells it from a live one.
+    @Test("a folder holding a kargo subscription is promoted into")
+    func kargoSubscriptionIsPromotedInto() {
+        #expect(AppDiscovery.isKargoManaged(entries: [
+            TreeEntry(name: "Chart.yaml", oid: "chart"),
+            TreeEntry(name: "kargo", oid: "kargo"),
+            TreeEntry(name: "values.stg.euw1.yaml", oid: "stg"),
+        ]))
+    }
+
+    @Test("a folder of charts and values files alone is not promoted into")
+    func chartsAloneAreNotPromotedInto() {
+        #expect(AppDiscovery.isKargoManaged(entries: [
+            TreeEntry(name: "Chart.yaml", oid: "chart"),
+            TreeEntry(name: "templates", oid: "templates"),
+            TreeEntry(name: "values.stg.euw1.yaml", oid: "stg"),
+            TreeEntry(name: "values.yaml", oid: "values"),
+        ]) == false)
+    }
+
+    /// The whole name, not part of one: an app that once had a subscription and
+    /// had it renamed away is exactly the folder this rejects.
+    @Test("an entry merely containing the word is not the subscription", arguments: [
+        "kargo-old", "values.kargo.yaml", "Kargo",
+    ])
+    func nameMustBeExact(entry: String) {
+        #expect(AppDiscovery.isKargoManaged(entries: [TreeEntry(name: entry, oid: "x")]) == false)
+    }
+
+    @Test("an empty listing is not promoted into")
+    func emptyListingIsNotPromotedInto() {
+        #expect(AppDiscovery.isKargoManaged(entries: []) == false)
+    }
+
     // MARK: persistence
 
     /// Discovered mappings are cached to UserDefaults, so the shape has to

@@ -140,9 +140,11 @@ public actor GitHubClient {
         let trees = try PullRequestDecoder.decodePromotionTrees(treeData, locations: locations)
 
         // Only the region-qualified files are promotions; the rest of the folder
-        // is charts and templates.
+        // is charts and templates. And only in a folder Kargo promotes into: an
+        // abandoned one names a frozen version just as confidently.
+        let promoted = locations.filter { AppDiscovery.isKargoManaged(entries: trees[$0] ?? []) }
         let wanted: [(location: AppLocation, file: PromotionFile, entry: TreeEntry)] =
-            locations.flatMap { location in
+            promoted.flatMap { location in
                 (trees[location] ?? []).compactMap { entry in
                     PromotionFile.parse(name: entry.name).map { (location, $0, entry) }
                 }

@@ -29,10 +29,11 @@ private let widgets = AppLocation(
 )
 
 /// The tree listing the cache tests reuse: two region-qualified files plus a
-/// chart that is not a promotion.
+/// chart that is not a promotion, in a folder Kargo promotes into.
 private let treeBody = """
 {"data":{"t0":{"object":{"entries":[
   {"name":"Chart.yaml","object":{"oid":"chart"}},
+  {"name":"kargo","object":{"oid":"kargo"}},
   {"name":"values.stg.euw1.yaml","object":{"oid":"oid-stg"}},
   {"name":"values.prd.euw1.yaml","object":{"oid":"oid-prd"}}
 ]}}}}
@@ -96,12 +97,33 @@ struct PromotionClientTests {
         #expect(Set(try #require(second[widgets]).map(\.version)) == ["3.33.0", "3.31.1"])
     }
 
+    /// The decommissioned folder that made this necessary. It still declares the
+    /// image and still names a `stableVersion`, frozen at whatever was promoted
+    /// the day it was switched off — a version no release can be found for, which
+    /// silences the whole environment including the live app beside it.
+    @Test("a folder with no kargo subscription is not read at all")
+    func withoutKargoNothingIsRead() async throws {
+        let abandoned = """
+        {"data":{"t0":{"object":{"entries":[
+          {"name":"Chart.yaml","object":{"oid":"chart"}},
+          {"name":"values.stg.euw1.yaml","object":{"oid":"oid-frozen"}}
+        ]}}}}
+        """
+        let (client, stub) = makeClient([json(abandoned)])
+
+        #expect(try await client.promotions(for: [widgets]).isEmpty)
+        #expect(stub.requests.count == 1)
+    }
+
     /// A folder holding no region-qualified file has nothing to read, so the
     /// second request is skipped rather than sent empty.
     @Test("a folder with no promotion files issues no blob read")
     func noPromotionFilesNoBlobRead() async throws {
         let bare = """
-        {"data":{"t0":{"object":{"entries":[{"name":"Chart.yaml","object":{"oid":"chart"}}]}}}}
+        {"data":{"t0":{"object":{"entries":[
+          {"name":"Chart.yaml","object":{"oid":"chart"}},
+          {"name":"kargo","object":{"oid":"kargo"}}
+        ]}}}}
         """
         let (client, stub) = makeClient([json(bare)])
 
@@ -124,6 +146,7 @@ struct PromotionClientTests {
     func versionlessFileIsNotReRead() async throws {
         let onlyStg = """
         {"data":{"t0":{"object":{"entries":[
+          {"name":"kargo","object":{"oid":"kargo"}},
           {"name":"values.stg.euw1.yaml","object":{"oid":"oid-stg"}}
         ]}}}}
         """

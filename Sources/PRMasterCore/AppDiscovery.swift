@@ -104,6 +104,19 @@ public enum AppDiscovery {
         return false
     }
 
+    /// Whether Kargo promotes into this app folder at all.
+    ///
+    /// A decommissioned folder keeps its chart and its values files, so it goes
+    /// on declaring the image and goes on naming a `stableVersion` — frozen at
+    /// whatever was promoted the day it was switched off. Nothing in the folder
+    /// says it is dead, and a version nobody promoted is worse than no version:
+    /// it cannot be matched to a release, and one unanswerable region silences
+    /// the environment for the live app beside it. The Kargo subscription is the
+    /// difference, and the tree listing already in hand carries it.
+    public static func isKargoManaged(entries: [TreeEntry]) -> Bool {
+        entries.contains { $0.name == "kargo" }
+    }
+
     /// The app folders behind a set of code-search hits.
     ///
     /// `.stages/` holds a rendered copy of every app, one per cluster. Kargo
