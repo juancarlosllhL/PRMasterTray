@@ -4,9 +4,9 @@ import Testing
 
 private let mergedAt = Date(timeIntervalSince1970: 1_000)
 
-private func merged() -> MergedPullRequest {
+private func merged(id: String = "PR_1") -> MergedPullRequest {
     MergedPullRequest(
-        id: "PR_1",
+        id: id,
         number: 1204,
         title: "paginate the widget catalogue endpoint",
         url: URL(string: "https://github.com/acme/widget-service/pull/1204")!,
@@ -271,5 +271,89 @@ struct DeploymentResolutionTests {
             releases: ["R_1": [release("v3.32.0", createdAt: 2_000)]]
         )
         #expect(candidates.map(\.release.tagName) == ["v3.32.0"])
+    }
+
+    // MARK: versions nothing in hand identifies
+
+    private func unidentified(
+        merged: [MergedPullRequest],
+        releases: [Release],
+        promotions: [PromotedVersion]
+    ) -> [ReleaseTagRequest] {
+        ShipmentResolver.unidentifiedVersions(
+            merged: merged,
+            releases: ["R_1": releases],
+            promotions: ["acme/widget-service": promotions]
+        )
+    }
+
+    /// The `v` is dropped on the way in, so the tag and the promoted version are
+    /// the same thing here and nothing has to be asked.
+    @Test("a promoted version a fetched release accounts for is not looked up")
+    func identifiedVersionIsNotLookedUp() {
+        #expect(unidentified(
+            merged: [merged()],
+            releases: [release("v3.32.0", createdAt: 2_000)],
+            promotions: [promoted(.staging, "euw1", "3.32.0")]
+        ).isEmpty)
+    }
+
+    /// The case the chips were missing for: production lags further behind than
+    /// the window's release depth reaches, so nothing in hand names its version.
+    @Test("a promoted version no fetched release accounts for is looked up")
+    func laggingVersionIsLookedUp() {
+        #expect(unidentified(
+            merged: [merged()],
+            releases: [release("v3.40.0", createdAt: 2_000)],
+            promotions: [promoted(.production, "euw1", "3.31.1")]
+        ) == [
+            ReleaseTagRequest(repo: "acme/widget-service", repositoryID: "R_1", version: "3.31.1")
+        ])
+    }
+
+    @Test("one version across several regions and environments is one request")
+    func regionsShareOneRequest() {
+        #expect(unidentified(
+            merged: [merged()],
+            releases: [],
+            promotions: [
+                promoted(.staging, "euw1", "3.31.1"),
+                promoted(.staging, "use2", "3.31.1"),
+                promoted(.production, "euw1", "3.31.1"),
+            ]
+        ).count == 1)
+    }
+
+    /// Two merges in one repository see the same environments, so asking twice
+    /// would spend a request to be told the same thing.
+    @Test("two merges in one repository share one request")
+    func mergesShareOneRequest() {
+        #expect(unidentified(
+            merged: [merged(), merged(id: "PR_2")],
+            releases: [],
+            promotions: [promoted(.production, "euw1", "3.31.1")]
+        ).count == 1)
+    }
+
+    @Test("distinct promoted versions are asked about separately")
+    func distinctVersionsAreBothAsked() {
+        let requests = unidentified(
+            merged: [merged()],
+            releases: [],
+            promotions: [
+                promoted(.staging, "euw1", "3.40.0"),
+                promoted(.production, "euw1", "3.31.1"),
+            ]
+        )
+        #expect(Set(requests.map(\.version)) == ["3.40.0", "3.31.1"])
+    }
+
+    @Test("a repository with no promotions is not asked about")
+    func noPromotionsNoRequests() {
+        #expect(unidentified(
+            merged: [merged()],
+            releases: [release("v3.40.0", createdAt: 2_000)],
+            promotions: []
+        ).isEmpty)
     }
 }

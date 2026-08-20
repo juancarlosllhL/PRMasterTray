@@ -18,6 +18,24 @@ public struct Release: Sendable, Equatable {
     }
 }
 
+/// One promoted version that has to be identified before anything can be said
+/// about it.
+///
+/// Carries both keys because the two sides are keyed differently: promotions by
+/// `repo`, because that is what a deployments folder is found from, and releases
+/// by `repositoryID`, because that is what the merged search already returns.
+public struct ReleaseTagRequest: Sendable, Hashable {
+    public let repo: String
+    public let repositoryID: String
+    public let version: String
+
+    public init(repo: String, repositoryID: String, version: String) {
+        self.repo = repo
+        self.repositoryID = repositoryID
+        self.version = version
+    }
+}
+
 /// Identifies one containment question: does this release contain the merge
 /// commit of this pull request?
 public struct ContainmentKey: Hashable, Sendable {
@@ -260,6 +278,37 @@ public enum ShipmentResolver {
     /// context type this app dropped. "a check" is vague because the truth is.
     private static func failingName(in contexts: [CheckContext]) -> String {
         failingContext(in: contexts)?.name ?? "a check"
+    }
+
+    /// The promoted versions no release in hand accounts for.
+    ///
+    /// Whether an environment carries a change is decided among the releases
+    /// actually fetched, and the window's depth reaches only the most recent few.
+    /// An environment lagging further behind than that is unanswerable — which
+    /// renders as no chip rather than as a lag, and for a repository shipping
+    /// several times a day production is always in that position.
+    ///
+    /// Deduplicated per repository and version: every merge in a repository sees
+    /// the same environments, and one version is one release however many regions
+    /// are on it.
+    public static func unidentifiedVersions(
+        merged: [MergedPullRequest],
+        releases: [String: [Release]],
+        promotions: [String: [PromotedVersion]]
+    ) -> [ReleaseTagRequest] {
+        var seen: Set<ReleaseTagRequest> = []
+        return merged.flatMap { pr -> [ReleaseTagRequest] in
+            let identified = Set(
+                (releases[pr.repositoryID] ?? []).map { ReleaseVersion.strip($0.tagName) }
+            )
+            return (promotions[pr.repo] ?? []).compactMap { promotion in
+                guard !identified.contains(promotion.version) else { return nil }
+                let request = ReleaseTagRequest(
+                    repo: pr.repo, repositoryID: pr.repositoryID, version: promotion.version
+                )
+                return seen.insert(request).inserted ? request : nil
+            }
+        }
     }
 
     /// The (pull request, release) pairs worth a containment request.
