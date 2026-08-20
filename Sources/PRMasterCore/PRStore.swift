@@ -54,6 +54,9 @@ public protocol DeploymentFetching: Sendable {
     func discover(repo: String) async throws -> [AppLocation]
     /// Every region's promoted version, per app folder.
     func promotions(for locations: [AppLocation]) async throws -> [AppLocation: [PromotedVersion]]
+    /// The release each promoted version names, keyed by repository node ID, for
+    /// the versions the release lookup's depth did not reach.
+    func releases(forTags requests: [ReleaseTagRequest]) async throws -> [String: [Release]]
 }
 
 extension GitHubClient: DeploymentFetching {}

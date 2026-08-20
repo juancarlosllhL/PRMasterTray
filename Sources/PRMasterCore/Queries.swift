@@ -235,6 +235,52 @@ enum Queries {
         return (document(declarations, fields), variables)
     }
 
+    /// The release each promoted version names, asked for by tag.
+    ///
+    /// Assembled on the same terms as the two above: aliases and variable names
+    /// are generated, every remote value rides as a variable.
+    ///
+    /// Both spellings of the tag are asked at once. A values file names `3.31.1`
+    /// and the release is tagged `v3.31.1`, but nothing guarantees the prefix, and
+    /// GitHub answers a tag that does not exist with `null` rather than with an
+    /// error — so the pair costs one field, not one request.
+    ///
+    /// - Returns: `nil` when there is nothing to ask.
+    static func releasesByTag(
+        for requests: [ReleaseTagRequest]
+    ) -> (query: String, variables: [String: String])? {
+        guard !requests.isEmpty else { return nil }
+
+        var declarations: [String] = []
+        var fields: [String] = []
+        var variables: [String: String] = [:]
+
+        for (index, request) in requests.enumerated() {
+            declarations.append(
+                "$owner\(index): String!, $name\(index): String!, "
+                    + "$prefixed\(index): String!, $bare\(index): String!"
+            )
+            fields.append("""
+              r\(index): repository(owner: $owner\(index), name: $name\(index)) {
+                prefixed: release(tagName: $prefixed\(index)) { \(releaseFields) }
+                bare: release(tagName: $bare\(index)) { \(releaseFields) }
+              }
+            """)
+
+            let repo = request.repo
+            variables["owner\(index)"] = String(repo.prefix { $0 != "/" })
+            variables["name\(index)"] = String(repo.drop { $0 != "/" }.dropFirst())
+            variables["prefixed\(index)"] = "v\(request.version)"
+            variables["bare\(index)"] = request.version
+        }
+
+        return (document(declarations, fields), variables)
+    }
+
+    /// The same selection `releases` makes, so both paths decode into `Release`
+    /// through one payload type and a draft is excluded on both.
+    private static let releaseFields = "tagName url createdAt isDraft tagCommit { oid }"
+
     private static func document(_ declarations: [String], _ fields: [String]) -> String {
         """
         query(\(declarations.joined(separator: ", "))) {

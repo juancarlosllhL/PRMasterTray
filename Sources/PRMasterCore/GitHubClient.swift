@@ -166,6 +166,19 @@ public actor GitHubClient {
         }
     }
 
+    /// The release each promoted version names, keyed by repository node ID.
+    ///
+    /// The depth-based lookup above reaches only the most recent releases, and an
+    /// environment can be many behind that. Asking for the tag by name answers it
+    /// exactly, in one request, however far behind it is.
+    public func releases(forTags requests: [ReleaseTagRequest]) async throws -> [String: [Release]] {
+        guard let built = Queries.releasesByTag(for: requests) else { return [:] }
+        let data = try await perform(
+            query: built.query, variables: built.variables.mapValues(GraphQLValue.string)
+        )
+        return try PullRequestDecoder.decodeTagReleases(data, requests: requests)
+    }
+
     private func readUnparsedBlobs(
         in wanted: [(location: AppLocation, file: PromotionFile, entry: TreeEntry)]
     ) async throws {

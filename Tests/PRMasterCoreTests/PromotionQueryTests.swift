@@ -19,6 +19,14 @@ private let gadgets = AppLocation(
     appPath: "gadget-service"
 )
 
+private func tagRequest(_ version: String) -> ReleaseTagRequest {
+    ReleaseTagRequest(repo: "acme/widget-service", repositoryID: "R_1", version: version)
+}
+
+private func tagBody(prefixed: String, bare: String) -> Data {
+    Data(#"{"data":{"r0":{"prefixed":\#(prefixed),"bare":\#(bare)}}}"#.utf8)
+}
+
 /// Splits a built document into the variable names it declares, the same way
 /// `QueriesTests` does.
 private func declaredVariables(in query: String) -> Set<String> {
@@ -165,6 +173,92 @@ struct PromotionQueryTests {
         // A blob GitHub did not return is absent, not an empty string that would
         // parse as an app with no promoted version.
         #expect(blobs["oid-gone"] == nil)
+    }
+
+    // MARK: identifying a release by the version promoted into an environment
+
+    @Test("each version gets its own alias, holding both spellings of the tag")
+    func releaseTagAliases() throws {
+        let built = try #require(Queries.releasesByTag(for: [tagRequest("3.31.1"), tagRequest("3.40.0")]))
+        #expect(built.query.contains("r0: repository("))
+        #expect(built.query.contains("r1: repository("))
+        #expect(built.query.contains("prefixed: release("))
+        #expect(built.query.contains("bare: release("))
+    }
+
+    /// The version in a values file carries no prefix and the tag usually does.
+    /// Asking both in one document costs one request, because GitHub answers a
+    /// tag that does not exist with null rather than with an error.
+    @Test("both spellings of the tag ride as variables")
+    func bothSpellingsAreBound() throws {
+        let built = try #require(Queries.releasesByTag(for: [tagRequest("3.31.1")]))
+        #expect(built.variables["prefixed0"] == "v3.31.1")
+        #expect(built.variables["bare0"] == "3.31.1")
+        #expect(built.variables["owner0"] == "acme")
+        #expect(built.variables["name0"] == "widget-service")
+    }
+
+    @Test("no remote value appears anywhere in the release document")
+    func noRemoteValueInReleaseDocument() throws {
+        let built = try #require(Queries.releasesByTag(for: [tagRequest("3.31.1")]))
+        #expect(built.query.contains("acme") == false)
+        #expect(built.query.contains("widget-service") == false)
+        #expect(built.query.contains("3.31.1") == false)
+    }
+
+    @Test("every declared release variable has a value bound to it")
+    func releaseVariablesAllBound() throws {
+        let built = try #require(Queries.releasesByTag(for: [tagRequest("3.31.1"), tagRequest("3.40.0")]))
+        let declared = declaredVariables(in: built.query)
+        #expect(declared.isEmpty == false)
+        #expect(declared == Set(built.variables.keys))
+    }
+
+    @Test("no requests yields no release query")
+    func noRequestsNoReleaseQuery() {
+        #expect(Queries.releasesByTag(for: []) == nil)
+    }
+
+    @Test("the prefixed spelling wins when both answer")
+    func prefixedWins() throws {
+        let body = tagBody(
+            prefixed: #"{"tagName":"v3.31.1","url":"https://e.com/v","createdAt":"2026-08-13T12:42:51Z","isDraft":false,"tagCommit":{"oid":"aaa"}}"#,
+            bare: #"{"tagName":"3.31.1","url":"https://e.com/b","createdAt":"2026-08-13T12:42:51Z","isDraft":false,"tagCommit":{"oid":"bbb"}}"#
+        )
+        let releases = try PullRequestDecoder.decodeTagReleases(body, requests: [tagRequest("3.31.1")])
+        #expect(releases["R_1"]?.map(\.tagName) == ["v3.31.1"])
+    }
+
+    @Test("the bare spelling is used when it is the only answer")
+    func bareIsUsedAlone() throws {
+        let body = tagBody(
+            prefixed: "null",
+            bare: #"{"tagName":"3.31.1","url":"https://e.com/b","createdAt":"2026-08-13T12:42:51Z","isDraft":false,"tagCommit":{"oid":"bbb"}}"#
+        )
+        let releases = try PullRequestDecoder.decodeTagReleases(body, requests: [tagRequest("3.31.1")])
+        #expect(releases["R_1"]?.map(\.tagName) == ["3.31.1"])
+    }
+
+    /// A version nothing is tagged with stays absent rather than arriving as a
+    /// release with no commit: unknown and wrong are different answers.
+    @Test("a version neither spelling resolves is absent")
+    func unresolvedVersionIsAbsent() throws {
+        let releases = try PullRequestDecoder.decodeTagReleases(
+            tagBody(prefixed: "null", bare: "null"), requests: [tagRequest("3.31.1")]
+        )
+        #expect(releases.isEmpty)
+    }
+
+    /// Nothing is running a release that was never published, so calling a
+    /// change shipped in one would be false — the same rule the depth-based
+    /// lookup follows.
+    @Test("a draft is not the release an environment is on")
+    func draftIsNotARelease() throws {
+        let body = tagBody(
+            prefixed: #"{"tagName":"v3.31.1","url":"https://e.com/v","createdAt":"2026-08-13T12:42:51Z","isDraft":true,"tagCommit":{"oid":"aaa"}}"#,
+            bare: "null"
+        )
+        #expect(try PullRequestDecoder.decodeTagReleases(body, requests: [tagRequest("3.31.1")]).isEmpty)
     }
 
     @Test("a GraphQL errors array throws rather than reporting nothing promoted", arguments: [true, false])

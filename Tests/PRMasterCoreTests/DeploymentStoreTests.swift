@@ -87,6 +87,10 @@ private final class SpyDeploymentClient: DeploymentFetching, @unchecked Sendable
         if promotionsFail { throw DeploymentFailure() }
         return versions
     }
+
+    func releases(forTags requests: [ReleaseTagRequest]) async throws -> [String: [Release]] {
+        [:]
+    }
 }
 
 /// Holds the promotions lookup open until the test lets it go, so "the list did
@@ -142,6 +146,10 @@ private final class GatedDeploymentClient: DeploymentFetching, @unchecked Sendab
             if alreadyOpen { continuation.resume() }
         }
         return versions
+    }
+
+    func releases(forTags requests: [ReleaseTagRequest]) async throws -> [String: [Release]] {
+        [:]
     }
 
     func open() {

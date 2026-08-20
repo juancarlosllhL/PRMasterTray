@@ -380,6 +380,19 @@ struct PromotionTreeNode: Decodable {
     }
 }
 
+/// One `r{n}: repository { prefixed: release, bare: release }` answer.
+struct TagReleaseNode: Decodable {
+    /// `null` for a tag that does not exist. GitHub reports that as data rather
+    /// than as an error, which is what lets both spellings be asked at once.
+    let prefixed: ReleasesPayload.Node.Releases.ReleaseNode?
+    let bare: ReleasesPayload.Node.Releases.ReleaseNode?
+
+    /// The prefixed spelling first, because that is what these repositories tag
+    /// with. Either way it goes through `domain`, so a draft is excluded here on
+    /// the same terms as everywhere else.
+    var domain: Release? { prefixed?.domain ?? bare?.domain }
+}
+
 /// One `b{n}: repository { object { text } }` answer.
 struct PromotionBlobNode: Decodable {
     /// `null` when the path does not resolve, and `text` is itself null for a
@@ -563,16 +576,43 @@ public enum PullRequestDecoder {
         }
     }
 
-    /// The envelope handling both aliased promotion responses share: errors
-    /// first, because GitHub reports an SSO failure as a 200 with a null
-    /// payload, which would otherwise read as nothing promoted anywhere.
+    /// Decodes the release each promoted version names, keyed by the repository
+    /// node ID the caller asked under.
+    ///
+    /// Aliases are `r0…rN` in request order. A version neither spelling of the
+    /// tag resolves is omitted rather than recorded as a release with no commit:
+    /// the resolver treats a missing release as unknown and says nothing, which
+    /// is the difference between no answer and a wrong one.
+    public static func decodeTagReleases(
+        _ data: Data,
+        requests: [ReleaseTagRequest]
+    ) throws -> [String: [Release]] {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let payload = try aliased(TagReleaseNode.self, from: data, decoder: decoder)
+
+        return requests.enumerated().reduce(into: [:]) { result, pair in
+            let (index, request) = pair
+            guard let node = payload["r\(index)"] ?? nil, let release = node.domain
+            else { return }
+            result[request.repositoryID, default: []].append(release)
+        }
+    }
+
+    /// The envelope handling every aliased response shares: errors first, because
+    /// GitHub reports an SSO failure as a 200 with a null payload, which would
+    /// otherwise read as nothing promoted anywhere.
+    ///
+    /// - Parameter decoder: the release payload carries dates, and the tree and
+    ///   blob payloads do not, so the strategy comes from the caller.
     private static func aliased<Node: Decodable>(
         _ node: Node.Type,
-        from data: Data
+        from data: Data,
+        decoder: JSONDecoder = JSONDecoder()
     ) throws -> [String: Node?] {
         let response: GraphQLResponse<[String: Node?]>
         do {
-            response = try JSONDecoder().decode(GraphQLResponse<[String: Node?]>.self, from: data)
+            response = try decoder.decode(GraphQLResponse<[String: Node?]>.self, from: data)
         } catch {
             throw PRMasterError.decoding(String(describing: error))
         }

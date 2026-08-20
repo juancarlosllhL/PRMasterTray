@@ -162,6 +162,34 @@ struct PromotionClientTests {
         #expect(second.isEmpty)
     }
 
+    // MARK: identifying a release by its promoted version
+
+    @Test("one request identifies the releases a set of promoted versions name")
+    func identifiesReleasesByTag() async throws {
+        let body = """
+        {"data":{
+          "r0":{"prefixed":{"tagName":"v3.31.1","url":"https://e.com/1","createdAt":"2026-08-13T12:42:51Z","isDraft":false,"tagCommit":{"oid":"aaa"}},"bare":null},
+          "r1":{"prefixed":null,"bare":null}
+        }}
+        """
+        let (client, stub) = makeClient([json(body)])
+
+        let releases = try await client.releases(forTags: [
+            ReleaseTagRequest(repo: "acme/widget-service", repositoryID: "R_1", version: "3.31.1"),
+            ReleaseTagRequest(repo: "acme/widget-service", repositoryID: "R_1", version: "9.9.9"),
+        ])
+
+        #expect(stub.requests.count == 1)
+        #expect(releases["R_1"]?.map(\.tagName) == ["v3.31.1"])
+    }
+
+    @Test("nothing to identify issues no request at all")
+    func noTagsNoRequest() async throws {
+        let (client, stub) = makeClient([])
+        #expect(try await client.releases(forTags: []).isEmpty)
+        #expect(stub.requests.isEmpty)
+    }
+
     // MARK: discovery
 
     @Test("a repository with no CircleCI config discovers nothing rather than failing")
