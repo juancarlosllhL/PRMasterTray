@@ -102,6 +102,17 @@ public protocol PreferenceStoring: Sendable {
     func setStaleThreshold(_ value: StaleThreshold)
     func mergedWindow() -> MergedWindow
     func setMergedWindow(_ value: MergedWindow)
+    /// How far back the team section reaches.
+    func reviewWindow() -> ReviewWindow
+    func setReviewWindow(_ value: ReviewWindow)
+    /// Which teams the user has switched off.
+    func teamFilter() -> TeamFilter
+    func setTeamFilter(_ value: TeamFilter)
+    /// The teams discovered last time. Stored so a failed discovery falls back to
+    /// the last good list instead of emptying the section, and so the settings
+    /// window has something to show before the first fetch lands.
+    func knownTeams() -> [Team]
+    func setKnownTeams(_ value: [Team])
     /// Discovered app folders, keyed by service repository. An empty array is a
     /// real answer — that repository was searched and deploys nothing findable —
     /// so it is stored rather than retried on every poll.
@@ -686,6 +697,9 @@ public struct UserDefaultsPreferences: PreferenceStoring {
     private let mergedWindowKey = "mergedWindow"
     private let appLocationsKey = "appLocations"
     private let launchAtLoginKey = "launchAtLoginRequested"
+    private let reviewWindowKey = "reviewWindow"
+    private let disabledTeamsKey = "disabledTeams"
+    private let knownTeamsKey = "knownTeams"
     // UserDefaults is documented as thread-safe but predates Sendable.
     nonisolated(unsafe) private let defaults: UserDefaults
 
@@ -781,6 +795,48 @@ public struct UserDefaultsPreferences: PreferenceStoring {
 
     public func setMergedWindow(_ value: MergedWindow) {
         defaults.set(value.rawValue, forKey: mergedWindowKey)
+    }
+
+    public func reviewWindow() -> ReviewWindow {
+        // Absent *and* unrecognised both fall back to the shipped default rather
+        // than to `off`, the rule `mergedWindow` and `staleThreshold` follow: a
+        // downgrade or a stray `defaults write` silently emptying the section is
+        // the one failure nobody would notice.
+        defaults.string(forKey: reviewWindowKey)
+            .flatMap(ReviewWindow.init(rawValue:)) ?? .default
+    }
+
+    public func setReviewWindow(_ value: ReviewWindow) {
+        // The raw string, not an index — `defaults read com.jcll.PRMaster` is how
+        // this gets debugged, and "2" says nothing.
+        defaults.set(value.rawValue, forKey: reviewWindowKey)
+    }
+
+    public func teamFilter() -> TeamFilter {
+        // Absent reads as hiding nothing, which is what a blocklist has to mean:
+        // see `TeamFilter` for why a team nobody named must stay visible.
+        TeamFilter(disabledTeams: Set(defaults.stringArray(forKey: disabledTeamsKey) ?? []))
+    }
+
+    public func setTeamFilter(_ value: TeamFilter) {
+        // Sorted for the same reason `setFilter` sorts the hidden organizations:
+        // a stable, readable array under `defaults read`.
+        defaults.set(value.disabledTeams.sorted(), forKey: disabledTeamsKey)
+    }
+
+    public func knownTeams() -> [Team] {
+        // Unreadable, or written by an older shape, means "nothing discovered
+        // yet". That costs one request to rebuild, which is the safe direction —
+        // the same call `appLocations` makes.
+        guard let data = defaults.data(forKey: knownTeamsKey),
+              let stored = try? JSONDecoder().decode([Team].self, from: data)
+        else { return [] }
+        return stored
+    }
+
+    public func setKnownTeams(_ value: [Team]) {
+        guard let data = try? JSONEncoder().encode(value) else { return }
+        defaults.set(data, forKey: knownTeamsKey)
     }
 
     public func appLocations() -> [String: [AppLocation]] {

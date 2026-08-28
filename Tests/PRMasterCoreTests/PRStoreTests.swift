@@ -100,6 +100,9 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
     private var storedThreshold: StaleThreshold
     private var storedMergedWindow: MergedWindow
     private var storedLaunchAtLogin: Bool
+    private var storedReviewWindow: ReviewWindow
+    private var storedTeamFilter: TeamFilter
+    private var storedKnownTeams: [Team]
 
     init(
         autoUpdate: Bool = true,
@@ -109,7 +112,10 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
         background: PopoverBackground = .liquidGlass,
         staleThreshold: StaleThreshold = .oneMonth,
         mergedWindow: MergedWindow = .oneDay,
-        launchAtLogin: Bool = false
+        launchAtLogin: Bool = false,
+        reviewWindow: ReviewWindow = .twoWeeks,
+        teamFilter: TeamFilter = TeamFilter(),
+        knownTeams: [Team] = []
     ) {
         enabled = autoUpdate
         stored = filter
@@ -119,6 +125,9 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
         storedThreshold = staleThreshold
         storedMergedWindow = mergedWindow
         storedLaunchAtLogin = launchAtLogin
+        storedReviewWindow = reviewWindow
+        storedTeamFilter = teamFilter
+        storedKnownTeams = knownTeams
     }
 
     func autoUpdateEnabled() -> Bool { lock.withLock { enabled } }
@@ -135,6 +144,19 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
     }
     func mergedWindow() -> MergedWindow { lock.withLock { storedMergedWindow } }
     func setMergedWindow(_ value: MergedWindow) { lock.withLock { storedMergedWindow = value } }
+    func reviewWindow() -> ReviewWindow { lock.withLock { storedReviewWindow } }
+    func setReviewWindow(_ value: ReviewWindow) { lock.withLock { storedReviewWindow = value } }
+    func teamFilter() -> TeamFilter { lock.withLock { storedTeamFilter } }
+    func setTeamFilter(_ value: TeamFilter) { lock.withLock { storedTeamFilter = value } }
+
+    var knownTeamWrites = 0
+    func knownTeams() -> [Team] { lock.withLock { storedKnownTeams } }
+    func setKnownTeams(_ value: [Team]) {
+        lock.withLock {
+            storedKnownTeams = value
+            knownTeamWrites += 1
+        }
+    }
 
     private var storedAppLocations: [String: [AppLocation]] = [:]
     var appLocationWrites = 0
