@@ -38,10 +38,36 @@ GitHub would merge right now.
   Promoted is not deployed — Argo CD syncs separately, so a failed sync or a
   crash-looping pod still reads as promoted. No chip means nothing could be
   established, which is never the same as nothing being there.
+- **Waiting on your teams** lists open pull requests that a GitHub team you
+  belong to has been asked to review — not yours, and not ones you have already
+  reviewed. Each row says who opened it, which of your teams was asked, how long
+  it has been open, and whether its checks passed, so a red or already-rejected
+  pull request is visible before you click. Clicking opens it; **Approve** posts
+  a real, public review under your own name, after a confirmation naming the
+  author.
+
+  How far back it reaches is a setting, and it is the setting that makes the
+  section usable rather than a preference on top of one: measured against nine
+  real teams, there were 1846 pull requests pending review with no limit at all
+  and 76 with two weeks. The rest were release-bot and dependency-bump branches
+  abandoned months earlier. Measured from when a pull request was opened rather
+  than from its last activity, so a bot that rebases its own branch nightly
+  cannot keep itself at the top of the list. Off hides the section entirely.
+
+<img src="docs/screenshots/team-review-requests.png" width="406" alt="The popover: the Waiting on your teams section, four rows each with a state glyph, the author, the team asked and the age">
+
+- **Teams** in Settings lists every team you belong to, including ones you
+  maintain, with how many pull requests are pending each — so you can see what
+  switching one on would cost before you do it. New teams arrive switched on:
+  being added to one is somebody else's decision, so it has to show up by itself
+  rather than stay invisible until you go looking.
+
+<img src="docs/screenshots/settings-teams.png" width="520" alt="The Teams settings tab: the age limit on two weeks, and nine teams each with a count of how many are waiting and a switch">
+
 - **Settings…** in the gear menu chooses what the list is made of: which
   organizations to include, and whether pull requests from private repositories
   show at all. Hidden ones are left out of the count, never notify, and are never
-  brought up to date automatically.
+  brought up to date automatically. Both also apply to the teams section above.
 - Refreshes every minute, on opening the popover, and on waking the machine. A
   failed refresh keeps the last good list and tells you it is stale.
 - Checks for new versions of the app and installs them for you.
@@ -74,6 +100,15 @@ it. Apple Silicon only.
 ```sh
 brew install gh
 gh auth login
+```
+
+- The `read:org` scope, which is what lets the app see which teams you belong to.
+  Without it GitHub answers the team lookup with an error rather than an empty
+  list, so the popover says it couldn't check your teams instead of quietly
+  claiming you belong to none. Add it with:
+
+```sh
+gh auth refresh -s read:org
 ```
 
 - Notification permission, granted under **System Settings → Notifications**.
