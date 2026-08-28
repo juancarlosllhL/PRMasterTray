@@ -1,3 +1,5 @@
+import Foundation
+
 enum Queries {
     /// Both halves of the list in one request: the open pull requests, and the
     /// ones merged inside the retention window.
@@ -95,6 +97,94 @@ enum Queries {
         }
       }
     }
+    """
+
+    /// How many rows to fetch per enabled team.
+    ///
+    /// Per team rather than overall, which is the point of searching each one
+    /// separately: on the account this was built for a single shared cap would
+    /// have let one team with 852 pending crowd out another with 8.
+    static let reviewRequestPageSize = 20
+
+    /// The open pull requests each of the user's teams has been asked to review.
+    ///
+    /// One aliased search per team in one document — the `promotionTrees(for:)`
+    /// pattern. Repeating `team-review-requested:` in a single search would OR
+    /// the teams together and cost one request instead of several fields, but it
+    /// was measured and rejected: one search needs one cap, and the volume is not
+    /// evenly spread. Searching each team separately also makes attribution free,
+    /// since the alias says which team answered.
+    ///
+    /// A team the user has switched off is still asked, at `first: 0`. GitHub
+    /// answers `issueCount` whatever the page size, so this is what lets the
+    /// settings list show a real number beside a disabled team — the number that
+    /// says what switching it on would cost — without fetching a single row of it.
+    ///
+    /// Assembled from remote data on the same terms as `containment(for:)`:
+    /// generated aliases and generated variable *names* only, with every remote
+    /// value riding as a variable. A team slug is remote data.
+    ///
+    /// - Returns: `nil` when there are no teams, or when the window is off. Unlike
+    ///   the merged search, which rides along with the open pull requests and so
+    ///   costs nothing extra, this is a round trip of its own — there is nothing
+    ///   to be gained by sending one that cannot match.
+    static func reviewRequests(
+        for teams: [Team], filter: TeamFilter, window: ReviewWindow, now: Date
+    ) -> (query: String, variables: [String: GraphQLValue])? {
+        guard !teams.isEmpty, let created = window.createdQualifier(now: now) else { return nil }
+
+        var declarations: [String] = []
+        var fields: [String] = []
+        var variables: [String: GraphQLValue] = [:]
+
+        for (index, team) in teams.enumerated() {
+            declarations.append("$q\(index): String!, $n\(index): Int!")
+            fields.append("""
+              s\(index): search(query: $q\(index), type: ISSUE, first: $n\(index)) {
+                issueCount
+                nodes { \(reviewRequestFields) }
+              }
+            """)
+
+            // `-author:@me` is required rather than tidy: GitHub refuses to let
+            // anybody approve their own pull request, so a row of the user's own
+            // would offer an Approve button that cannot work — and it is already
+            // listed in the section above. `-reviewed-by:@me` drops the ones they
+            // have dealt with, which would otherwise sit here until somebody else
+            // cleared the team's request.
+            variables["q\(index)"] = .string(
+                "is:pr is:open archived:false draft:false "
+                    + "team-review-requested:\(team.combinedSlug) -author:@me -reviewed-by:@me "
+                    + "\(created) sort:updated-desc"
+            )
+            variables["n\(index)"] = .int(filter.shows(team) ? reviewRequestPageSize : 0)
+        }
+
+        return (document(declarations, fields), variables)
+    }
+
+    /// What a review row is made of.
+    ///
+    /// `isDraft` is deliberately absent: `draft:false` in the search already
+    /// settles it, and a field nothing reads is a field that goes stale.
+    /// `author` is nullable — GitHub reassigns a deleted account's pull requests
+    /// to nobody — which the decoder handles rather than the query.
+    private static let reviewRequestFields = """
+    ... on PullRequest {
+                    id
+                    number
+                    title
+                    url
+                    headRefOid
+                    createdAt
+                    updatedAt
+                    reviewDecision
+                    author { login }
+                    repository { nameWithOwner isPrivate }
+                    commits(last: 1) {
+                      nodes { commit { statusCheckRollup { state } } }
+                    }
+                  }
     """
 
     /// The most recent releases of several repositories at once.
