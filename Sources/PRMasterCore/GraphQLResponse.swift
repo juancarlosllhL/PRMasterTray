@@ -270,6 +270,92 @@ struct ContextNode: Decodable {
     }
 }
 
+/// One poll's answer about the user's teams: the rows, and how many are pending
+/// per team.
+///
+/// The counts are kept beside the rows rather than derived from them, because
+/// they are not derivable: a team the user has switched off is asked at
+/// `first: 0`, so it contributes a count and no rows at all. That count is what
+/// the settings list needs in order to say what switching the team on would cost.
+public struct ReviewSnapshot: Sendable, Equatable {
+    /// Deduplicated across teams and ordered by last activity, newest first.
+    public let requests: [ReviewRequest]
+    /// Keyed by `Team.combinedSlug`. A team GitHub did not answer for is absent
+    /// rather than zero — not knowing is not the same as none.
+    public let pendingCounts: [String: Int]
+
+    public init(requests: [ReviewRequest], pendingCounts: [String: Int]) {
+        self.requests = requests
+        self.pendingCounts = pendingCounts
+    }
+
+    public static let empty = ReviewSnapshot(requests: [], pendingCounts: [:])
+}
+
+/// One `s{n}: search { issueCount nodes }` answer.
+struct ReviewSearchNode: Decodable {
+    let issueCount: Int
+    let nodes: [Node]
+
+    struct Node: Decodable {
+        let id: String
+        let number: Int
+        let title: String
+        let url: URL
+        let headRefOid: String
+        let createdAt: Date
+        let updatedAt: Date
+        let reviewDecision: ReviewDecision?
+        /// `null` when the account that opened it has been deleted — GitHub
+        /// reassigns their pull requests to nobody.
+        let author: Author?
+        let repository: Repository
+        let commits: Commits
+
+        struct Author: Decodable { let login: String }
+
+        struct Repository: Decodable {
+            let nameWithOwner: String
+            let isPrivate: Bool
+        }
+
+        struct Commits: Decodable {
+            let nodes: [CommitNode]
+            struct CommitNode: Decodable {
+                let commit: Commit
+                struct Commit: Decodable {
+                    /// `null` when the repository has no CI configured at all.
+                    let statusCheckRollup: Rollup?
+                    struct Rollup: Decodable { let state: CheckState }
+                }
+            }
+        }
+
+        func domain(teams: [Team]) -> ReviewRequest {
+            ReviewRequest(
+                id: id,
+                number: number,
+                title: title,
+                url: url,
+                repo: repository.nameWithOwner,
+                isPrivate: repository.isPrivate,
+                // The pull request is real and still needs reviewing, so a
+                // deleted author must not lose the row. `ghost` is GitHub's own
+                // name for the account it reassigns their content to, which
+                // makes it the one placeholder that is not invented here.
+                author: author?.login ?? "ghost",
+                headRefOid: headRefOid,
+                // Absent rollup stays nil: "no CI" is not "checks running".
+                checks: commits.nodes.first?.commit.statusCheckRollup?.state,
+                reviewDecision: reviewDecision,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                teams: teams
+            )
+        }
+    }
+}
+
 /// Mirrors the two role-filtered team lists per organization.
 ///
 /// Both lists are present because one is not enough — see `Queries.myTeams`.
@@ -561,6 +647,64 @@ public enum PullRequestDecoder {
                 $0.combinedSlug.localizedCaseInsensitiveCompare($1.combinedSlug)
                     == .orderedAscending
             }
+    }
+
+    /// Decodes the per-team review searches into one flat, deduplicated list.
+    ///
+    /// Aliases are `s0…sN` in team order, the contract
+    /// `Queries.reviewRequests(for:filter:window:now:)` establishes.
+    ///
+    /// Deduplicated by pull request ID, carrying every team that was asked. A
+    /// pull request requested from two of the user's teams comes back under two
+    /// aliases — seen live on a repository asked of both `platform` and
+    /// `datanauts` — and rendering it twice is the visible bug that motivates
+    /// this. The teams on a shared row follow the caller's team order rather than
+    /// the order the aliases were read in, so the row is stable.
+    ///
+    /// Ordered by `updatedAt` descending: flat and most-recently-active first, so
+    /// the list does not depend on which team happened to be searched first.
+    ///
+    /// A team GitHub did not answer for is omitted from the counts rather than
+    /// recorded as zero. Zero would tell the settings list that a team has
+    /// nothing waiting, which is a claim a missing answer does not support.
+    ///
+    /// - Throws: `.graphQL` when the body carries an `errors` array, checked
+    ///   before `data` because GitHub reports an SSO refusal as a 200 with a null
+    ///   payload — which would otherwise read as nothing waiting on any team.
+    public static func decodeReviewRequests(
+        _ data: Data,
+        teams: [Team]
+    ) throws -> ReviewSnapshot {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let payload = try aliased(ReviewSearchNode.self, from: data, decoder: decoder)
+
+        var counts: [String: Int] = [:]
+        // Insertion-ordered so the teams on a deduplicated row keep the caller's
+        // order, and so the first sighting of a pull request wins its fields.
+        var order: [String] = []
+        var byID: [String: (node: ReviewSearchNode.Node, teams: [Team])] = [:]
+
+        for (index, team) in teams.enumerated() {
+            guard let search = payload["s\(index)"] ?? nil else { continue }
+            counts[team.combinedSlug] = search.issueCount
+
+            for node in search.nodes {
+                if let existing = byID[node.id] {
+                    byID[node.id] = (existing.node, existing.teams + [team])
+                } else {
+                    order.append(node.id)
+                    byID[node.id] = (node, [team])
+                }
+            }
+        }
+
+        let requests = order
+            .compactMap { byID[$0] }
+            .map { $0.node.domain(teams: $0.teams) }
+            .sorted { $0.updatedAt > $1.updatedAt }
+
+        return ReviewSnapshot(requests: requests, pendingCounts: counts)
     }
 
     /// Decodes the releases of several repositories, keyed by node ID.
