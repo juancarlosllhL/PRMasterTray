@@ -102,3 +102,9 @@ extension MergedPullRequest {
     /// under them, so a raw `:sparkles:` there reads as a bug in the list.
     public var displayTitle: String { EmojiShortcodes.render(title) }
 }
+
+extension ReviewRequest {
+    /// The same rule again, and these titles need it most: they are written by
+    /// everybody else in the organization, where gitmoji is the house style.
+    public var displayTitle: String { EmojiShortcodes.render(title) }
+}
