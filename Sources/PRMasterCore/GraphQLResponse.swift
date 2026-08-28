@@ -270,6 +270,53 @@ struct ContextNode: Decodable {
     }
 }
 
+/// Mirrors the two role-filtered team lists per organization.
+///
+/// Both lists are present because one is not enough — see `Queries.myTeams`.
+struct TeamsPayload: Decodable {
+    let viewer: Viewer
+
+    struct Viewer: Decodable {
+        let organizations: Organizations
+
+        struct Organizations: Decodable {
+            /// `null` for an organization GitHub declines to resolve. One of those
+            /// must not take the other organizations' teams down with it — the
+            /// rule `ReleasesPayload` follows for a repository deleted between
+            /// two calls.
+            let nodes: [Node?]
+
+            struct Node: Decodable {
+                let login: String
+                let member: TeamList
+                let admin: TeamList
+
+                struct TeamList: Decodable {
+                    let nodes: [TeamNode]
+
+                    struct TeamNode: Decodable {
+                        let name: String
+                        let combinedSlug: String
+                    }
+                }
+
+                /// Both roles, in the order the query declares them. Deduplicated
+                /// by the caller rather than here, because a team can appear in
+                /// both lists and the duplicate is only visible across them.
+                var teams: [Team] {
+                    (member.nodes + admin.nodes).map {
+                        Team(
+                            combinedSlug: $0.combinedSlug,
+                            organization: login,
+                            name: $0.name
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 struct ReleasesPayload: Decodable {
     /// `null` for a node GitHub could not resolve — a repository that was
     /// deleted or renamed between the search and this lookup. One of those must
@@ -472,6 +519,48 @@ public enum PullRequestDecoder {
         }
 
         return payload.merged.nodes.map(\.domain)
+    }
+
+    /// Decodes every team the user belongs to, unioned across both viewer roles.
+    ///
+    /// Deduplicated by `combinedSlug`: nothing documents the two role lists as
+    /// disjoint, and the same team in both would be searched twice and listed
+    /// twice in settings. Sorted, because the settings list reads in this order
+    /// and the search assigns its aliases in it — GitHub's own order is not
+    /// promised to be stable.
+    ///
+    /// An empty result is a real answer: being in no teams is not a failure.
+    ///
+    /// - Throws: `.graphQL` when the body carries an `errors` array. Checked
+    ///   before `data` for the usual reason, which bites harder here than
+    ///   anywhere else: GitHub reports both a SAML SSO refusal and a missing
+    ///   `read:org` scope as a 200 with a null payload, and reading that as an
+    ///   empty list would tell the user they belong to no teams — leaving them no
+    ///   reason to go and fix the scope.
+    public static func decodeTeams(_ data: Data) throws -> [Team] {
+        let response: GraphQLResponse<TeamsPayload>
+        do {
+            response = try JSONDecoder().decode(GraphQLResponse<TeamsPayload>.self, from: data)
+        } catch {
+            throw PRMasterError.decoding(String(describing: error))
+        }
+
+        if let errors = response.errors, !errors.isEmpty {
+            throw PRMasterError.graphQL(errors.map(\.message))
+        }
+
+        guard let payload = response.data else {
+            throw PRMasterError.decoding("response contained neither data nor errors")
+        }
+
+        let teams = payload.viewer.organizations.nodes.compactMap { $0 }.flatMap(\.teams)
+        var seen: Set<String> = []
+        return teams
+            .filter { seen.insert($0.combinedSlug).inserted }
+            .sorted {
+                $0.combinedSlug.localizedCaseInsensitiveCompare($1.combinedSlug)
+                    == .orderedAscending
+            }
     }
 
     /// Decodes the releases of several repositories, keyed by node ID.

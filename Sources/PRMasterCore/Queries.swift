@@ -61,6 +61,42 @@ enum Queries {
     }
     """
 
+    /// Every team the signed-in user belongs to, across every organization.
+    ///
+    /// Both roles are asked for, and that is a correctness matter rather than
+    /// belt-and-braces. `role` on `Organization.teams` is *viewer*-relative, and
+    /// GitHub's `TeamRole` has exactly two cases: a plain member is `MEMBER`, a
+    /// team maintainer is `ADMIN`. So `role: MEMBER` alone silently drops every
+    /// team the user maintains — with no error, and invisibly, because the
+    /// remaining teams answer perfectly well. Measured against a real account:
+    /// `MEMBER` returned nine teams and `ADMIN` returned none, which is exactly
+    /// the shape in which this bug would have gone unnoticed until somebody was
+    /// promoted. The decoder unions the two.
+    ///
+    /// Not filtered by `userLogins:` instead, which would answer the same
+    /// question in one field: that takes the login as an argument, and the login
+    /// is only knowable from a prior round trip.
+    ///
+    /// `combinedSlug` is selected because it is `Org/team-slug`, exactly the form
+    /// `team-review-requested:` takes. `name` is for the settings list only — a
+    /// query built from a display name would break on a rename.
+    ///
+    /// Requires the `read:org` scope. Without it GitHub answers 200 with an
+    /// errors array, which `decodeTeams` refuses to read as "no teams".
+    static let myTeams = """
+    query {
+      viewer {
+        organizations(first: 50) {
+          nodes {
+            login
+            member: teams(first: 100, role: MEMBER) { nodes { name combinedSlug } }
+            admin: teams(first: 100, role: ADMIN) { nodes { name combinedSlug } }
+          }
+        }
+      }
+    }
+    """
+
     /// The most recent releases of several repositories at once.
     ///
     /// Keyed by node ID rather than by owner and name: the merged search already
