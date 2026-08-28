@@ -181,4 +181,42 @@ struct StaleAgeTests {
         #expect(StaleAge.label(createdAt: opened(daysAgo: 1200), now: now) == "3 years")
         #expect(StaleAge.label(createdAt: opened(daysAgo: 1000), now: now).contains(",") == false)
     }
+
+    // MARK: - The recent form
+
+    /// `label` was written for rows that are at least two weeks old, so it never
+    /// had to say anything about today — and "0 days" reads like a placeholder.
+    /// The team section is the opposite case: most of what it lists is new.
+    @Test("a pull request opened today reads as today, not as 0 days")
+    func recentLabelSaysToday() {
+        let now = Date(timeIntervalSince1970: 1_786_692_165)
+
+        #expect(StaleAge.label(createdAt: now, now: now) == "0 days")
+        #expect(StaleAge.recentLabel(createdAt: now, now: now) == "today")
+        #expect(
+            StaleAge.recentLabel(createdAt: now.addingTimeInterval(-3600), now: now) == "today"
+        )
+    }
+
+    /// Anything past a day falls straight through, so there is one wording for
+    /// ages in both sections.
+    @Test("past a day the recent form matches the original", arguments: [
+        1.5, 3.0, 20.0, 75.0, 400.0,
+    ])
+    func recentLabelDefersAfterADay(daysAgo: Double) {
+        let now = Date(timeIntervalSince1970: 1_786_692_165)
+        let createdAt = now.addingTimeInterval(-daysAgo * 86_400)
+
+        #expect(
+            StaleAge.recentLabel(createdAt: createdAt, now: now)
+                == StaleAge.label(createdAt: createdAt, now: now)
+        )
+    }
+
+    /// A clock ahead of GitHub's must not produce a negative age here either.
+    @Test("a pull request dated in the future reads as today")
+    func futureReadsAsToday() {
+        let now = Date(timeIntervalSince1970: 1_786_692_165)
+        #expect(StaleAge.recentLabel(createdAt: now.addingTimeInterval(600), now: now) == "today")
+    }
 }

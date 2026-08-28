@@ -86,6 +86,18 @@ public enum StaleAge {
         return unit(days / 365, "year")
     }
 
+    /// The same age, but for a row that is normally *young*.
+    ///
+    /// The stale marker only ever appears at two weeks or more, so `label` never
+    /// had to say anything about today — and "0 days" is what it says, which reads
+    /// like a placeholder rather than a fact. The team section is the opposite
+    /// case: most of what it lists was opened this week.
+    public static func recentLabel(createdAt: Date, now: Date) -> String {
+        now.timeIntervalSince(createdAt) < 86_400
+            ? "today"
+            : label(createdAt: createdAt, now: now)
+    }
+
     /// Interpolating an `Int` rather than formatting it, so the digits are never
     /// locale-grouped — the trap that had PR #1204 rendering as "1.204".
     private static func unit(_ count: Int, _ noun: String) -> String {

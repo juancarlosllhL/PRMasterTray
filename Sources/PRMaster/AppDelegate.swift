@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
     private var store: PRStore!
+    private var reviews: ReviewStore!
     private var client: GitHubClient!
     private var merger: MergeCoordinator!
     private var closer: CloseCoordinator!
@@ -68,6 +69,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             preferences: UserDefaultsPreferences()
         )
 
+        // The teams half. Its own store on its own poll, so a failure fetching
+        // other people's pull requests cannot raise the stale banner over the
+        // user's own list.
+        //
+        // Both dependencies are absent under a debug override, and the approver
+        // for the sharpest reason in this file: a fixture row carries a real node
+        // ID, and `commitOID` pins the review rather than refusing a stale one, so
+        // an approval built from one would simply land on the real pull request it
+        // names. Passing `nil` means the button is never even offered.
+        reviews = ReviewStore(
+            client: Debug.overridesActive ? nil : client,
+            approver: Debug.overridesActive
+                ? nil
+                : ApproveCoordinator(client: client, approvingAllowed: true),
+            preferences: UserDefaultsPreferences()
+        )
+
         updates = AppUpdateStore(
             checker: ReleaseClient(),
             // Read from the bundle, not from PRMasterCore.version, which is a
@@ -107,12 +125,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         observeStoreForBadge()
 
         store.start()
-        // Started after the PR poll so the first update check never competes
-        // with the fetch the user is actually waiting to see.
+        // Started after the user's own list: the section it feeds sits below
+        // theirs, so it has no business competing for the first fetch.
+        reviews.start()
+        // Started last so the first update check never competes with the fetch
+        // the user is actually waiting to see.
         updates.start()
 
         if Debug.openSettings {
-            settingsWindow.show(store: store, appearance: appearanceStore)
+            settingsWindow.show(store: store, reviews: reviews, appearance: appearanceStore)
         }
 
         // Under a fixture, open straight away so the UI can be inspected and
@@ -147,6 +168,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         store?.stop()
+        reviews?.stop()
         updates?.stop()
         // Must match the centre it was registered on, or removal is a no-op.
         observers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
@@ -224,7 +246,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openSettingsFromMenu() {
-        settingsWindow.show(store: store, appearance: appearanceStore)
+        settingsWindow.show(store: store, reviews: reviews, appearance: appearanceStore)
     }
 
     @objc private func quitFromMenu() {
@@ -307,6 +329,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let hosting = NSHostingController(
             rootView: PRListView(
                 store: store,
+                reviews: reviews,
                 onOpen: { [weak self] pr in
                     self?.open(pr.url)
                     self?.popover.performClose(nil)
@@ -323,18 +346,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self?.open(shipment.destination)
                     self?.popover.performClose(nil)
                 },
+                onOpenReviewRequest: { [weak self] request in
+                    self?.open(request.url)
+                    self?.popover.performClose(nil)
+                },
+                onApprove: { [weak self] request in
+                    self?.confirmApprove(request)
+                },
                 onOpenSettings: { [weak self] in
                     guard let self else { return }
                     // Closed explicitly rather than left to `.transient`: the
                     // panel activates the app, and two things fighting over who
                     // is key is how the popover ends up half-dismissed.
                     popover.performClose(nil)
-                    settingsWindow.show(store: store, appearance: appearanceStore)
+                    settingsWindow.show(store: store, reviews: reviews, appearance: appearanceStore)
                 },
                 onQuit: { NSApp.terminate(nil) },
                 canMerge: Debug.mergingOffered,
                 canClose: !Debug.overridesActive,
                 canAutoUpdate: !Debug.overridesActive,
+                canApprove: !Debug.overridesActive,
                 notifications: NotificationStatus.shared,
                 updates: updates,
                 appearance: appearanceStore,
@@ -381,6 +412,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task {
             await NotificationManager.shared.refreshAuthorizationStatus()
             await store.refresh()
+            await reviews.refresh()
         }
     }
 
@@ -430,6 +462,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in
                 await NotificationManager.shared.refreshAuthorizationStatus()
                 await self?.store.refresh()
+                await self?.reviews.refresh()
             }
         }
         observers.append(observer)
@@ -532,8 +565,79 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return alert.runModal() == .alertFirstButtonReturn
     }
 
-    /// - Parameter action: "Merging" or "Closing". Parameterised rather than
-    ///   duplicated so the list of override variables lives in one place.
+    /// Approving posts a real review under the user's name, and colleagues merge
+    /// on the strength of it, so it is confirmed like the merge and the close
+    /// rather than fired on a single click.
+    func confirmApprove(_ request: ReviewRequest) {
+        Task { @MainActor in
+            let outcome = await reviews.approve(request) {
+                self.askToApprove(title: request.displayTitle, author: request.author)
+            }
+
+            switch outcome {
+            case .approved:
+                break  // The store drops the row itself.
+            case .cancelled:
+                break
+            case .refusedDebugOverride:
+                presentRefusal(action: "Approving")
+            case .failed(let message):
+                presentApproveFailure(message, url: request.url)
+            }
+        }
+    }
+
+    /// The confirmation sheet. Returns true only if the user chose to approve.
+    private func askToApprove(title: String, author: String) -> Bool {
+        // An LSUIElement app shows no dialog unless it activates first.
+        NSApp.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.messageText = "Approve this pull request?"
+        // The author is named because this is somebody else's work and the row it
+        // was clicked from is small. Not "you can undo this": a review can be
+        // dismissed, but only by somebody with the right permissions, and by then
+        // it may already have been merged on the strength of it.
+        alert.informativeText = """
+            \(title)
+
+            Opened by \(author). This posts a public approval under your name, \
+            which your colleagues may merge on.
+            """
+        alert.alertStyle = .warning
+
+        let approve = alert.addButton(withTitle: "Approve")
+        let cancel = alert.addButton(withTitle: "Cancel")
+        // Same reason as the merge and the close: activating the app steals
+        // focus, so a stray Return aimed somewhere else must not land here.
+        approve.keyEquivalent = ""
+        cancel.keyEquivalent = "\r"
+
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    private func presentApproveFailure(_ message: String, url: URL) {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Couldn't approve"
+        // GitHub's own wording. "Can not approve your own pull request" is exactly
+        // what the user needs to see, and a paraphrase would obscure it.
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Open in GitHub")
+        alert.addButton(withTitle: "OK")
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            open(url)
+        }
+        // The snapshot may simply be out of date, so get a fresh one rather than
+        // leaving a row that claims to be waiting when it is not.
+        Task { await reviews.refresh() }
+    }
+
+    /// - Parameter action: "Merging", "Closing" or "Approving". Parameterised
+    ///   rather than duplicated so the list of override variables lives in one
+    ///   place.
     private func presentRefusal(action: String) {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()

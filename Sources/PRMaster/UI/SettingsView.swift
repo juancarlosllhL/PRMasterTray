@@ -18,10 +18,11 @@ import PRMasterCore
 /// the bottom of it would be the same mistake again.
 struct SettingsView: View {
     @Bindable var store: PRStore
+    @Bindable var reviews: ReviewStore
     @Bindable var appearance: AppearanceStore
 
     private enum Tab: String {
-        case pullRequests, merged, appearance
+        case pullRequests, merged, teams, appearance
     }
 
     /// Only ever moved by a click, except under `PRMASTER_SETTINGS_TAB`, which is
@@ -36,6 +37,9 @@ struct SettingsView: View {
             mergedSettings
                 .tabItem { Label("Merged", systemImage: "shippingbox") }
                 .tag(Tab.merged)
+            teamSettings
+                .tabItem { Label("Teams", systemImage: "person.2") }
+                .tag(Tab.teams)
             appearanceSettings
                 .tabItem { Label("Appearance", systemImage: "paintbrush") }
                 .tag(Tab.appearance)
@@ -153,6 +157,98 @@ struct SettingsView: View {
         case 0: return "Nothing of yours has merged inside this window."
         case 1: return "1 merged pull request is listed right now."
         default: return "\(count) merged pull requests are listed right now."
+        }
+    }
+
+    /// Which of the user's teams the popover lists review requests for.
+    private var teamSettings: some View {
+        Form {
+            Section {
+                Picker("Show requests opened within", selection: $reviews.window) {
+                    ForEach(ReviewWindow.allCases, id: \.self) { window in
+                        Text(verbatim: window.label).tag(window)
+                    }
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text("Waiting on your teams")
+            } footer: {
+                // Measured from opening rather than from last activity, which is
+                // the whole reason the list is short: teams accumulate hundreds of
+                // forgotten bot pull requests that keep touching themselves.
+                footnote(Text("Open pull requests your teams have been asked to review. Measured from when one was opened, not from its last activity, so abandoned ones drop out by themselves. Off hides the section."))
+            }
+
+            Section {
+                if reviews.teams.isEmpty {
+                    footnote(Text("No teams yet — they appear as soon as GitHub answers. If they never do, this needs the read:org scope: gh auth refresh -s read:org"))
+                } else {
+                    teamList
+                }
+            } header: {
+                Text("Teams")
+            } footer: {
+                footnote(Text(verbatim: teamSummary))
+                // The one thing a user would otherwise discover by being annoyed:
+                // the button in this section is not a private bookmark.
+                footnote(Text("**Approve** posts a public review under your own name, after a confirmation. The repository filter on the Pull Requests tab applies here too."))
+            }
+        }
+        .formStyle(.grouped)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    /// One switch per team, checked when its review requests are listed.
+    ///
+    /// Not a `List`, for the reason the organization list is not one either: a
+    /// nested `List` inside a grouped `Form` brings its own selection and
+    /// background, and this is a column of checkboxes.
+    private var teamList: some View {
+        ForEach(reviews.teams) { team in
+            Toggle(isOn: binding(for: team)) {
+                HStack(spacing: 6) {
+                    // verbatim: a team name is user content, and a literal
+                    // interpolation would be read as a format string.
+                    Text(verbatim: team.name)
+                    Spacer(minLength: 8)
+                    Text(verbatim: waitingLabel(for: team))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    /// Reads and writes through `ReviewStore.teamFilter`, so flipping a switch
+    /// persists it and refetches in one step.
+    private func binding(for team: Team) -> Binding<Bool> {
+        Binding(
+            get: { reviews.teamFilter.shows(team) },
+            set: { reviews.teamFilter.set(team, shown: $0) }
+        )
+    }
+
+    /// GitHub's own count for that team, which is why it keeps making sense while
+    /// the team is switched off — the search asks for a disabled team's count
+    /// precisely so this row can be honest. Absent means GitHub has not answered
+    /// yet, which is not the same as none.
+    private func waitingLabel(for team: Team) -> String {
+        guard let count = reviews.pendingCount(for: team) else { return "—" }
+        return count == 1 ? "1 waiting" : "\(count) waiting"
+    }
+
+    /// Says what the tab is worth right now, the same way the other tabs' footers
+    /// do — a section with nothing in it is the difference between a setting that
+    /// does nothing and one somebody is looking for.
+    private var teamSummary: String {
+        guard reviews.window != .off else {
+            return "The section is switched off, so nothing your teams are asked to review is listed."
+        }
+        let count = reviews.visible(under: store.filter).count
+        switch count {
+        case 0: return "Nothing is waiting on your teams inside this window."
+        case 1: return "1 pull request is listed right now."
+        default: return "\(count) pull requests are listed right now."
         }
     }
 

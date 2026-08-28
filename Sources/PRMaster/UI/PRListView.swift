@@ -3,12 +3,17 @@ import PRMasterCore
 
 struct PRListView: View {
     @Bindable var store: PRStore
+    /// The teams half of the popover. Its own store, so a failure fetching other
+    /// people's pull requests cannot raise the stale banner over the user's own.
+    let reviews: ReviewStore
     let onOpen: (PullRequest) -> Void
     let onMerge: (PullRequest) -> Void
     let onClose: (PullRequest) -> Void
     /// Opens whatever the row is about: the pipeline while it runs, the release
     /// once there is one.
     let onOpenShipment: (Shipment) -> Void
+    let onOpenReviewRequest: (ReviewRequest) -> Void
+    let onApprove: (ReviewRequest) -> Void
     let onOpenSettings: () -> Void
     let onQuit: () -> Void
     /// False while a debug override is active, so the app never offers an
@@ -21,6 +26,9 @@ struct PRListView: View {
     /// Also false under a debug override, where the store has no updater at
     /// all — offering a switch for a feature that cannot run would be a lie.
     let canAutoUpdate: Bool
+    /// Also false under a debug override, and with no demo exception for the same
+    /// reason closing has none — see `ApproveCoordinator`.
+    let canApprove: Bool
     @Bindable var notifications: NotificationStatus
     /// App-update state. Nothing to bind to — every property is read-only — so a
     /// plain `let` is enough; `@Observable` tracks the reads either way.
@@ -57,6 +65,13 @@ struct PRListView: View {
             if !store.shipments.isEmpty {
                 Divider()
                 mergedSection
+            }
+            // Outside `content` for the same reason the merged section is: a day
+            // with nothing of your own open but something waiting on your team is
+            // exactly when this section is worth having.
+            if !visibleReviewRequests.isEmpty {
+                Divider()
+                reviewSection
             }
             // A denied permission silently disables the whole point of the
             // app, so it gets a permanent row rather than a transient hint.
@@ -95,6 +110,19 @@ struct PRListView: View {
                 warningRow(
                     icon: "arrow.triangle.pull",
                     text: "Couldn't update a branch — \(failure)"
+                )
+            }
+            // Its own row, and deliberately never the stale banner: the user's own
+            // pull requests refreshed fine, and reporting them as stale because a
+            // team lookup failed would be the wrong complaint. Worth a row at all
+            // because the alternative is indistinguishable from belonging to no
+            // teams — a missing read:org scope, an SSO refusal and a rate limit all
+            // end with the section simply not appearing.
+            if let failure = reviews.lastError {
+                Divider()
+                warningRow(
+                    icon: "person.2",
+                    text: "Couldn't check your teams — \(failure.localizedDescription)"
                 )
             }
             // A new version is good news, not a warning, so it gets its own
@@ -386,6 +414,70 @@ struct PRListView: View {
                     shipment: shipment,
                     isLoadingEnvironments: store.isLoadingDeployments
                 ) { onOpenShipment(shipment) }
+            }
+        }
+        .padding(.horizontal, 4)
+        .padding(.bottom, 4)
+    }
+
+    // MARK: - Waiting on your teams
+
+    /// Read through the store's own filter so the repository settings reach this
+    /// section too, and computed rather than stored so `@Observable` re-derives it
+    /// when either store changes.
+    private var visibleReviewRequests: [ReviewRequest] {
+        reviews.visible(under: store.filter)
+    }
+
+    private var reviewSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                Text("Waiting on your teams")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                // Says the list is not everything, rather than truncating in
+                // silence. Only when it is actually the case.
+                if reviews.isTruncated(under: store.filter) {
+                    Text("most recent")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .help("Your teams have more waiting than this shows. Narrow the window or switch teams off in Settings.")
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 2)
+
+            // Capped like the two sections above it. Even inside the age limit a
+            // busy team can carry dozens, and an uncapped section would push the
+            // popover off the screen.
+            if visibleReviewRequests.count > Self.reviewRowsBeforeScrolling {
+                ScrollView { reviewRows }
+                    .frame(height: 260)
+            } else {
+                reviewRows
+            }
+        }
+    }
+
+    private static let reviewRowsBeforeScrolling = 5
+
+    private var reviewRows: some View {
+        // One clock read for the whole section, so every row is measured against
+        // the same instant — the rule the open list follows.
+        let now = Date()
+
+        return LazyVStack(spacing: 2) {
+            ForEach(visibleReviewRequests) { request in
+                ReviewRequestRowView(
+                    request: request,
+                    canApprove: canApprove,
+                    isApproving: reviews.approvingIDs.contains(request.id),
+                    age: StaleAge.recentLabel(createdAt: request.createdAt, now: now),
+                    onOpen: { onOpenReviewRequest(request) },
+                    onApprove: { onApprove(request) }
+                )
             }
         }
         .padding(.horizontal, 4)

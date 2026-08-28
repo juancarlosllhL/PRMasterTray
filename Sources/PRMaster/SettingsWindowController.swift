@@ -16,13 +16,15 @@ final class SettingsWindowController {
 
     private var panel: NSPanel?
 
-    func show(store: PRStore, appearance: AppearanceStore) {
+    func show(store: PRStore, reviews: ReviewStore, appearance: AppearanceStore) {
         if let panel {
             present(panel)
             return
         }
 
-        let hosting = NSHostingController(rootView: SettingsView(store: store, appearance: appearance))
+        let hosting = NSHostingController(
+            rootView: SettingsView(store: store, reviews: reviews, appearance: appearance)
+        )
         // Without this the panel is sized once from a stale measurement, which
         // for a form whose organization list arrives with the first fetch means
         // a window sized for an empty list. Same fix as the popover.

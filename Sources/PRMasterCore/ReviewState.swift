@@ -82,13 +82,20 @@ extension ReviewState {
 
     /// Short phrase for the row. Doubles as part of the accessibility label, so
     /// it has to read sensibly on its own.
+    ///
+    /// `awaiting` is deliberately not "Waiting for review", which is what
+    /// `Readiness.blocked` says one section up. That one means somebody owes *you*
+    /// a review; this means you owe *them* one, and the shorter phrasing also
+    /// stops the label being truncated against a long repository name — measured
+    /// against `Lansweeper/engineering-docs #1192` at 380pt, where the longer form
+    /// clipped to "Waiting for revi…".
     public var label: String {
         switch self {
         case .changesRequested: return "Changes requested"
         case .checksFailing:    return "Checks failing"
         case .checksPending:    return "Checks running"
-        case .approved:         return "Approved by someone else"
-        case .awaiting:         return "Waiting for review"
+        case .approved:         return "Approved already"
+        case .awaiting:         return "Needs review"
         }
     }
 }
