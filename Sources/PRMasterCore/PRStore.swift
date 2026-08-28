@@ -61,6 +61,31 @@ public protocol DeploymentFetching: Sendable {
 
 extension GitHubClient: DeploymentFetching {}
 
+/// The two reads behind the team section, so `ReviewStore` can be driven without
+/// a network stack.
+///
+/// Both here rather than split, because they are one flow: the teams are what the
+/// search is built from. `ReviewStore` still calls them separately and catches
+/// separately, so a failed discovery can fall back to the persisted list while the
+/// search goes ahead.
+public protocol ReviewRequestFetching: Sendable {
+    func fetchTeams() async throws -> [Team]
+    func fetchReviewRequests(
+        teams: [Team], filter: TeamFilter, window: ReviewWindow
+    ) async throws -> ReviewSnapshot
+}
+
+extension GitHubClient: ReviewRequestFetching {}
+
+/// The approve half of `GitHubClient`, split off from the reads for the reason
+/// `PullRequestBranchUpdating` is: this one writes, and the gate in front of it
+/// has to be testable without a network stack.
+public protocol PullRequestApproving: Sendable {
+    func approve(id: String, commitOID: String) async throws
+}
+
+extension GitHubClient: PullRequestApproving {}
+
 /// User-facing settings that outlive a launch.
 public protocol PreferenceStoring: Sendable {
     func autoUpdateEnabled() -> Bool

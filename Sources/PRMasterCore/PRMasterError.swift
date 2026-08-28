@@ -27,6 +27,10 @@ public enum PRMasterError: Error, LocalizedError {
     /// and otherwise a sentence saying it never confirmed — there is no
     /// documented error text for closing something that cannot be closed.
     case closeRejected(String)
+    /// GitHub did not record an approval. Its own message when it gave one — and
+    /// it gives good ones here, "Can not approve your own pull request" being the
+    /// most useful — and otherwise a sentence saying it never confirmed.
+    case approveRejected(String)
     /// The body was not JSON at all, so there is nothing to decode. In practice
     /// this is a proxy or a Wi-Fi sign-in page answering in HTML instead of
     /// api.github.com answering in JSON.
@@ -81,7 +85,7 @@ public enum PRMasterError: Error, LocalizedError {
         case .httpError(let status):
             return "GitHub answered with HTTP \(status)."
         case .mergeRejected(let message), .updateRejected(let message),
-             .closeRejected(let message):
+             .closeRejected(let message), .approveRejected(let message):
             return message
         case .notJSON:
             // The likely culprit rather than a shrug: on a managed network
@@ -131,7 +135,8 @@ extension PRMasterError: Equatable {
             return l == r
         case (.mergeRejected(let l), .mergeRejected(let r)),
              (.updateRejected(let l), .updateRejected(let r)),
-             (.closeRejected(let l), .closeRejected(let r)):
+             (.closeRejected(let l), .closeRejected(let r)),
+             (.approveRejected(let l), .approveRejected(let r)):
             return l == r
         case (.decoding(let l), .decoding(let r)),
              (.releaseCheckFailed(let l), .releaseCheckFailed(let r)),

@@ -454,6 +454,33 @@ enum Queries {
     }
     """
 
+    /// Approves a pull request on somebody else's behalf of your team.
+    ///
+    /// `commitOID` is *not* the control `expectedHeadOid` is on the merge, and the
+    /// difference matters: GitHub pins the review to the named commit rather than
+    /// refusing one that has moved since the snapshot. So this records which
+    /// commit was approved — honest, and worth sending — but it cannot refuse an
+    /// approval of a pull request that changed while the popover was open.
+    /// `ApproveCoordinator` is the whole of that protection.
+    ///
+    /// No `body`. A review comment would be posted publicly under the user's
+    /// name, and approving from a menu bar is a gesture rather than a remark.
+    ///
+    /// `state` is selected because it is the only trustworthy confirmation — the
+    /// same reason `closePullRequest` selects it. GitHub answers a review it
+    /// declined to record as an approval with a perfectly well-formed 200.
+    static let approvePullRequest = """
+    mutation($id: ID!, $oid: GitObjectID!) {
+      addPullRequestReview(input: {
+        pullRequestId: $id
+        commitOID: $oid
+        event: APPROVE
+      }) {
+        pullRequestReview { state }
+      }
+    }
+    """
+
     /// Squash-merges a PR, refusing if the head has moved since the snapshot.
     static let squashMerge = """
     mutation($id: ID!, $oid: GitObjectID!) {

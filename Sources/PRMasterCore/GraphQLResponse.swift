@@ -940,6 +940,36 @@ public enum PullRequestDecoder {
         }
     }
 
+    /// Confirms an approval was actually recorded.
+    ///
+    /// Insists on the state rather than trusting the absence of an `errors` array,
+    /// the same rule `decodeClose` follows and for a sharper reason: GitHub will
+    /// happily record a review that is not an approval, and treating that as
+    /// success would drop the row from the list while leaving the user believing
+    /// they had approved it.
+    ///
+    /// - Throws: `.approveRejected` with GitHub's own wording where there is any.
+    ///   It gives good ones here — "Can not approve your own pull request" is the
+    ///   one worth reading verbatim.
+    public static func decodeApproval(_ data: Data) throws {
+        let response: GraphQLResponse<ApprovalPayload>
+        do {
+            response = try JSONDecoder().decode(GraphQLResponse<ApprovalPayload>.self, from: data)
+        } catch {
+            throw PRMasterError.decoding(String(describing: error))
+        }
+
+        if let errors = response.errors, !errors.isEmpty {
+            throw PRMasterError.approveRejected(
+                errors.map(\.message).joined(separator: "\n")
+            )
+        }
+
+        guard response.data?.addPullRequestReview?.pullRequestReview?.state == .approved else {
+            throw PRMasterError.approveRejected("GitHub did not confirm the approval.")
+        }
+    }
+
     /// Confirms a branch update actually happened.
     ///
     /// - Throws: `.updateRejected` with GitHub's own wording. A null payload is
@@ -982,6 +1012,34 @@ enum PullRequestState: String, Sendable, CaseIterable {
 
 extension PullRequestState: UnknownTolerantEnum {
     static var unknownFallback: PullRequestState { .unknown }
+}
+
+/// GitHub `PullRequestReviewState`.
+///
+/// Tolerant like the rest, and the fallback is the safe reading here too: a state
+/// this app does not recognise is not a confirmed approval, so `decodeApproval`
+/// treats it as a refusal rather than reporting success for something it cannot
+/// understand.
+enum PullRequestReviewState: String, Sendable, CaseIterable {
+    case pending = "PENDING"
+    case commented = "COMMENTED"
+    case approved = "APPROVED"
+    case changesRequested = "CHANGES_REQUESTED"
+    case dismissed = "DISMISSED"
+    case unknown
+}
+
+extension PullRequestReviewState: UnknownTolerantEnum {
+    static var unknownFallback: PullRequestReviewState { .unknown }
+}
+
+struct ApprovalPayload: Decodable {
+    let addPullRequestReview: Result?
+
+    struct Result: Decodable {
+        let pullRequestReview: Review?
+        struct Review: Decodable { let state: PullRequestReviewState }
+    }
 }
 
 struct ClosePayload: Decodable {

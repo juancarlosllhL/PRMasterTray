@@ -77,6 +77,54 @@ public actor GitHubClient {
         return try PullRequestDecoder.decodeContainment(data, candidates: candidates)
     }
 
+    // MARK: - Team review requests
+
+    /// Every team the signed-in user belongs to.
+    ///
+    /// Needs the `read:org` scope. Without it GitHub answers 200 with an errors
+    /// array, which the decoder refuses to read as "no teams".
+    public func fetchTeams() async throws -> [Team] {
+        try PullRequestDecoder.decodeTeams(try await perform(query: Queries.myTeams))
+    }
+
+    /// What each of the user's teams has been asked to review.
+    ///
+    /// One request covering every team, with rows fetched only for the ones the
+    /// user has switched on — see `Queries.reviewRequests(for:filter:window:now:)`
+    /// for why a disabled team is still asked.
+    ///
+    /// Skips the request outright when there is nothing to ask, on the same terms
+    /// as `fetchReleases`: a lookup about no teams, or one whose window is off, is
+    /// a rate-limit point spent on nothing.
+    public func fetchReviewRequests(
+        teams: [Team], filter: TeamFilter, window: ReviewWindow
+    ) async throws -> ReviewSnapshot {
+        guard let built = Queries.reviewRequests(
+            for: teams, filter: filter, window: window, now: Date()
+        ) else { return .empty }
+
+        let data = try await perform(query: built.query, variables: built.variables)
+        return try PullRequestDecoder.decodeReviewRequests(data, teams: teams)
+    }
+
+    /// Approves a pull request.
+    ///
+    /// `commitOID` names the commit the user was looking at. Unlike the merge's
+    /// `expectedHeadOid` it does not make GitHub refuse a head that has moved
+    /// since — the review is pinned to the commit instead. So this is a record of
+    /// what was approved rather than a guard against approving something unseen,
+    /// and `ApproveCoordinator` is what actually stands in front of it.
+    ///
+    /// - Throws: `.approveRejected` carrying GitHub's own message, or the same
+    ///   when GitHub answers without confirming an approval was recorded.
+    public func approve(id: String, commitOID: String) async throws {
+        let data = try await perform(
+            query: Queries.approvePullRequest,
+            variables: ["id": .string(id), "oid": .string(commitOID)]
+        )
+        try PullRequestDecoder.decodeApproval(data)
+    }
+
     // MARK: - Deployments
 
     /// Promoted versions already read, keyed by the blob oid they came from.
