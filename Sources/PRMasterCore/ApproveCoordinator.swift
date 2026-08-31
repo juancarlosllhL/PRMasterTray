@@ -47,16 +47,18 @@ public struct ApproveCoordinator: Sendable {
     public func attempt(
         id: String,
         commitOID: String,
-        // Main-actor bound: the confirmation is a modal dialog.
-        confirm: @MainActor () async -> Bool
+        body: String? = nil,
+        // Main-actor bound: the confirmation is a modal dialog, and it is handed
+        // the body so it can show the remark that is actually about to be posted.
+        confirm: @MainActor (String?) async -> Bool
     ) async -> ApproveOutcome {
         // Checked before confirming: never present a dialog for an action that
         // is going to be refused anyway.
         guard approvingAllowed else { return .refusedDebugOverride }
-        guard await confirm() else { return .cancelled }
+        guard await confirm(body) else { return .cancelled }
 
         do {
-            try await client.approve(id: id, commitOID: commitOID)
+            try await client.approve(id: id, commitOID: commitOID, body: body)
             return .approved
         } catch let error as PRMasterError {
             return .failed(error.errorDescription ?? "The approval was not recorded.")

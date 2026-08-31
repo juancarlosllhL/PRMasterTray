@@ -46,6 +46,11 @@ GitHub would merge right now.
   a real, public review under your own name, after a confirmation naming the
   author.
 
+  The approval carries a one-line remark, chosen from the pull request itself —
+  its size, whether it deleted more than it added, what its title claims, how
+  its checks did, how long it sat there. The confirmation quotes the line before
+  anything is posted, and the switch in Settings turns the whole thing off.
+
   How far back it reaches is a setting, and it is the setting that makes the
   section usable rather than a preference on top of one: measured against nine
   real teams, there were 1846 pull requests pending review with no limit at all

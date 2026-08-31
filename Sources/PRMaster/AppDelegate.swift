@@ -570,8 +570,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// rather than fired on a single click.
     func confirmApprove(_ request: ReviewRequest) {
         Task { @MainActor in
-            let outcome = await reviews.approve(request) {
-                self.askToApprove(title: request.displayTitle, author: request.author)
+            let outcome = await reviews.approve(request) { quip in
+                self.askToApprove(
+                    title: request.displayTitle, author: request.author, quip: quip
+                )
             }
 
             switch outcome {
@@ -588,7 +590,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// The confirmation sheet. Returns true only if the user chose to approve.
-    private func askToApprove(title: String, author: String) -> Bool {
+    private func askToApprove(title: String, author: String, quip: String?) -> Bool {
         // An LSUIElement app shows no dialog unless it activates first.
         NSApp.activate(ignoringOtherApps: true)
 
@@ -598,11 +600,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // was clicked from is small. Not "you can undo this": a review can be
         // dismissed, but only by somebody with the right permissions, and by then
         // it may already have been merged on the strength of it.
+        // The remark is quoted in full: it goes out publicly under the user's
+        // name, so the dialog has to be the last place it can be read first.
+        let remark = quip.map { "\n\nIt will comment:\n\n“\($0)”" } ?? ""
         alert.informativeText = """
             \(title)
 
             Opened by \(author). This posts a public approval under your name, \
-            which your colleagues may merge on.
+            which your colleagues may merge on.\(remark)
             """
         alert.alertStyle = .warning
 

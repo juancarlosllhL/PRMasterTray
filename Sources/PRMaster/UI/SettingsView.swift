@@ -193,6 +193,12 @@ struct SettingsView: View {
                 // the button in this section is not a private bookmark.
                 footnote(Text("**Approve** posts a public review under your own name, after a confirmation. The repository filter on the Pull Requests tab applies here too."))
             }
+
+            Section {
+                Toggle("Comment something funny when approving", isOn: $reviews.approvalQuipsEnabled)
+            } footer: {
+                footnote(Text("The approval carries a one-line remark chosen from the pull request itself — its size, its title, the state of its checks. The confirmation shows the line before anything is posted."))
+            }
         }
         .formStyle(.grouped)
         .padding(.horizontal, 12)

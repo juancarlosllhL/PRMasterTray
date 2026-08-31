@@ -305,6 +305,9 @@ struct ReviewSearchNode: Decodable {
         let headRefOid: String
         let createdAt: Date
         let updatedAt: Date
+        let additions: Int
+        let deletions: Int
+        let changedFiles: Int
         let reviewDecision: ReviewDecision?
         /// `null` when the account that opened it has been deleted — GitHub
         /// reassigns their pull requests to nobody.
@@ -350,6 +353,9 @@ struct ReviewSearchNode: Decodable {
                 reviewDecision: reviewDecision,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                additions: additions,
+                deletions: deletions,
+                changedFiles: changedFiles,
                 teams: teams
             )
         }

@@ -17,6 +17,9 @@ private func request(
     checks: CheckState? = .success,
     reviewDecision: ReviewDecision? = .reviewRequired,
     createdAt: Date = Date(timeIntervalSince1970: 1_000),
+    additions: Int = 40,
+    deletions: Int = 10,
+    changedFiles: Int = 3,
     teams: [Team] = [team]
 ) -> ReviewRequest {
     ReviewRequest(
@@ -32,6 +35,9 @@ private func request(
         reviewDecision: reviewDecision,
         createdAt: createdAt,
         updatedAt: Date(timeIntervalSince1970: 2_000),
+        additions: additions,
+        deletions: deletions,
+        changedFiles: changedFiles,
         teams: teams
     )
 }

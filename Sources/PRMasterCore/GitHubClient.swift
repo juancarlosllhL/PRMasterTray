@@ -117,10 +117,15 @@ public actor GitHubClient {
     ///
     /// - Throws: `.approveRejected` carrying GitHub's own message, or the same
     ///   when GitHub answers without confirming an approval was recorded.
-    public func approve(id: String, commitOID: String) async throws {
+    public func approve(id: String, commitOID: String, body: String?) async throws {
+        var variables: [String: GraphQLValue] = ["id": .string(id), "oid": .string(commitOID)]
+        // Omitted rather than sent as null, so a review with nothing to say is
+        // byte-for-byte the mutation this app sent before quips existed.
+        if let body { variables["body"] = .string(body) }
+
         let data = try await perform(
             query: Queries.approvePullRequest,
-            variables: ["id": .string(id), "oid": .string(commitOID)]
+            variables: variables
         )
         try PullRequestDecoder.decodeApproval(data)
     }

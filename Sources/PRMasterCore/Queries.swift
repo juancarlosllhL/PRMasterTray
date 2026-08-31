@@ -178,6 +178,9 @@ enum Queries {
                     headRefOid
                     createdAt
                     updatedAt
+                    additions
+                    deletions
+                    changedFiles
                     reviewDecision
                     author { login }
                     repository { nameWithOwner isPrivate }
@@ -463,18 +466,19 @@ enum Queries {
     /// approval of a pull request that changed while the popover was open.
     /// `ApproveCoordinator` is the whole of that protection.
     ///
-    /// No `body`. A review comment would be posted publicly under the user's
-    /// name, and approving from a menu bar is a gesture rather than a remark.
+    /// `body` carries the approval remark — see `ApprovalQuip`. Nullable, so the
+    /// variable is omitted entirely when the setting is off.
     ///
     /// `state` is selected because it is the only trustworthy confirmation — the
     /// same reason `closePullRequest` selects it. GitHub answers a review it
     /// declined to record as an approval with a perfectly well-formed 200.
     static let approvePullRequest = """
-    mutation($id: ID!, $oid: GitObjectID!) {
+    mutation($id: ID!, $oid: GitObjectID!, $body: String) {
       addPullRequestReview(input: {
         pullRequestId: $id
         commitOID: $oid
         event: APPROVE
+        body: $body
       }) {
         pullRequestReview { state }
       }

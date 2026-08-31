@@ -60,6 +60,12 @@ public final class ReviewStore {
         }
     }
 
+    /// Whether an approval posts a remark with it. Only persists: nothing derived
+    /// depends on it, and it is read at the moment the button is pressed.
+    public var approvalQuipsEnabled: Bool {
+        didSet { preferences.setApprovalQuipsEnabled(approvalQuipsEnabled) }
+    }
+
     /// Which teams are listed. Persists and refetches rather than re-deriving:
     /// a team that was switched off was asked at `first: 0`, so its rows are not
     /// in hand to re-derive from.
@@ -106,6 +112,7 @@ public final class ReviewStore {
         self.sleep = sleep
         self.window = preferences.reviewWindow()
         self.teamFilter = preferences.teamFilter()
+        self.approvalQuipsEnabled = preferences.approvalQuipsEnabled()
         // Yesterday's list beats no list: the settings window has something to
         // show before the first fetch lands, and a failed discovery has something
         // to search with.
@@ -223,7 +230,7 @@ public final class ReviewStore {
     /// not having worked.
     public func approve(
         _ request: ReviewRequest,
-        confirm: @MainActor () async -> Bool
+        confirm: @MainActor (String?) async -> Bool
     ) async -> ApproveOutcome {
         guard let approver else { return .refusedDebugOverride }
 
@@ -236,6 +243,7 @@ public final class ReviewStore {
             // records what was approved rather than guarding it — see
             // `Queries.approvePullRequest`.
             commitOID: request.headRefOid,
+            body: quip(for: request),
             confirm: confirm
         )
 
@@ -243,6 +251,12 @@ public final class ReviewStore {
             requests.removeAll { $0.id == request.id }
         }
         return outcome
+    }
+
+    /// The remark to post with an approval, or nil when the user switched it off.
+    public func quip(for request: ReviewRequest) -> String? {
+        guard approvalQuipsEnabled else { return nil }
+        return ApprovalQuip.text(for: request, now: now())
     }
 
     // MARK: - Polling

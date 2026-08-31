@@ -6,15 +6,15 @@ import Testing
 /// asserted rather than assumed.
 private final class SpyApprover: PullRequestApproving, @unchecked Sendable {
     private let lock = NSLock()
-    private var _calls: [(id: String, oid: String)] = []
+    private var _calls: [(id: String, oid: String, body: String?)] = []
     private let error: Error?
 
     init(error: Error? = nil) { self.error = error }
 
-    var calls: [(id: String, oid: String)] { lock.withLock { _calls } }
+    var calls: [(id: String, oid: String, body: String?)] { lock.withLock { _calls } }
 
-    func approve(id: String, commitOID: String) async throws {
-        lock.withLock { _calls.append((id, commitOID)) }
+    func approve(id: String, commitOID: String, body: String?) async throws {
+        lock.withLock { _calls.append((id, commitOID, body)) }
         if let error { throw error }
     }
 }
@@ -27,12 +27,40 @@ struct ApproveCoordinatorTests {
     func confirmApproves() async {
         let approver = SpyApprover()
         let outcome = await ApproveCoordinator(client: approver, approvingAllowed: true)
-            .attempt(id: "PR_node1", commitOID: "abc123") { true }
+            .attempt(id: "PR_node1", commitOID: "abc123") { _ in true }
 
         #expect(outcome == .approved)
         #expect(approver.calls.count == 1)
         #expect(approver.calls.first?.id == "PR_node1")
         #expect(approver.calls.first?.oid == "abc123")
+        #expect(approver.calls.first?.body == nil)
+    }
+
+    @Test("the body is forwarded verbatim, and shown to the confirmation")
+    func bodyIsForwarded() async {
+        let approver = SpyApprover()
+        var confirmed: String?
+        let outcome = await ApproveCoordinator(client: approver, approvingAllowed: true)
+            .attempt(id: "PR_1", commitOID: "abc", body: "Ship it. 🟢") { body in
+                confirmed = body
+                return true
+            }
+
+        #expect(outcome == .approved)
+        #expect(approver.calls.first?.body == "Ship it. 🟢")
+        #expect(confirmed == "Ship it. 🟢")
+    }
+
+    /// A cancelled approval must post nothing at all — least of all a comment on
+    /// somebody else's pull request.
+    @Test("cancelling posts no remark either")
+    func cancelPostsNothing() async {
+        let approver = SpyApprover()
+        let outcome = await ApproveCoordinator(client: approver, approvingAllowed: true)
+            .attempt(id: "PR_1", commitOID: "abc", body: "Ship it. 🟢") { _ in false }
+
+        #expect(outcome == .cancelled)
+        #expect(approver.calls.isEmpty)
     }
 
     /// The whole point of the gate: declining must reach no network at all.
@@ -40,7 +68,7 @@ struct ApproveCoordinatorTests {
     func cancelDoesNotApprove() async {
         let approver = SpyApprover()
         let outcome = await ApproveCoordinator(client: approver, approvingAllowed: true)
-            .attempt(id: "PR_1", commitOID: "abc") { false }
+            .attempt(id: "PR_1", commitOID: "abc") { _ in false }
 
         #expect(outcome == .cancelled)
         #expect(approver.calls.isEmpty)
@@ -54,7 +82,7 @@ struct ApproveCoordinatorTests {
     func overrideRefuses() async {
         let approver = SpyApprover()
         let outcome = await ApproveCoordinator(client: approver, approvingAllowed: false)
-            .attempt(id: "PR_1", commitOID: "abc") { true }
+            .attempt(id: "PR_1", commitOID: "abc") { _ in true }
 
         #expect(outcome == .refusedDebugOverride)
         #expect(approver.calls.isEmpty)
@@ -67,7 +95,7 @@ struct ApproveCoordinatorTests {
     func overrideDoesNotAsk() async {
         var asked = false
         let outcome = await ApproveCoordinator(client: SpyApprover(), approvingAllowed: false)
-            .attempt(id: "PR_1", commitOID: "abc") {
+            .attempt(id: "PR_1", commitOID: "abc") { _ in
                 asked = true
                 return true
             }
@@ -84,7 +112,7 @@ struct ApproveCoordinatorTests {
             error: PRMasterError.approveRejected("Can not approve your own pull request")
         )
         let outcome = await ApproveCoordinator(client: approver, approvingAllowed: true)
-            .attempt(id: "PR_1", commitOID: "abc") { true }
+            .attempt(id: "PR_1", commitOID: "abc") { _ in true }
 
         #expect(outcome == .failed("Can not approve your own pull request"))
     }
@@ -96,7 +124,7 @@ struct ApproveCoordinatorTests {
         struct Boom: Error {}
         let outcome = await ApproveCoordinator(
             client: SpyApprover(error: Boom()), approvingAllowed: true
-        ).attempt(id: "PR_1", commitOID: "abc") { true }
+        ).attempt(id: "PR_1", commitOID: "abc") { _ in true }
 
         guard case .failed(let message) = outcome else {
             Issue.record("expected .failed, got \(outcome)")

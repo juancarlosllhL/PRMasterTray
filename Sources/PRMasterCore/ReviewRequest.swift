@@ -47,6 +47,10 @@ public struct ReviewRequest: Identifiable, Sendable, Equatable {
     /// what the row's age is counted from.
     public let createdAt: Date
     public let updatedAt: Date
+    /// Fetched for the approval remark only — see `ApprovalQuip`.
+    public let additions: Int
+    public let deletions: Int
+    public let changedFiles: Int
     /// Which of the user's teams were asked — plural, because more than one can
     /// be. Carrying the set is what lets a pull request requested from two of
     /// your teams be one row rather than two.
@@ -73,6 +77,9 @@ public struct ReviewRequest: Identifiable, Sendable, Equatable {
         reviewDecision: ReviewDecision?,
         createdAt: Date,
         updatedAt: Date,
+        additions: Int,
+        deletions: Int,
+        changedFiles: Int,
         teams: [Team]
     ) {
         self.id = id
@@ -87,6 +94,9 @@ public struct ReviewRequest: Identifiable, Sendable, Equatable {
         self.reviewDecision = reviewDecision
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.additions = additions
+        self.deletions = deletions
+        self.changedFiles = changedFiles
         self.teams = teams
     }
 }

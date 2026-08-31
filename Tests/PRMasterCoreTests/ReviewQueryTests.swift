@@ -196,7 +196,7 @@ struct ReviewQueryTests {
         for field in [
             "id", "number", "title", "url", "headRefOid", "createdAt", "updatedAt",
             "reviewDecision", "author", "login", "nameWithOwner", "isPrivate",
-            "statusCheckRollup",
+            "statusCheckRollup", "additions", "deletions", "changedFiles",
         ] {
             #expect(built.query.contains(field), "missing \(field)")
         }

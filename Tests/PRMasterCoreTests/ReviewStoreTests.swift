@@ -18,12 +18,16 @@ private func request(
     isPrivate: Bool = false,
     createdAt: Date = now.addingTimeInterval(-86_400),
     updatedAt: Date = now.addingTimeInterval(-3_600),
+    title: String = "t",
+    additions: Int = 40,
+    deletions: Int = 10,
+    changedFiles: Int = 3,
     teams: [Team] = [cortex]
 ) -> ReviewRequest {
     ReviewRequest(
         id: id,
         number: 1,
-        title: "t",
+        title: title,
         url: URL(string: "https://github.com/\(repo)/pull/1")!,
         repo: repo,
         isPrivate: isPrivate,
@@ -33,6 +37,9 @@ private func request(
         reviewDecision: .reviewRequired,
         createdAt: createdAt,
         updatedAt: updatedAt,
+        additions: additions,
+        deletions: deletions,
+        changedFiles: changedFiles,
         teams: teams
     )
 }
@@ -82,15 +89,15 @@ private final class StubReviewClient: ReviewRequestFetching, @unchecked Sendable
 
 private final class SpyApprover: PullRequestApproving, @unchecked Sendable {
     private let lock = NSLock()
-    private var _calls: [(id: String, oid: String)] = []
+    private var _calls: [(id: String, oid: String, body: String?)] = []
     private let error: Error?
 
     init(error: Error? = nil) { self.error = error }
 
-    var calls: [(id: String, oid: String)] { lock.withLock { _calls } }
+    var calls: [(id: String, oid: String, body: String?)] { lock.withLock { _calls } }
 
-    func approve(id: String, commitOID: String) async throws {
-        lock.withLock { _calls.append((id, commitOID)) }
+    func approve(id: String, commitOID: String, body: String?) async throws {
+        lock.withLock { _calls.append((id, commitOID, body)) }
         if let error { throw error }
     }
 }
@@ -415,7 +422,7 @@ struct ReviewStoreTests {
         )
         await store.refresh()
 
-        let outcome = await store.approve(store.requests[0]) { true }
+        let outcome = await store.approve(store.requests[0]) { _ in true }
 
         #expect(outcome == .approved)
         #expect(store.requests.map(\.id) == ["PR_2"])
@@ -440,7 +447,7 @@ struct ReviewStoreTests {
         )
         await store.refresh()
 
-        let outcome = await store.approve(store.requests[0]) { true }
+        let outcome = await store.approve(store.requests[0]) { _ in true }
 
         #expect(outcome == .failed("Can not approve your own pull request"))
         #expect(store.requests.map(\.id) == ["PR_1"])
@@ -460,7 +467,7 @@ struct ReviewStoreTests {
         )
         await store.refresh()
 
-        #expect(await store.approve(store.requests[0]) { false } == .cancelled)
+        #expect(await store.approve(store.requests[0]) { _ in false } == .cancelled)
         #expect(store.requests.map(\.id) == ["PR_1"])
         #expect(approver.calls.isEmpty)
         #expect(store.approvingIDs.isEmpty)
@@ -477,8 +484,71 @@ struct ReviewStoreTests {
         let store = makeStore(client: client, approver: nil)
         await store.refresh()
 
-        #expect(await store.approve(store.requests[0]) { true } == .refusedDebugOverride)
+        #expect(await store.approve(store.requests[0]) { _ in true } == .refusedDebugOverride)
         #expect(store.requests.map(\.id) == ["PR_1"])
+    }
+
+    // MARK: - The approval remark
+
+    @Test("an approval carries a remark from the row's own bucket")
+    func approvalCarriesAQuip() async {
+        let approver = SpyApprover()
+        let client = StubReviewClient(
+            teams: [.success([cortex])],
+            searches: [.success(ReviewSnapshot(
+                requests: [request("PR_1", title: ":memo: document the read:org scope")],
+                pendingCounts: [:]
+            ))]
+        )
+        let store = makeStore(
+            client: client,
+            approver: ApproveCoordinator(client: approver, approvingAllowed: true)
+        )
+        await store.refresh()
+
+        var shown: String?
+        _ = await store.approve(store.requests[0]) { body in
+            shown = body
+            return true
+        }
+
+        let posted = approver.calls.first?.body
+        #expect(ApprovalQuip.lines(for: .documentation).contains(posted ?? ""))
+        // The dialog must show the line that is actually posted, not another draw.
+        #expect(shown == posted)
+    }
+
+    @Test("switching the remark off approves with no body at all")
+    func quipsCanBeSwitchedOff() async {
+        let preferences = MemoryPreferences()
+        preferences.setApprovalQuipsEnabled(false)
+        let approver = SpyApprover()
+        let client = StubReviewClient(
+            teams: [.success([cortex])],
+            searches: [.success(ReviewSnapshot(requests: [request("PR_1")], pendingCounts: [:]))]
+        )
+        let store = makeStore(
+            client: client,
+            approver: ApproveCoordinator(client: approver, approvingAllowed: true),
+            preferences: preferences
+        )
+        await store.refresh()
+
+        _ = await store.approve(store.requests[0]) { _ in true }
+
+        #expect(store.approvalQuipsEnabled == false)
+        #expect(approver.calls.first?.body == nil)
+    }
+
+    @Test("the switch persists")
+    func quipSettingPersists() async {
+        let preferences = MemoryPreferences()
+        let store = makeStore(preferences: preferences)
+
+        #expect(store.approvalQuipsEnabled)
+        store.approvalQuipsEnabled = false
+
+        #expect(preferences.approvalQuipsEnabled() == false)
     }
 
     // MARK: - Reentrancy and polling

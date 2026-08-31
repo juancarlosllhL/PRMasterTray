@@ -16,7 +16,10 @@ private func node(
     reviewDecision: String? = "REVIEW_REQUIRED",
     checks: String? = "SUCCESS",
     createdAt: String = "2026-08-20T10:00:00Z",
-    updatedAt: String = "2026-08-21T10:00:00Z"
+    updatedAt: String = "2026-08-21T10:00:00Z",
+    additions: Int = 12,
+    deletions: Int = 3,
+    changedFiles: Int = 2
 ) -> String {
     let authorJSON = author.map { #"{"login":"\#($0)"}"# } ?? "null"
     let decisionJSON = reviewDecision.map { #""\#($0)""# } ?? "null"
@@ -25,6 +28,7 @@ private func node(
     {"id":"\#(id)","number":\#(number),"title":":bug: fix it",
      "url":"https://github.com/\#(repo)/pull/\#(number)",
      "headRefOid":"a408f981","createdAt":"\#(createdAt)","updatedAt":"\#(updatedAt)",
+     "additions":\#(additions),"deletions":\#(deletions),"changedFiles":\#(changedFiles),
      "reviewDecision":\#(decisionJSON),"author":\#(authorJSON),
      "repository":{"nameWithOwner":"\#(repo)","isPrivate":\#(isPrivate)},
      "commits":{"nodes":[{"commit":{"statusCheckRollup":\#(rollup)}}]}}
@@ -149,6 +153,21 @@ struct ReviewDecodingTests {
 
         #expect(snapshot.requests.isEmpty)
         #expect(snapshot.pendingCounts["Lansweeper/asset-cortex"] == nil)
+    }
+
+    @Test("the diff's size reaches the row, so the remark has something to read")
+    func diffSizeIsDecoded() throws {
+        let snapshot = try PullRequestDecoder.decodeReviewRequests(
+            response(
+                search(count: 1, node(id: "PR_1", additions: 8, deletions: 941, changedFiles: 63))
+            ),
+            teams: [team("asset-cortex")]
+        )
+
+        let row = try #require(snapshot.requests.first)
+        #expect(row.additions == 8)
+        #expect(row.deletions == 941)
+        #expect(row.changedFiles == 63)
     }
 
     @Test("a team with nothing pending reports zero rather than nothing")

@@ -176,6 +176,10 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
     func setLaunchAtLoginRequested(_ value: Bool) {
         lock.withLock { storedLaunchAtLogin = value }
     }
+
+    private var storedQuips = true
+    func approvalQuipsEnabled() -> Bool { lock.withLock { storedQuips } }
+    func setApprovalQuipsEnabled(_ value: Bool) { lock.withLock { storedQuips = value } }
 }
 
 @MainActor

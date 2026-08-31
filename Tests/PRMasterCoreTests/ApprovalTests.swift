@@ -60,7 +60,8 @@ private let searchOK = Data("""
   {"id":"PR_1","number":909,"title":"fix it",
    "url":"https://github.com/Lansweeper/x/pull/909",
    "headRefOid":"a408f981","createdAt":"2026-08-26T08:50:26Z",
-   "updatedAt":"2026-08-26T09:10:06Z","reviewDecision":"REVIEW_REQUIRED",
+   "updatedAt":"2026-08-26T09:10:06Z","additions":12,"deletions":3,"changedFiles":2,
+   "reviewDecision":"REVIEW_REQUIRED",
    "author":{"login":"someone"},
    "repository":{"nameWithOwner":"Lansweeper/x","isPrivate":false},
    "commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}
@@ -79,7 +80,7 @@ struct ApprovalTests {
     @Test("sends an approval carrying the pull request id and the commit")
     func requestShape() async throws {
         let ctx = makeClient([.response(status: 200, body: approvedOK)])
-        try await ctx.client.approve(id: "PR_node123", commitOID: "deadbeef")
+        try await ctx.client.approve(id: "PR_node123", commitOID: "deadbeef", body: nil)
 
         let body = String(decoding: try #require(ctx.stub.requests.first?.body), as: UTF8.self)
         #expect(body.contains("addPullRequestReview"))
@@ -98,23 +99,43 @@ struct ApprovalTests {
     @Test("no expectedHeadOid is sent, because this mutation has none")
     func pinsRatherThanGuards() async throws {
         let ctx = makeClient([.response(status: 200, body: approvedOK)])
-        try await ctx.client.approve(id: "PR_1", commitOID: "deadbeef")
+        try await ctx.client.approve(id: "PR_1", commitOID: "deadbeef", body: nil)
 
         let body = String(decoding: try #require(ctx.stub.requests.first?.body), as: UTF8.self)
         #expect(body.contains("expectedHeadOid") == false)
         #expect(body.contains("commitOID"))
     }
 
-    /// A review body would be posted publicly under the user's name. Approving
-    /// from a menu bar is a gesture, not a comment, so there is nothing to say.
-    @Test("no review body is sent")
+    /// Nil must leave the variable out rather than send an explicit null, so an
+    /// approval with nothing to say is the request this app sent before quips.
+    @Test("no remark means no body variable at all")
     func noBody() async throws {
         let ctx = makeClient([.response(status: 200, body: approvedOK)])
-        try await ctx.client.approve(id: "PR_1", commitOID: "deadbeef")
+        try await ctx.client.approve(id: "PR_1", commitOID: "deadbeef", body: nil)
 
-        let body = String(decoding: try #require(ctx.stub.requests.first?.body), as: UTF8.self)
-        #expect(body.contains("REQUEST_CHANGES") == false)
-        #expect(body.contains("\"body\"") == false)
+        let sent = try #require(ctx.stub.requests.first?.body)
+        let json = try #require(
+            try JSONSerialization.jsonObject(with: sent) as? [String: Any]
+        )
+        let variables = try #require(json["variables"] as? [String: Any])
+        #expect(variables["body"] == nil)
+        #expect(String(decoding: sent, as: UTF8.self).contains("REQUEST_CHANGES") == false)
+    }
+
+    @Test("a remark rides along as the review body")
+    func remarkIsSentAsBody() async throws {
+        let ctx = makeClient([.response(status: 200, body: approvedOK)])
+        try await ctx.client.approve(
+            id: "PR_1", commitOID: "deadbeef", body: "Ship it. The green tick has spoken. 🟢"
+        )
+
+        let sent = try #require(ctx.stub.requests.first?.body)
+        let json = try #require(
+            try JSONSerialization.jsonObject(with: sent) as? [String: Any]
+        )
+        let variables = try #require(json["variables"] as? [String: Any])
+        #expect(variables["body"] as? String == "Ship it. The green tick has spoken. 🟢")
+        #expect(String(decoding: sent, as: UTF8.self).contains("body: $body"))
     }
 
     // MARK: - The approve answer
@@ -122,7 +143,7 @@ struct ApprovalTests {
     @Test("a confirmed approval does not throw")
     func successIsSilent() async throws {
         let ctx = makeClient([.response(status: 200, body: approvedOK)])
-        try await ctx.client.approve(id: "PR_1", commitOID: "deadbeef")
+        try await ctx.client.approve(id: "PR_1", commitOID: "deadbeef", body: nil)
     }
 
     /// GitHub's own wording, for the same reason the merge and the close keep it.
@@ -132,7 +153,7 @@ struct ApprovalTests {
     func refusalIsVerbatim() async throws {
         let ctx = makeClient([.response(status: 200, body: ownPullRequest)])
         await #expect(throws: PRMasterError.approveRejected("Can not approve your own pull request")) {
-            try await ctx.client.approve(id: "PR_1", commitOID: "deadbeef")
+            try await ctx.client.approve(id: "PR_1", commitOID: "deadbeef", body: nil)
         }
     }
 
@@ -142,7 +163,7 @@ struct ApprovalTests {
     func nullPayloadThrows() async throws {
         let ctx = makeClient([.response(status: 200, body: nullPayload)])
         await #expect(throws: PRMasterError.self) {
-            try await ctx.client.approve(id: "PR_1", commitOID: "deadbeef")
+            try await ctx.client.approve(id: "PR_1", commitOID: "deadbeef", body: nil)
         }
     }
 
@@ -157,7 +178,7 @@ struct ApprovalTests {
     func unconfirmedStateThrows(state: String, body: Data) async throws {
         let ctx = makeClient([.response(status: 200, body: body)])
         await #expect(throws: PRMasterError.self, "state \(state) must not read as approved") {
-            try await ctx.client.approve(id: "PR_1", commitOID: "deadbeef")
+            try await ctx.client.approve(id: "PR_1", commitOID: "deadbeef", body: nil)
         }
     }
 
@@ -165,7 +186,7 @@ struct ApprovalTests {
     func htmlBodyThrows() async throws {
         let ctx = makeClient([.response(status: 200, body: Data("<html>nope</html>".utf8))])
         await #expect(throws: PRMasterError.notJSON) {
-            try await ctx.client.approve(id: "PR_1", commitOID: "deadbeef")
+            try await ctx.client.approve(id: "PR_1", commitOID: "deadbeef", body: nil)
         }
     }
 
