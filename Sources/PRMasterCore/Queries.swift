@@ -449,6 +449,41 @@ enum Queries {
     /// through one payload type and a draft is excluded on both.
     private static let releaseFields = "tagName url createdAt isDraft tagCommit { oid }"
 
+    static let issueKeyAliasCap = 20
+
+    /// One document of aliased searches costs a measured rate limit of 1
+    /// whatever the alias count. `nil` past the cap, so an over-long document
+    /// is refused rather than silently truncated.
+    static func pullRequestsForIssueKeys(
+        _ keys: [String]
+    ) -> (query: String, variables: [String: String])? {
+        var unique: [String] = []
+        for key in keys where !unique.contains(key) { unique.append(key) }
+
+        guard !unique.isEmpty, unique.count <= issueKeyAliasCap else { return nil }
+
+        var declarations: [String] = []
+        var fields: [String] = []
+        var variables: [String: String] = [:]
+
+        for (index, key) in unique.enumerated() {
+            declarations.append("$q\(index): String!")
+            fields.append("""
+              k\(index): search(query: $q\(index), type: ISSUE, first: 20) {
+                nodes {
+                  ... on PullRequest {
+                    id number title url state isDraft
+                    repository { nameWithOwner isPrivate }
+                  }
+                }
+              }
+            """)
+            variables["q\(index)"] = "\(key) in:title is:pr author:@me"
+        }
+
+        return (document(declarations, fields), variables)
+    }
+
     private static func document(_ declarations: [String], _ fields: [String]) -> String {
         """
         query(\(declarations.joined(separator: ", "))) {

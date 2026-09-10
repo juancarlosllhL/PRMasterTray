@@ -535,6 +535,39 @@ struct CodeSearchPayload: Decodable {
     }
 }
 
+/// One `k{n}: search { nodes }` answer for a Jira issue key.
+struct IssueLinkSearchNode: Decodable {
+    let nodes: [Node?]?
+
+    struct Node: Decodable {
+        let id: String
+        let number: Int
+        let title: String
+        let url: URL
+        let state: String
+        let isDraft: Bool
+        let repository: Repo
+
+        struct Repo: Decodable {
+            let nameWithOwner: String
+            let isPrivate: Bool
+        }
+
+        var domain: LinkedPullRequest {
+            LinkedPullRequest(
+                id: id,
+                number: number,
+                title: title,
+                url: url,
+                repo: repository.nameWithOwner,
+                isPrivate: repository.isPrivate,
+                isDraft: isDraft,
+                state: LinkedPullRequestState(rawValue: state) ?? .open
+            )
+        }
+    }
+}
+
 /// One `t{n}: repository { object { entries } }` answer.
 struct PromotionTreeNode: Decodable {
     /// `null` when the app folder does not resolve at HEAD.
@@ -895,6 +928,21 @@ public enum PullRequestDecoder {
     ///
     /// - Parameter decoder: the release payload carries dates, and the tree and
     ///   blob payloads do not, so the strategy comes from the caller.
+    /// Empty rather than absent for a key with no hits: absent would read as
+    /// "not looked up yet", which is not the same as "none exist".
+    public static func decodeIssueLinks(
+        _ data: Data,
+        keys: [String]
+    ) throws -> [String: [LinkedPullRequest]] {
+        let payload = try aliased(IssueLinkSearchNode.self, from: data)
+
+        return keys.enumerated().reduce(into: [:]) { result, pair in
+            let (index, key) = pair
+            let nodes = (payload["k\(index)"] ?? nil)?.nodes ?? []
+            result[key] = nodes.compactMap { $0?.domain }
+        }
+    }
+
     private static func aliased<Node: Decodable>(
         _ node: Node.Type,
         from data: Data,
