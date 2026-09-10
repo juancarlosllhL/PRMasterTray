@@ -11,6 +11,9 @@ public enum ReviewState: Sendable, Equatable, CaseIterable {
     case checksFailing
     /// Checks are still running.
     case checksPending
+    /// The user approved this and the approval was dismissed, so it needs
+    /// approving again.
+    case dismissed
     /// Somebody has approved and the team's request is still open, so it needs
     /// one more.
     case approved
@@ -41,6 +44,8 @@ public enum ReviewState: Sendable, Equatable, CaseIterable {
             break
         }
 
+        if request.viewerReviewDismissed { return .dismissed }
+
         return request.reviewDecision == .approved ? .approved : .awaiting
     }
 }
@@ -49,13 +54,14 @@ extension ReviewState {
 
     /// SF Symbol shown at the leading edge of each row.
     ///
-    /// All five are distinct, which matters more here than elsewhere: in
+    /// All six are distinct, which matters more here than elsewhere: in
     /// monochrome the colour is gone and the glyph is most of what is left.
     public var symbolName: String {
         switch self {
         case .changesRequested: return "exclamationmark.bubble"
         case .checksFailing:    return "xmark.circle.fill"
         case .checksPending:    return "clock"
+        case .dismissed:        return "exclamationmark.arrow.circlepath"
         // Deliberately not `checkmark.circle.fill`, which means "you can merge
         // this" everywhere else in the popover. This says somebody else has
         // approved and your team is still being asked, which is a different
@@ -75,6 +81,9 @@ extension ReviewState {
         case .changesRequested: return .orange
         case .checksFailing:    return .red
         case .checksPending:    return .yellow
+        // Shares orange with `changesRequested`, which is the nearest thing it
+        // is: both say a review decision is standing between this and a merge.
+        case .dismissed:        return .orange
         case .approved:         return .green
         case .awaiting:         return .blue
         }
@@ -94,6 +103,7 @@ extension ReviewState {
         case .changesRequested: return "Changes requested"
         case .checksFailing:    return "Checks failing"
         case .checksPending:    return "Checks running"
+        case .dismissed:        return "Approval dismissed"
         case .approved:         return "Approved already"
         case .awaiting:         return "Needs review"
         }

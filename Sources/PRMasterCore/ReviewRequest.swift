@@ -55,6 +55,9 @@ public struct ReviewRequest: Identifiable, Sendable, Equatable {
     /// be. Carrying the set is what lets a pull request requested from two of
     /// your teams be one row rather than two.
     public let teams: [Team]
+    /// True only for rows the dismissal search found: the per-team searches
+    /// cannot see a dismissal, and GitHub's team request is gone by then.
+    public let viewerReviewDismissed: Bool
 
     public var state: ReviewState { ReviewState.evaluate(self) }
 
@@ -80,7 +83,8 @@ public struct ReviewRequest: Identifiable, Sendable, Equatable {
         additions: Int,
         deletions: Int,
         changedFiles: Int,
-        teams: [Team]
+        teams: [Team],
+        viewerReviewDismissed: Bool = false
     ) {
         self.id = id
         self.number = number
@@ -98,6 +102,7 @@ public struct ReviewRequest: Identifiable, Sendable, Equatable {
         self.deletions = deletions
         self.changedFiles = changedFiles
         self.teams = teams
+        self.viewerReviewDismissed = viewerReviewDismissed
     }
 }
 

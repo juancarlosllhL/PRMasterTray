@@ -314,8 +314,22 @@ struct ReviewSearchNode: Decodable {
         let author: Author?
         let repository: Repository
         let commits: Commits
+        let viewerLatestReview: LatestReview?
+        let timelineItems: TimelineItems?
 
         struct Author: Decodable { let login: String }
+
+        struct LatestReview: Decodable { let state: PullRequestReviewState }
+
+        struct TimelineItems: Decodable {
+            let nodes: [Event]
+            /// A person's request decodes as an empty object: the query selects
+            /// `combinedSlug` on `Team` and nothing else.
+            struct Event: Decodable {
+                let requestedReviewer: Reviewer?
+                struct Reviewer: Decodable { let combinedSlug: String? }
+            }
+        }
 
         struct Repository: Decodable {
             let nameWithOwner: String
@@ -334,7 +348,14 @@ struct ReviewSearchNode: Decodable {
             }
         }
 
-        func domain(teams: [Team]) -> ReviewRequest {
+        func teamsAsked(from teams: [Team]) -> [Team] {
+            let asked = Set((timelineItems?.nodes ?? []).compactMap {
+                $0.requestedReviewer?.combinedSlug
+            })
+            return teams.filter { asked.contains($0.combinedSlug) }
+        }
+
+        func domain(teams: [Team], viewerReviewDismissed: Bool = false) -> ReviewRequest {
             ReviewRequest(
                 id: id,
                 number: number,
@@ -356,9 +377,26 @@ struct ReviewSearchNode: Decodable {
                 additions: additions,
                 deletions: deletions,
                 changedFiles: changedFiles,
-                teams: teams
+                teams: teams,
+                viewerReviewDismissed: viewerReviewDismissed
             )
         }
+    }
+}
+
+/// One row under construction: the first alias to return it wins its fields,
+/// and the teams accumulate across every alias that did.
+private struct Row {
+    let node: ReviewSearchNode.Node
+    let teams: [Team]
+    let dismissed: Bool
+
+    func adding(_ team: Team) -> Row {
+        Row(node: node, teams: teams + [team], dismissed: dismissed)
+    }
+
+    func dismissing() -> Row {
+        Row(node: node, teams: teams, dismissed: true)
     }
 }
 
@@ -657,8 +695,8 @@ public enum PullRequestDecoder {
 
     /// Decodes the per-team review searches into one flat, deduplicated list.
     ///
-    /// Aliases are `s0…sN` in team order, the contract
-    /// `Queries.reviewRequests(for:filter:window:now:)` establishes.
+    /// Aliases are `s0…sN` in team order, plus `Queries.dismissalAlias`, the
+    /// contract `Queries.reviewRequests(for:filter:window:now:)` establishes.
     ///
     /// Deduplicated by pull request ID, carrying every team that was asked. A
     /// pull request requested from two of the user's teams comes back under two
@@ -689,7 +727,7 @@ public enum PullRequestDecoder {
         // Insertion-ordered so the teams on a deduplicated row keep the caller's
         // order, and so the first sighting of a pull request wins its fields.
         var order: [String] = []
-        var byID: [String: (node: ReviewSearchNode.Node, teams: [Team])] = [:]
+        var byID: [String: Row] = [:]
 
         for (index, team) in teams.enumerated() {
             guard let search = payload["s\(index)"] ?? nil else { continue }
@@ -697,17 +735,30 @@ public enum PullRequestDecoder {
 
             for node in search.nodes {
                 if let existing = byID[node.id] {
-                    byID[node.id] = (existing.node, existing.teams + [team])
+                    byID[node.id] = existing.adding(team)
                 } else {
                     order.append(node.id)
-                    byID[node.id] = (node, [team])
+                    byID[node.id] = Row(node: node, teams: [team], dismissed: false)
                 }
+            }
+        }
+
+        for node in (payload[Queries.dismissalAlias] ?? nil)?.nodes ?? [] {
+            guard node.viewerLatestReview?.state == .dismissed else { continue }
+            let asked = node.teamsAsked(from: teams)
+            guard !asked.isEmpty else { continue }
+
+            if let existing = byID[node.id] {
+                byID[node.id] = existing.dismissing()
+            } else {
+                order.append(node.id)
+                byID[node.id] = Row(node: node, teams: asked, dismissed: true)
             }
         }
 
         let requests = order
             .compactMap { byID[$0] }
-            .map { $0.node.domain(teams: $0.teams) }
+            .map { $0.node.domain(teams: $0.teams, viewerReviewDismissed: $0.dismissed) }
             .sorted { $0.updatedAt > $1.updatedAt }
 
         return ReviewSnapshot(requests: requests, pendingCounts: counts)

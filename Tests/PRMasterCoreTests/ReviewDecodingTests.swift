@@ -39,11 +39,28 @@ private func search(count: Int, _ nodes: String...) -> String {
     #"{"issueCount":\#(count),"nodes":[\#(nodes.joined(separator: ","))]}"#
 }
 
-private func response(_ searches: String...) -> Data {
-    let body = searches.enumerated()
-        .map { #""s\#($0.offset)":\#($0.element)"# }
-        .joined(separator: ",")
-    return Data(#"{"data":{\#(body)}}"#.utf8)
+/// A node from the dismissal search, which selects two fields the per-team
+/// searches do not: the viewer's own latest review, and every team ever asked.
+private func dismissedNode(
+    id: String,
+    latestReview: String? = "DISMISSED",
+    requestedTeams: [String] = ["Lansweeper/asset-cortex"],
+    individualReviewers: Int = 0,
+    updatedAt: String = "2026-08-21T10:00:00Z"
+) -> String {
+    let review = latestReview.map { #"{"state":"\#($0)"}"# } ?? "null"
+    let teams = requestedTeams.map { #"{"requestedReviewer":{"combinedSlug":"\#($0)"}}"# }
+    let people = Array(repeating: #"{"requestedReviewer":{}}"#, count: individualReviewers)
+    let base = String(node(id: id, updatedAt: updatedAt).dropLast())
+    let extras = #""viewerLatestReview":\#(review),"#
+        + #""timelineItems":{"nodes":[\#((teams + people).joined(separator: ","))]}"#
+    return base + "," + extras + "}"
+}
+
+private func response(_ searches: String..., dismissed: String? = nil) -> Data {
+    var fields = searches.enumerated().map { #""s\#($0.offset)":\#($0.element)"# }
+    if let dismissed { fields.append(#""d":\#(dismissed)"#) }
+    return Data(#"{"data":{\#(fields.joined(separator: ","))}}"#.utf8)
 }
 
 @Suite("Review request decoding")
@@ -120,6 +137,112 @@ struct ReviewDecodingTests {
         #expect(snapshot.requests[0].teams.map(\.name) == ["aardvark", "beetle", "cicada"])
     }
 
+    // MARK: - Dismissed reviews
+
+    @Test("a review that stopped counting comes back as a row that says so")
+    func dismissedBecomesARow() throws {
+        let snapshot = try PullRequestDecoder.decodeReviewRequests(
+            response(search(count: 0), dismissed: search(count: 1, dismissedNode(id: "PR_1"))),
+            teams: [team("asset-cortex")]
+        )
+
+        let row = try #require(snapshot.requests.first)
+        #expect(row.id == "PR_1")
+        #expect(row.viewerReviewDismissed)
+        #expect(row.state == .dismissed)
+        #expect(row.teams.map(\.combinedSlug) == ["Lansweeper/asset-cortex"])
+    }
+
+    /// GitHub has already removed the team's request by then, so the timeline is
+    /// the only record left of which team was asked. It names every reviewer ever
+    /// requested, including people and teams the user has nothing to do with.
+    @Test("a dismissed row is attributed to the user's teams and no others")
+    func dismissedAttributionIsIntersected() throws {
+        let snapshot = try PullRequestDecoder.decodeReviewRequests(
+            response(search(count: 0), dismissed: search(count: 1, dismissedNode(
+                id: "PR_1",
+                requestedTeams: ["Lansweeper/platform", "Lansweeper/asset-cortex"],
+                individualReviewers: 2
+            ))),
+            teams: [team("asset-cortex"), team("datanauts")]
+        )
+
+        #expect(snapshot.requests.map(\.teams.count) == [1])
+        #expect(snapshot.requests[0].teams.map(\.name) == ["asset-cortex"])
+    }
+
+    /// The section is what your teams are waiting on. A pull request the user
+    /// reviewed off their own bat was never any team's to answer.
+    @Test("a dismissed row no team of the user's was asked about is dropped")
+    func dismissedWithoutAUserTeamIsDropped() throws {
+        let snapshot = try PullRequestDecoder.decodeReviewRequests(
+            response(search(count: 0), dismissed: search(count: 2,
+                dismissedNode(id: "PR_1", requestedTeams: ["Lansweeper/platform"]),
+                dismissedNode(id: "PR_2", requestedTeams: [], individualReviewers: 1)
+            )),
+            teams: [team("asset-cortex")]
+        )
+
+        #expect(snapshot.requests.isEmpty)
+    }
+
+    /// `review:none` also matches a comment-only review, which is not a dismissal
+    /// and did not stop anything counting. The state field is what tells them
+    /// apart, so the decoder insists on it rather than trusting the search.
+    @Test("only a dismissal produces a dismissed row", arguments: [
+        "APPROVED", "COMMENTED", "CHANGES_REQUESTED", "PENDING", "SOMETHING_NEW",
+    ])
+    func onlyDismissalCounts(state: String) throws {
+        let snapshot = try PullRequestDecoder.decodeReviewRequests(
+            response(search(count: 0), dismissed: search(count: 1, dismissedNode(
+                id: "PR_1", latestReview: state
+            ))),
+            teams: [team("asset-cortex")]
+        )
+
+        #expect(snapshot.requests.isEmpty)
+    }
+
+    @Test("a dismissal search that answers nothing at all is not an error")
+    func dismissedAbsences() throws {
+        for body in [#"{"data":{"s0":null,"d":null}}"#, #"{"data":{"s0":null}}"#] {
+            let snapshot = try PullRequestDecoder.decodeReviewRequests(
+                Data(body.utf8), teams: [team("asset-cortex")]
+            )
+            #expect(snapshot.requests.isEmpty)
+        }
+    }
+
+    /// GitHub does not count it against the team any more — that is the whole
+    /// bug — so counting it here would make the section claim to be truncated.
+    @Test("a dismissed row is not counted against a team's pending total")
+    func dismissedDoesNotTouchCounts() throws {
+        let snapshot = try PullRequestDecoder.decodeReviewRequests(
+            response(search(count: 3), dismissed: search(count: 1, dismissedNode(id: "PR_1"))),
+            teams: [team("asset-cortex")]
+        )
+
+        #expect(snapshot.pendingCounts == ["Lansweeper/asset-cortex": 3])
+    }
+
+    /// Possible if the team is asked again after the dismissal, and two rows for
+    /// one pull request is the visible bug deduplication exists to stop.
+    @Test("a pull request in both searches is one row that says it was dismissed")
+    func dismissedDedupesWithTeamRows() throws {
+        let snapshot = try PullRequestDecoder.decodeReviewRequests(
+            response(
+                search(count: 1, node(id: "PR_1")),
+                search(count: 1, node(id: "PR_1")),
+                dismissed: search(count: 1, dismissedNode(id: "PR_1"))
+            ),
+            teams: [team("asset-cortex"), team("datanauts")]
+        )
+
+        #expect(snapshot.requests.count == 1)
+        #expect(snapshot.requests[0].viewerReviewDismissed)
+        #expect(snapshot.requests[0].teams.map(\.name) == ["asset-cortex", "datanauts"])
+    }
+
     // MARK: - Ordering
 
     /// Flat and most-recently-active first, so the list does not depend on which
@@ -137,6 +260,25 @@ struct ReviewDecodingTests {
         )
 
         #expect(snapshot.requests.map(\.id) == ["PR_new", "PR_mid", "PR_old"])
+    }
+
+    /// Its alias is read last, so without one sort over everything it would land
+    /// at the bottom whatever its activity says.
+    @Test("a dismissed row sorts by activity with the rest")
+    func dismissedJoinsTheOrdering() throws {
+        let snapshot = try PullRequestDecoder.decodeReviewRequests(
+            response(
+                search(count: 2,
+                       node(id: "PR_old", updatedAt: "2026-08-01T10:00:00Z"),
+                       node(id: "PR_new", updatedAt: "2026-08-27T10:00:00Z")),
+                dismissed: search(count: 1, dismissedNode(
+                    id: "PR_dismissed", updatedAt: "2026-08-15T10:00:00Z"
+                ))
+            ),
+            teams: [team("asset-cortex")]
+        )
+
+        #expect(snapshot.requests.map(\.id) == ["PR_new", "PR_dismissed", "PR_old"])
     }
 
     // MARK: - Absences

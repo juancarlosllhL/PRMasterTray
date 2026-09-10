@@ -46,6 +46,13 @@ GitHub would merge right now.
   a real, public review under your own name, after a confirmation naming the
   author.
 
+  One you approved comes back if the author pushes and GitHub throws your
+  approval away, marked **Approval dismissed** so it is not mistaken for a pull
+  request you have never seen. GitHub drops the team's request the moment you
+  review and does not restore it, so this is found by asking a second question
+  rather than by the same search, and it is attributed to whichever of your
+  teams was originally asked.
+
   The approval carries a one-line remark, chosen from the pull request itself —
   its size, whether it deleted more than it added, what its title claims, how
   its checks did, how long it sat there. The confirmation quotes the line before

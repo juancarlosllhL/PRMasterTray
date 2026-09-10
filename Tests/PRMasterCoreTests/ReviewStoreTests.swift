@@ -349,6 +349,31 @@ struct ReviewStoreTests {
         #expect(store.visible(under: PRFilter()).map(\.id) == ["PR_fresh"])
     }
 
+    /// The dismissal search is not per team, so a row it returns can be
+    /// attributed to a team the user switched off. Derived rather than left to
+    /// the refetch, so switching a team off empties its rows on the spot.
+    @Test("a row whose every team is switched off is not shown")
+    func disabledTeamRowIsHidden() async {
+        let preferences = MemoryPreferences(
+            teamFilter: TeamFilter(disabledTeams: ["Lansweeper/cloud-2"])
+        )
+        let client = StubReviewClient(
+            teams: [.success([cortex, cloud])],
+            searches: [.success(ReviewSnapshot(
+                requests: [
+                    request("PR_cortex", teams: [cortex]),
+                    request("PR_cloud", teams: [cloud]),
+                    request("PR_both", teams: [cortex, cloud]),
+                ],
+                pendingCounts: [:]
+            ))]
+        )
+        let store = makeStore(client: client, preferences: preferences)
+        await store.refresh()
+
+        #expect(store.visible(under: PRFilter()).map(\.id) == ["PR_cortex", "PR_both"])
+    }
+
     // MARK: - Truncation
 
     /// A capped list that says nothing about being capped is the silent failure

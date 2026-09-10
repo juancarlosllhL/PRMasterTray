@@ -124,6 +124,9 @@ enum Queries {
     /// generated aliases and generated variable *names* only, with every remote
     /// value riding as a variable. A team slug is remote data.
     ///
+    /// One search more than there are teams: `dismissalAlias` carries the ones
+    /// whose row left the team's request behind — see `dismissalFields`.
+    ///
     /// - Returns: `nil` when there are no teams, or when the window is off. Unlike
     ///   the merged search, which rides along with the open pull requests and so
     ///   costs nothing extra, this is a round trip of its own — there is nothing
@@ -160,8 +163,44 @@ enum Queries {
             variables["n\(index)"] = .int(filter.shows(team) ? reviewRequestPageSize : 0)
         }
 
+        declarations.append("$q\(dismissalAlias): String!, $n\(dismissalAlias): Int!")
+        fields.append("""
+          \(dismissalAlias): search(
+            query: $q\(dismissalAlias), type: ISSUE, first: $n\(dismissalAlias)
+          ) {
+            issueCount
+            nodes { \(reviewRequestFields) \(dismissalFields) }
+          }
+        """)
+        variables["q\(dismissalAlias)"] = .string(
+            "is:pr is:open archived:false draft:false "
+                + "-author:@me reviewed-by:@me review:none "
+                + "\(created) sort:updated-desc"
+        )
+        variables["n\(dismissalAlias)"] = .int(
+            teams.contains(where: filter.shows) ? reviewRequestPageSize : 0
+        )
+
         return (document(declarations, fields), variables)
     }
+
+    static let dismissalAlias = "d"
+
+    /// The team's request is gone by the time a review is dismissed, so the
+    /// timeline is the only record left of who was asked. `viewerLatestReview`
+    /// separates a dismissal from the comment-only review `review:none` matches.
+    private static let dismissalFields = """
+    ... on PullRequest {
+                    viewerLatestReview { state }
+                    timelineItems(first: 50, itemTypes: [REVIEW_REQUESTED_EVENT]) {
+                      nodes {
+                        ... on ReviewRequestedEvent {
+                          requestedReviewer { ... on Team { combinedSlug } }
+                        }
+                      }
+                    }
+                  }
+    """
 
     /// What a review row is made of.
     ///

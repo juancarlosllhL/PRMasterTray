@@ -59,6 +59,63 @@ struct ReviewQueryTests {
         #expect(built.query.contains("issueCount"))
     }
 
+    // MARK: - The dismissal search
+
+    /// Measured on Lansweeper/assetcortex-deployments 1213: a dismissal does not
+    /// restore the team request, so no per-team search can bring the row back.
+    @Test("one more search covers the reviews that stopped counting")
+    func dismissalSearchIsSent() throws {
+        let built = try #require(build())
+
+        #expect(built.query.contains("d: search("))
+        #expect(built.variables["qd"] == .string(dismissalSearchString()))
+    }
+
+    /// `reviewed-by:@me` alone also matches a review that still stands, and
+    /// `review:none` alone matches a pull request nobody has touched.
+    @Test("the dismissal search narrows to reviews that no longer count")
+    func dismissalQualifiers() throws {
+        let built = try #require(build())
+        let search = searchText(built, "qd")
+
+        #expect(search.contains("reviewed-by:@me"))
+        #expect(search.contains("-reviewed-by:@me") == false)
+        #expect(search.contains("review:none"))
+        #expect(search.contains("team-review-requested:") == false)
+    }
+
+    @Test("the dismissal search keeps the section's own limits")
+    func dismissalKeepsSectionLimits() throws {
+        let built = try #require(build())
+        let search = searchText(built, "qd")
+
+        for qualifier in [
+            "is:pr", "is:open", "archived:false", "draft:false", "-author:@me",
+            "created:>", "sort:updated-desc",
+        ] {
+            #expect(search.contains(qualifier), "missing \(qualifier)")
+        }
+    }
+
+    /// The team request is gone by the time a review is dismissed, so the
+    /// timeline is the only remaining record of which team was asked.
+    @Test("the dismissal search selects what attributes a row to a team")
+    func dismissalSelectsAttribution() throws {
+        let built = try #require(build())
+
+        #expect(built.query.contains("viewerLatestReview"))
+        #expect(built.query.contains("REVIEW_REQUESTED_EVENT"))
+        #expect(built.query.contains("combinedSlug"))
+    }
+
+    @Test("no enabled team means the dismissal search fetches no rows")
+    func dismissalFetchesNothingWithNoEnabledTeam() throws {
+        let built = try #require(build(disabled: Set(allTeams.map(\.combinedSlug))))
+        #expect(built.variables["nd"] == .int(0))
+        let partly = try #require(build(disabled: ["Lansweeper/cloud-2"]))
+        #expect(partly.variables["nd"] == .int(Queries.reviewRequestPageSize))
+    }
+
     // MARK: - Enabled and disabled
 
     /// A disabled team is still asked, at `first: 0`. GitHub answers `issueCount`
@@ -216,6 +273,14 @@ struct ReviewQueryTests {
         let created = window.createdQualifier(now: Date(timeIntervalSince1970: 1_786_692_165))!
         return "is:pr is:open archived:false draft:false "
             + "team-review-requested:Lansweeper/\(slug) -author:@me -reviewed-by:@me "
+            + "\(created) sort:updated-desc"
+    }
+
+    private func dismissalSearchString() -> String {
+        let window = ReviewWindow.twoWeeks
+        let created = window.createdQualifier(now: Date(timeIntervalSince1970: 1_786_692_165))!
+        return "is:pr is:open archived:false draft:false "
+            + "-author:@me reviewed-by:@me review:none "
             + "\(created) sort:updated-desc"
     }
 }

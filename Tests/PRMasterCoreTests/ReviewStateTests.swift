@@ -20,7 +20,8 @@ private func request(
     additions: Int = 40,
     deletions: Int = 10,
     changedFiles: Int = 3,
-    teams: [Team] = [team]
+    teams: [Team] = [team],
+    dismissed: Bool = false
 ) -> ReviewRequest {
     ReviewRequest(
         id: id,
@@ -38,7 +39,8 @@ private func request(
         additions: additions,
         deletions: deletions,
         changedFiles: changedFiles,
-        teams: teams
+        teams: teams,
+        viewerReviewDismissed: dismissed
     )
 }
 
@@ -74,6 +76,24 @@ struct ReviewStateTests {
         decision: ReviewDecision, checks: CheckState, expected: ReviewState
     ) {
         #expect(request(checks: checks, reviewDecision: decision).state == expected)
+    }
+
+    @Test("a dismissed approval says so rather than reading as never reviewed")
+    func dismissedIsStated() {
+        #expect(request(checks: .success, dismissed: true).state == .dismissed)
+        #expect(request(checks: nil, reviewDecision: nil, dismissed: true).state == .dismissed)
+    }
+
+    /// A red pull request is not waiting for a re-approval, it is waiting for a
+    /// fix. The common case too: the push that dismissed the review starts CI.
+    @Test("the checks still outrank a dismissed approval", arguments: [
+        (CheckState.failure, ReviewState.checksFailing),
+        (.error, .checksFailing),
+        (.pending, .checksPending),
+        (.expected, .checksPending),
+    ])
+    func checksOutrankDismissal(checks: CheckState, expected: ReviewState) {
+        #expect(request(checks: checks, dismissed: true).state == expected)
     }
 
     /// `nil` checks means the repository has no CI at all, which is not the same
@@ -132,6 +152,7 @@ struct ReviewStateTests {
         #expect(ReviewState.checksPending.tint == .yellow)
         #expect(ReviewState.approved.tint == .green)
         #expect(ReviewState.awaiting.tint == .blue)
+        #expect(ReviewState.dismissed.tint == .orange)
     }
 
     /// The same rule the open and merged rows follow: a raw `:bug:` in a list
