@@ -54,9 +54,19 @@ public enum PRMasterError: Error, LocalizedError {
     /// A step of the install went wrong — the download, the unpacking, or the
     /// shape of what was unpacked. The payload says which.
     case updateFailed(String)
+    case jiraInvalidCredentials(detail: String)
+    case jiraKeychainFailure(status: Int)
+    case jiraUnauthorized
 
     public var errorDescription: String? {
         switch self {
+        case .jiraInvalidCredentials(let detail):
+            return detail
+        case .jiraKeychainFailure(let status):
+            return "Couldn't reach your Keychain (code \(status))."
+        case .jiraUnauthorized:
+            return "Jira didn't accept that email and API token together. "
+                + "Check both, and create a token at id.atlassian.com under Security."
         case .ghNotFound:
             return "GitHub CLI not found. Install it with: brew install gh"
         case .notAuthenticated:
@@ -121,7 +131,8 @@ extension PRMasterError: Equatable {
              (.notJSON, .notJSON),
              (.noReleaseYet, .noReleaseYet),
              (.releaseAssetMissing, .releaseAssetMissing),
-             (.updateVerificationFailed, .updateVerificationFailed):
+             (.updateVerificationFailed, .updateVerificationFailed),
+             (.jiraUnauthorized, .jiraUnauthorized):
             return true
         case (.notAuthenticated(let l), .notAuthenticated(let r)):
             return l == r
@@ -131,7 +142,8 @@ extension PRMasterError: Equatable {
             return l == r
         case (.rateLimited(let l), .rateLimited(let r)):
             return l == r
-        case (.httpError(let l), .httpError(let r)):
+        case (.httpError(let l), .httpError(let r)),
+             (.jiraKeychainFailure(let l), .jiraKeychainFailure(let r)):
             return l == r
         case (.mergeRejected(let l), .mergeRejected(let r)),
              (.updateRejected(let l), .updateRejected(let r)),
@@ -140,7 +152,8 @@ extension PRMasterError: Equatable {
             return l == r
         case (.decoding(let l), .decoding(let r)),
              (.releaseCheckFailed(let l), .releaseCheckFailed(let r)),
-             (.updateFailed(let l), .updateFailed(let r)):
+             (.updateFailed(let l), .updateFailed(let r)),
+             (.jiraInvalidCredentials(let l), .jiraInvalidCredentials(let r)):
             return l == r
         default:
             return false
