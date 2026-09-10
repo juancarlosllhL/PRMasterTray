@@ -57,17 +57,17 @@ struct BannerRoutingTests {
         #expect(PopoverBanner.allCases.count == 8)
     }
 
-    /// The routing table. Three are global and actionable; the rest belong to the
-    /// pane whose data they describe.
+    /// The routing table. Three are global and actionable; the rest describe
+    /// pull request data and ride with the pane that shows it.
     @Test("each banner routes to exactly one slot", arguments: [
         (PopoverBanner.notificationsDenied, BannerSlot.global),
         (PopoverBanner.updateAvailable, BannerSlot.global),
         (PopoverBanner.installFailure, BannerSlot.global),
-        (PopoverBanner.notificationFailure, BannerSlot.pane(.mine)),
-        (PopoverBanner.branchUpdateFailure, BannerSlot.pane(.mine)),
-        (PopoverBanner.shipmentFailure, BannerSlot.pane(.merged)),
-        (PopoverBanner.deploymentFailure, BannerSlot.pane(.merged)),
-        (PopoverBanner.teamLookupFailure, BannerSlot.pane(.teams)),
+        (PopoverBanner.notificationFailure, BannerSlot.pane(.pullRequests)),
+        (PopoverBanner.branchUpdateFailure, BannerSlot.pane(.pullRequests)),
+        (PopoverBanner.shipmentFailure, BannerSlot.pane(.pullRequests)),
+        (PopoverBanner.deploymentFailure, BannerSlot.pane(.pullRequests)),
+        (PopoverBanner.teamLookupFailure, BannerSlot.pane(.pullRequests)),
     ])
     func routesToOneSlot(banner: PopoverBanner, slot: BannerSlot) {
         #expect(banner.slot == slot)
@@ -95,7 +95,7 @@ struct BannerRoutingTests {
     }
 
     @Test("banners for a pane are the ones routed there", arguments: [
-        (PopoverTab.mine, 2), (PopoverTab.merged, 2), (PopoverTab.teams, 1), (PopoverTab.jira, 0),
+        (PopoverTab.pullRequests, 5), (PopoverTab.jira, 0),
     ])
     func bannersForPane(tab: PopoverTab, expected: Int) {
         let active = Set(PopoverBanner.allCases)

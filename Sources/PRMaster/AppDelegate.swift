@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var updates: AppUpdateStore!
     private var appearanceStore: AppearanceStore!
     private var launchAtLogin: LaunchAtLoginStore!
+    private let tabSelection = TabSelectionStore()
     private let settingsWindow = SettingsWindowController()
     private var observers: [NSObjectProtocol] = []
     private var dismissMonitors: [Any] = []
@@ -369,13 +370,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 notifications: NotificationStatus.shared,
                 updates: updates,
                 appearance: appearanceStore,
-                launchAtLogin: launchAtLogin
+                launchAtLogin: launchAtLogin,
+                selection: tabSelection
             )
         )
         // Without this the popover sizes itself once from a stale measurement
         // and anchors against it, pushing the header off the top of the screen.
         hosting.sizingOptions = [.preferredContentSize]
         popover.contentViewController = hosting
+
+        if let requested = Debug.tab.flatMap(PopoverTab.init(rawValue:)) {
+            tabSelection.select(requested)
+        }
+    }
+
+    private func selectTab(at index: Int) {
+        tabSelection.select(at: index, in: PopoverTab.allCases)
     }
 
     @objc private func togglePopover() {
@@ -446,7 +456,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         )
 
-        dismissMonitors = [outsideClick, escape].compactMap { $0 }
+        // SwiftUI's `.keyboardShortcut` routes through NSMenu key equivalents,
+        // which an LSUIElement app has no main menu to provide.
+        let tabKeys = NSEvent.addLocalMonitorForEvents(
+            matching: .keyDown,
+            handler: { [weak self] event in
+                guard event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+                      let digit = event.charactersIgnoringModifiers.flatMap(Int.init),
+                      (1...4).contains(digit)
+                else { return event }
+                self?.selectTab(at: digit - 1)
+                return nil
+            }
+        )
+
+        dismissMonitors = [outsideClick, escape, tabKeys].compactMap { $0 }
     }
 
     // MARK: - Wake

@@ -47,6 +47,64 @@ struct PRListView: View {
     /// memberwise initialiser private too, and `AppDelegate` builds this view.
     var paletteInputs = PaletteInputs()
 
+    let selection: TabSelectionStore
+
+    var visibleTabs: [PopoverTab] { PopoverTab.allCases }
+
+    private var activeTab: PopoverTab {
+        selection.resolved(visible: visibleTabs)
+    }
+
+    private var tabBinding: Binding<PopoverTab> {
+        Binding(get: { activeTab }, set: { selection.select($0) })
+    }
+
+    private var badges: [PopoverTab: TabBadge] {
+        var result: [PopoverTab: TabBadge] = [:]
+        for tab in visibleTabs {
+            result[tab] = TabBadge.resolve(
+                state: paneState(tab),
+                count: rowCount(tab),
+                hasRoutedFailure: !PopoverBanner.forPane(tab, from: activeBanners).isEmpty
+            )
+        }
+        return result
+    }
+
+    /// Counts the user's own open list, not the merged and team sections
+    /// stacked underneath it.
+    private func rowCount(_ tab: PopoverTab) -> Int {
+        switch tab {
+        case .pullRequests: return store.prs.count
+        case .jira:         return 0
+        }
+    }
+
+    private func paneState(_ tab: PopoverTab) -> PaneState {
+        switch tab {
+        case .pullRequests:
+            return PaneState.resolve(
+                rowCount: store.prs.count, hiddenCount: store.hiddenCount,
+                lastError: store.lastError, lastSuccessfulFetch: store.lastSuccessfulFetch
+            )
+        case .jira:
+            return .empty
+        }
+    }
+
+    private var activeBanners: Set<PopoverBanner> {
+        var active: Set<PopoverBanner> = []
+        if notifications.isDenied { active.insert(.notificationsDenied) }
+        if store.lastNotificationFailure != nil { active.insert(.notificationFailure) }
+        if store.lastShipmentFailure != nil { active.insert(.shipmentFailure) }
+        if store.lastDeploymentFailure != nil { active.insert(.deploymentFailure) }
+        if store.lastUpdateFailure != nil { active.insert(.branchUpdateFailure) }
+        if reviews.lastError != nil { active.insert(.teamLookupFailure) }
+        if updates.availableRelease != nil { active.insert(.updateAvailable) }
+        if updates.lastInstallFailure != nil { active.insert(.installFailure) }
+        return active
+    }
+
     /// Computed rather than read from `\.palette`: a view's own environment read
     /// resolves against what its parent handed down, so publishing and drawing
     /// with the same value in one view means computing it here.
@@ -57,89 +115,16 @@ struct PRListView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            if setupFailure == nil {
+                PopoverTabBar(tabs: visibleTabs, selection: tabBinding, badges: badges)
+            }
             Divider()
             content
-            // Outside `content` on purpose: a day with nothing open but
-            // something merged is exactly when this section is worth having,
-            // and putting it inside would hide it behind the empty state.
-            if !store.shipments.isEmpty {
+            // One global row at most, by priority. The rest are routed into the
+            // pane that owns them by `PopoverBanner`.
+            if let banner = PopoverBanner.topGlobal(from: activeBanners) {
                 Divider()
-                mergedSection
-            }
-            // Outside `content` for the same reason the merged section is: a day
-            // with nothing of your own open but something waiting on your team is
-            // exactly when this section is worth having.
-            if !visibleReviewRequests.isEmpty {
-                Divider()
-                reviewSection
-            }
-            // A denied permission silently disables the whole point of the
-            // app, so it gets a permanent row rather than a transient hint.
-            if notifications.isDenied {
-                Divider()
-                notificationsDisabledRow
-            } else if let failure = store.lastNotificationFailure {
-                Divider()
-                warningRow(
-                    icon: "bell.badge.slash",
-                    text: "Couldn't show a notification — \(failure). Retrying."
-                )
-            }
-            // Not retried while the head commit is unchanged, so without this
-            // the PR would just sit there behind its base branch, silently.
-            if let failure = store.lastShipmentFailure {
-                Divider()
-                warningRow(
-                    icon: "shippingbox",
-                    text: "Couldn't check what shipped — \(failure)"
-                )
-            }
-            // Its own row rather than the one above, and worth one at all because
-            // the alternative is indistinguishable from a repository that deploys
-            // nowhere: an unauthorized token, a rate-limited code search and an
-            // SSO refusal all end with the chips simply not appearing.
-            if let failure = store.lastDeploymentFailure {
-                Divider()
-                warningRow(
-                    icon: "square.stack.3d.up",
-                    text: "Couldn't check stg and prod — \(failure)"
-                )
-            }
-            if let failure = store.lastUpdateFailure {
-                Divider()
-                warningRow(
-                    icon: "arrow.triangle.pull",
-                    text: "Couldn't update a branch — \(failure)"
-                )
-            }
-            // Its own row, and deliberately never the stale banner: the user's own
-            // pull requests refreshed fine, and reporting them as stale because a
-            // team lookup failed would be the wrong complaint. Worth a row at all
-            // because the alternative is indistinguishable from belonging to no
-            // teams — a missing read:org scope, an SSO refusal and a rate limit all
-            // end with the section simply not appearing.
-            if let failure = reviews.lastError {
-                Divider()
-                warningRow(
-                    icon: "person.2",
-                    text: "Couldn't check your teams — \(failure.localizedDescription)"
-                )
-            }
-            // A new version is good news, not a warning, so it gets its own
-            // colour and an action rather than joining the orange band below.
-            if let release = updates.availableRelease {
-                Divider()
-                updateRow(release)
-            }
-            // The user clicked Update and it did not happen, so this is the one
-            // update failure that earns a permanent row. The message is already
-            // a full sentence from PRMasterError, so it is shown as-is.
-            if let failure = updates.lastInstallFailure {
-                Divider()
-                warningRow(
-                    icon: "arrow.down.circle.fill",
-                    text: failure
-                )
+                globalBanner(banner)
             }
             if let last = store.lastSuccessfulFetch, store.lastError == nil {
                 Divider()
@@ -259,103 +244,32 @@ struct PRListView: View {
 
     // MARK: - Content
 
+    /// A setup failure replaces the whole popover rather than one pane: Teams
+    /// and Merged are equally unusable without `gh auth`, so scoping it to Mine
+    /// would leave two panes claiming to be empty.
     @ViewBuilder
     private var content: some View {
-        // A setup failure replaces the whole list: there is nothing to show
-        // and the user cannot proceed until they act on it.
         if let setup = setupFailure {
             SetupNeededView(title: setup.title, command: setup.command)
-        } else if store.prs.isEmpty, let error = store.lastError {
-            // With no data to fall back on there is no stale banner to carry
-            // the message, so the failure has to be the content itself —
-            // otherwise a first-fetch failure just spins on "Loading…".
-            message(
-                icon: "exclamationmark.triangle",
-                title: "Couldn't reach GitHub",
-                detail: error.localizedDescription
-            )
-        } else if store.prs.isEmpty && store.lastSuccessfulFetch != nil {
-            emptyState
-        } else if store.prs.isEmpty {
-            loadingState
         } else {
-            list
-        }
-    }
-
-    private var list: some View {
-        VStack(spacing: 0) {
-            if let banner = staleBanner {
-                staleBannerView(banner)
-                Divider()
-            }
-            // A ScrollView is greedy and would leave dead space below a short
-            // list, so only reach for one when the list is genuinely long.
-            if store.prs.count > Self.rowsBeforeScrolling {
-                ScrollView {
-                    rows
-                }
-                .frame(height: 460)
-            } else {
-                rows
-            }
-        }
-    }
-
-    private static let rowsBeforeScrolling = 8
-
-    private var rows: some View {
-        // One clock read for the whole list, so every row is measured against the
-        // same instant. Read here rather than held on the store: staleness is a
-        // pure function of the threshold and the time, so there is no derived
-        // state to keep in step — and reading `store.staleThreshold` inside the
-        // body is what lets `@Observable` re-mark the list the moment the
-        // settings picker moves, with no refetch.
-        let now = Date()
-        let threshold = store.staleThreshold
-
-        return LazyVStack(spacing: 2) {
-            ForEach(store.prs) { pr in
-                PRRowView(
-                    pr: pr,
-                    canMerge: canMerge,
-                    isUpdating: store.updatingIDs.contains(pr.id),
-                    isStale: threshold.isStale(createdAt: pr.createdAt, now: now),
-                    staleAge: StaleAge.label(createdAt: pr.createdAt, now: now),
-                    canClose: canClose,
-                    onOpen: { onOpen(pr) },
-                    onMerge: { onMerge(pr) },
-                    onClose: { onClose(pr) }
+            switch activeTab {
+            case .pullRequests:
+                PullRequestsPaneView(
+                    store: store, reviews: reviews,
+                    canMerge: canMerge, canClose: canClose, canApprove: canApprove,
+                    onOpen: onOpen, onMerge: onMerge, onClose: onClose,
+                    onOpenShipment: onOpenShipment,
+                    onOpenReviewRequest: onOpenReviewRequest,
+                    onApproveReviewRequest: onApprove,
+                    onOpenSettings: onOpenSettings
+                )
+            case .jira:
+                PaneMessageView(
+                    icon: "square.stack.3d.up",
+                    title: "Jira isn't set up yet",
+                    detail: "Your assigned issues and their pull requests will appear here."
                 )
             }
-        }
-        .padding(.vertical, 4)
-        .padding(.horizontal, 4)
-    }
-
-    /// "No open pull requests" would be a lie when the filter is what emptied
-    /// the list — and a lie the app could keep telling for weeks, since a hidden
-    /// PR produces no notification either.
-    @ViewBuilder
-    private var emptyState: some View {
-        if store.hiddenCount > 0 {
-            VStack(spacing: 6) {
-                Image(systemName: "line.3.horizontal.decrease.circle")
-                    .font(.system(size: 22))
-                    .foregroundStyle(.secondary)
-                Text("Nothing to show").font(.system(size: 12, weight: .medium))
-                Text(verbatim: Self.hiddenSummary(store.hiddenCount))
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                Button("Settings…", action: onOpenSettings)
-                    .font(.system(size: 11))
-                    .padding(.top, 2)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 24)
-        } else {
-            message(icon: "checkmark.circle", title: "No open pull requests",
-                    detail: "Nothing of yours is waiting to merge.")
         }
     }
 
@@ -363,150 +277,6 @@ struct PRListView: View {
         count == 1
             ? "1 pull request is hidden by your settings."
             : "\(count) pull requests are hidden by your settings."
-    }
-
-    private var loadingState: some View {
-        message(icon: "arrow.triangle.pull", title: "Loading…", detail: nil)
-    }
-
-    private func message(icon: String, title: String, detail: String?) -> some View {
-        VStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.system(size: 22))
-                .foregroundStyle(.secondary)
-            Text(title).font(.system(size: 12, weight: .medium))
-            if let detail {
-                Text(detail).font(.system(size: 11)).foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 28)
-    }
-
-    // MARK: - Recently merged
-
-    private var mergedSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Recently merged")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
-                .padding(.bottom, 2)
-
-            // Capped like the open list above it. A busy day can merge dozens,
-            // and an uncapped section would push the popover off the screen.
-            if store.shipments.count > Self.mergedRowsBeforeScrolling {
-                ScrollView { mergedRows }
-                    .frame(height: 220)
-            } else {
-                mergedRows
-            }
-        }
-    }
-
-    private static let mergedRowsBeforeScrolling = 5
-
-    private var mergedRows: some View {
-        LazyVStack(spacing: 2) {
-            ForEach(store.shipments) { shipment in
-                ShipmentRowView(
-                    shipment: shipment,
-                    isLoadingEnvironments: store.isLoadingDeployments
-                ) { onOpenShipment(shipment) }
-            }
-        }
-        .padding(.horizontal, 4)
-        .padding(.bottom, 4)
-    }
-
-    // MARK: - Waiting on your teams
-
-    /// Read through the store's own filter so the repository settings reach this
-    /// section too, and computed rather than stored so `@Observable` re-derives it
-    /// when either store changes.
-    private var visibleReviewRequests: [ReviewRequest] {
-        reviews.visible(under: store.filter)
-    }
-
-    private var reviewSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
-                Text("Waiting on your teams")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 0)
-                // Says the list is not everything, rather than truncating in
-                // silence. Only when it is actually the case.
-                if reviews.isTruncated(under: store.filter) {
-                    Text("most recent")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                        .help("Your teams have more waiting than this shows. Narrow the window or switch teams off in Settings.")
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.top, 8)
-            .padding(.bottom, 2)
-
-            // Capped like the two sections above it. Even inside the age limit a
-            // busy team can carry dozens, and an uncapped section would push the
-            // popover off the screen.
-            if visibleReviewRequests.count > Self.reviewRowsBeforeScrolling {
-                ScrollView { reviewRows }
-                    .frame(height: 260)
-            } else {
-                reviewRows
-            }
-        }
-    }
-
-    private static let reviewRowsBeforeScrolling = 5
-
-    private var reviewRows: some View {
-        // One clock read for the whole section, so every row is measured against
-        // the same instant — the rule the open list follows.
-        let now = Date()
-
-        return LazyVStack(spacing: 2) {
-            ForEach(visibleReviewRequests) { request in
-                ReviewRequestRowView(
-                    request: request,
-                    canApprove: canApprove,
-                    isApproving: reviews.approvingIDs.contains(request.id),
-                    age: StaleAge.recentLabel(createdAt: request.createdAt, now: now),
-                    onOpen: { onOpenReviewRequest(request) },
-                    onApprove: { onApprove(request) }
-                )
-            }
-        }
-        .padding(.horizontal, 4)
-        .padding(.bottom, 4)
-    }
-
-    // MARK: - Stale banner
-
-    /// Shown when the list is real but out of date, so a failed refresh is
-    /// visible rather than silently showing yesterday's state as current.
-    private var staleBanner: String? {
-        guard let error = store.lastError else { return nil }
-        guard let last = store.lastSuccessfulFetch else { return error.localizedDescription }
-        return "Couldn't refresh · updated \(Self.ago(last)) · \(error.localizedDescription)"
-    }
-
-    private func staleBannerView(_ text: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(palette.color(.orange))
-            Text(text)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(palette.wash(.orange))
     }
 
     /// RelativeDateTimeFormatter renders a just-completed fetch as
@@ -532,63 +302,33 @@ struct PRListView: View {
         }
     }
 
-    // MARK: - App update
-
-    /// Offers to replace the app with a newer release.
-    ///
-    /// Blue rather than the orange used for failures: this is information with
-    /// an action attached, not something that went wrong.
-    private func updateRow(_ release: AppRelease) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "arrow.down.circle.fill")
-                .foregroundStyle(palette.color(.blue))
-            // A release tag is whatever was pushed, so it is never interpolated
-            // into a localised format string.
-            Text(verbatim: "Version \(release.version) available")
-                .font(.system(size: 11))
-            Spacer(minLength: 0)
-            if updates.isInstalling {
-                ProgressView().controlSize(.small)
-            } else if updates.canInstall {
-                Button("Update") {
-                    Task { await updates.install() }
-                }
-                .font(.system(size: 11))
-            }
+    @ViewBuilder
+    private func globalBanner(_ banner: PopoverBanner) -> some View {
+        switch banner {
+        case .installFailure:
+            BannerRowView(
+                icon: "arrow.down.circle.fill",
+                text: updates.lastInstallFailure ?? ""
+            )
+        case .updateAvailable:
+            BannerRowView(
+                icon: "arrow.down.circle.fill",
+                text: "Version \(updates.availableRelease?.version ?? "") available",
+                isWarning: false,
+                actionTitle: updates.canInstall ? "Update" : nil,
+                action: { Task { await updates.install() } },
+                isBusy: updates.isInstalling
+            )
+        case .notificationsDenied:
+            BannerRowView(
+                icon: "bell.slash.fill",
+                text: "Notifications are turned off",
+                actionTitle: "Open Settings",
+                action: Self.openNotificationSettings
+            )
+        default:
+            EmptyView()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(palette.wash(.blue))
-    }
-
-    private func warningRow(icon: String, text: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon).foregroundStyle(palette.color(.orange))
-            Text(verbatim: text).font(.system(size: 11))
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(palette.wash(.orange))
-    }
-
-    /// The row was already clickable end to end, but nothing about it said so:
-    /// an orange band of text reads as a complaint, not as an offer to fix it.
-    /// So it takes the same shape as the update row — what happened, and a
-    /// button that does something about it.
-    private var notificationsDisabledRow: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "bell.slash.fill").foregroundStyle(palette.color(.orange))
-            Text("Notifications are turned off")
-                .font(.system(size: 11))
-            Spacer(minLength: 0)
-            Button("Open Settings", action: Self.openNotificationSettings)
-                .font(.system(size: 11))
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(palette.wash(.orange))
-        .help("PR Master Tray can't tell you a pull request is ready until you allow its notifications.")
     }
 
     /// Opens the Notifications pane of System Settings.

@@ -126,6 +126,12 @@ enum Debug {
         ProcessInfo.processInfo.environment["PRMASTER_SETTINGS_TAB"]
     }
 
+    /// `PRMASTER_TAB=mine|teams|merged|jira` picks the popover pane, for the
+    /// same reason `settingsTab` exists one line up.
+    static var tab: String? {
+        ProcessInfo.processInfo.environment["PRMASTER_TAB"]
+    }
+
     /// `PRMASTER_DEMO_MERGE=confirm|fail` drives the merge dialogs directly,
     /// so the irreversible path can be inspected without a mergeable PR. Any
     /// other value swaps in the no-op merger without opening a dialog.

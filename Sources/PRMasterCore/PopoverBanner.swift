@@ -22,12 +22,9 @@ public enum PopoverBanner: String, Sendable, Equatable, CaseIterable {
         switch self {
         case .notificationsDenied, .updateAvailable, .installFailure:
             return .global
-        case .notificationFailure, .branchUpdateFailure:
-            return .pane(.mine)
-        case .shipmentFailure, .deploymentFailure:
-            return .pane(.merged)
-        case .teamLookupFailure:
-            return .pane(.teams)
+        case .notificationFailure, .branchUpdateFailure,
+             .shipmentFailure, .deploymentFailure, .teamLookupFailure:
+            return .pane(.pullRequests)
         }
     }
 
