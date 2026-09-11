@@ -25,7 +25,7 @@ private final class StubIssueClient: JiraIssueFetching, @unchecked Sendable {
 
     init(_ results: [Result<[JiraIssue], PRMasterError>]) { self.results = results }
 
-    func fetchAssignedIssues() async throws -> [JiraIssue] {
+    func fetchAssignedIssues(within window: JiraWindow) async throws -> [JiraIssue] {
         let next = lock.withLock { () -> Result<[JiraIssue], PRMasterError> in
             calls += 1
             return results.isEmpty ? .success([]) : results.removeFirst()
@@ -51,6 +51,115 @@ private final class StubLinkClient: IssueLinkFetching, @unchecked Sendable {
             return results.isEmpty ? .success([:]) : results.removeFirst()
         }
         return try next.get()
+    }
+}
+
+/// Holds the link lookup open so the in-flight state can be observed.
+private final class GatedLinkClient: IssueLinkFetching, @unchecked Sendable {
+    private let lock = NSLock()
+    private var resume: CheckedContinuation<Void, Never>?
+    private var waiting: CheckedContinuation<Void, Never>?
+    let answer: [String: [LinkedPullRequest]]
+
+    init(answer: [String: [LinkedPullRequest]]) { self.answer = answer }
+
+    func fetchPullRequests(forIssueKeys keys: [String]) async throws -> [String: [LinkedPullRequest]] {
+        await withCheckedContinuation { entered in
+            lock.withLock {
+                if let waiting { waiting.resume(); self.waiting = nil }
+                self.resume = entered
+            }
+        }
+        return answer
+    }
+
+    /// Returns once the fetch has actually started.
+    func waitUntilCalled() async {
+        await withCheckedContinuation { signal in
+            lock.withLock {
+                if resume != nil { signal.resume() } else { waiting = signal }
+            }
+        }
+    }
+
+    func release() {
+        lock.withLock { resume?.resume(); resume = nil }
+    }
+}
+
+@Suite("JiraStore link loading")
+@MainActor
+struct JiraStoreLoadingTests {
+
+    /// While the lookup is in flight an issue must read as loading, not as
+    /// having no pull requests and not as a failure.
+    @Test("a key still being looked up reads as loading")
+    func inFlightReadsAsLoading() async {
+        let links = GatedLinkClient(answer: ["ACME-1": []])
+        let store = JiraStore(
+            issues: StubIssueClient([.success([issue("ACME-1")])]),
+            links: links,
+            preferences: MemoryPreferences(),
+            sleep: { _ in }
+        )
+
+        let refresh = Task { await store.refresh() }
+        await links.waitUntilCalled()
+
+        #expect(store.linkState(for: "ACME-1") == .loading)
+        #expect(store.linkState(for: "ACME-1") != .none)
+        #expect(store.linkState(for: "ACME-1") != .unknown)
+
+        links.release()
+        await refresh.value
+
+        #expect(store.linkState(for: "ACME-1") == .none)
+    }
+
+    /// A second poll must not flash loading over an answer already on screen.
+    @Test("a key already answered does not go back to loading")
+    func answeredKeyDoesNotReload() async {
+        let links = GatedLinkClient(answer: ["ACME-1": []])
+        let store = JiraStore(
+            issues: StubIssueClient([.success([issue("ACME-1")]), .success([issue("ACME-1")])]),
+            links: links,
+            preferences: MemoryPreferences(),
+            sleep: { _ in }
+        )
+
+        let first = Task { await store.refresh() }
+        await links.waitUntilCalled()
+        links.release()
+        await first.value
+        #expect(store.linkState(for: "ACME-1") == .none)
+
+        let second = Task { await store.refresh() }
+        await links.waitUntilCalled()
+        #expect(store.linkState(for: "ACME-1") == .none)
+        links.release()
+        await second.value
+    }
+
+    @Test("nothing is left loading once a refresh ends", arguments: [true, false])
+    func nothingLeftLoading(succeeds: Bool) async {
+        let result: Result<[String: [LinkedPullRequest]], PRMasterError> =
+            succeeds ? .success(["ACME-1": []]) : .failure(.httpError(status: 500))
+        let store = JiraStore(
+            issues: StubIssueClient([.success([issue("ACME-1")])]),
+            links: StubLinkClient([result]),
+            preferences: MemoryPreferences(),
+            sleep: { _ in }
+        )
+
+        await store.refresh()
+
+        #expect(store.linkState(for: "ACME-1") != .loading)
+        #expect(store.linkState(for: "ACME-1") == (succeeds ? .none : .unknown))
+    }
+
+    @Test("the link state set is exhaustive")
+    func stateSetIsExhaustive() {
+        #expect(IssueLinkState.allCases.count == 4)
     }
 }
 
@@ -245,5 +354,171 @@ struct JiraStoreTests {
         #expect(store.links(for: "ACME-1", under: hidingPrivate).map(\.number) == [1])
 
         #expect(store.links(for: "ACME-1", under: PRFilter()).count == 2)
+    }
+}
+
+/// The client used to be decided once at launch, so signing in left the pane
+/// saying Jira was not set up until the app was restarted.
+@Suite("JiraStore signing in mid-session")
+@MainActor
+struct JiraStoreConnectTests {
+
+    /// Cancelled before its first suspension, so the poll it starts never runs
+    /// and the refresh under test is the one the test asks for.
+    private func empty() -> JiraStore {
+        JiraStore(issues: nil, links: nil, preferences: MemoryPreferences(), sleep: { _ in })
+    }
+
+    @Test("a store built without credentials adopts a client on sign-in")
+    func connectMakesItConfigured() async {
+        let store = empty()
+        #expect(!store.isConfigured)
+
+        store.connect(StubIssueClient([.success([issue("ACME-1")])]))
+        store.stop()
+        #expect(store.isConfigured)
+
+        await store.refresh()
+        #expect(store.issues.map(\.key) == ["ACME-1"])
+    }
+
+    @Test("signing in starts polling rather than waiting for a restart")
+    func connectStartsPolling() {
+        let store = empty()
+        #expect(!store.isPolling)
+
+        store.connect(StubIssueClient([]))
+        #expect(store.isPolling)
+        store.stop()
+    }
+
+    @Test("signing out clears what was on screen and stops polling")
+    func disconnectClears() async {
+        let store = JiraStore(
+            issues: StubIssueClient([.success([issue("ACME-1")])]),
+            links: StubLinkClient([.success(["ACME-1": [link(1)]])]),
+            preferences: MemoryPreferences(),
+            sleep: { _ in }
+        )
+        await store.refresh()
+        #expect(!store.issues.isEmpty)
+
+        store.connect(nil)
+
+        #expect(!store.isConfigured)
+        #expect(!store.isPolling)
+        #expect(store.issues.isEmpty)
+        #expect(store.linkState(for: "ACME-1") == .unknown)
+        #expect(store.lastSuccessfulFetch == nil)
+    }
+
+    /// Otherwise the pane greets a fresh sign-in with the last account's error.
+    @Test("a failure does not survive the next sign-in")
+    func connectClearsError() async {
+        let store = JiraStore(
+            issues: StubIssueClient([.failure(.jiraUnauthorized)]),
+            links: nil,
+            preferences: MemoryPreferences(),
+            sleep: { _ in }
+        )
+        await store.refresh()
+        #expect(store.lastError == .jiraUnauthorized)
+
+        store.connect(StubIssueClient([.success([issue("ACME-2")])]))
+        store.stop()
+        #expect(store.lastError == nil)
+    }
+}
+
+private func epic(_ key: String) -> JiraIssue {
+    JiraIssue(
+        key: key, summary: "an epic", statusName: "In Progress",
+        statusCategory: .inProgress, issueType: "Epic",
+        updatedAt: Date(timeIntervalSince1970: 0),
+        createdAt: Date(timeIntervalSince1970: 0)
+    )
+}
+
+/// An epic is a container for other people's work, not a task to be done, and
+/// it never carries a pull request of its own.
+@Suite("JiraStore epics")
+@MainActor
+struct JiraStoreEpicTests {
+
+    @Test("an epic is not listed")
+    func epicsAreDropped() async {
+        let store = JiraStore(
+            issues: StubIssueClient([.success([issue("ACME-1"), epic("ACME-2")])]),
+            links: nil,
+            preferences: MemoryPreferences(),
+            sleep: { _ in }
+        )
+        await store.refresh()
+        #expect(store.issues.map(\.key) == ["ACME-1"])
+    }
+
+    @Test("no pull request is looked up for an epic")
+    func epicsCostNoSearch() async {
+        let links = StubLinkClient([.success([:])])
+        let store = JiraStore(
+            issues: StubIssueClient([.success([issue("ACME-1"), epic("ACME-2")])]),
+            links: links,
+            preferences: MemoryPreferences(),
+            sleep: { _ in }
+        )
+        await store.refresh()
+        #expect(links.askedFor == [["ACME-1"]])
+    }
+
+    @Test("the type is matched whatever its casing")
+    func casingDoesNotMatter() {
+        #expect(epic("ACME-1").isEpic)
+        #expect(JiraIssue(
+            key: "ACME-2", summary: "", statusName: "", statusCategory: .toDo,
+            issueType: "epic", updatedAt: Date(), createdAt: Date()
+        ).isEpic)
+        #expect(!issue("ACME-3").isEpic)
+    }
+}
+
+@Suite("JiraStore search")
+@MainActor
+struct JiraStoreSearchTests {
+
+    private func loaded() async -> JiraStore {
+        let store = JiraStore(
+            issues: StubIssueClient([.success([issue("ACME-1"), issue("ACME-2")])]),
+            links: nil,
+            preferences: MemoryPreferences(),
+            sleep: { _ in }
+        )
+        await store.refresh()
+        return store
+    }
+
+    @Test("no query shows everything the groups hold")
+    func emptyQueryShowsAll() async {
+        let store = await loaded()
+        #expect(store.visibleGroups.count == 2)
+    }
+
+    @Test("a query narrows what the pane draws without dropping the issues")
+    func queryNarrows() async {
+        let store = await loaded()
+        store.searchQuery = "ACME-2"
+
+        #expect(store.visibleGroups.inProgress.map(\.key) == ["ACME-2"])
+        #expect(store.groups.count == 2)
+        #expect(store.issues.count == 2)
+    }
+
+    @Test("clearing the query brings everything back")
+    func clearingRestores() async {
+        let store = await loaded()
+        store.searchQuery = "nothing matches this"
+        #expect(store.visibleGroups.isEmpty)
+
+        store.searchQuery = ""
+        #expect(store.visibleGroups.count == 2)
     }
 }

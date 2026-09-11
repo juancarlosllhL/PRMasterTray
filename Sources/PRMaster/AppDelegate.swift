@@ -141,6 +141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installPopover()
         observeWake()
         observeStoreForBadge()
+        observeJiraAccount()
 
         store.start()
         // Started after the user's own list: the section it feeds sits below
@@ -154,7 +155,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if Debug.openSettings {
             settingsWindow.show(
                 store: store, reviews: reviews,
-                appearance: appearanceStore, jira: jiraAccount
+                appearance: appearanceStore, jira: jiraAccount, jiraStore: jira
             )
         }
 
@@ -295,7 +296,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func openSettingsFromMenu() {
         settingsWindow.show(
                 store: store, reviews: reviews,
-                appearance: appearanceStore, jira: jiraAccount
+                appearance: appearanceStore, jira: jiraAccount, jiraStore: jira
             )
     }
 
@@ -350,6 +351,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// NSStatusItem has no badge API, so the ready count rides on the button
     /// title next to the glyph.
+    /// Signing in has to reach the pane without a restart, and a fixture stands
+    /// in for the account entirely, so it must not be torn down by a sign-out.
+    private func observeJiraAccount() {
+        withObservationTracking {
+            _ = jiraAccount.current
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self, Debug.jiraFixturePath == nil else { return }
+                self.jira.connect(
+                    self.jiraAccount.current.map { JiraClient(credentials: $0) }
+                )
+                self.observeJiraAccount()
+            }
+        }
+    }
+
     private func observeStoreForBadge() {
         withObservationTracking {
             _ = store.readyCount
@@ -411,7 +428,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     popover.performClose(nil)
                     settingsWindow.show(
                 store: store, reviews: reviews,
-                appearance: appearanceStore, jira: jiraAccount
+                appearance: appearanceStore, jira: jiraAccount, jiraStore: jira
             )
                 },
                 onQuit: { NSApp.terminate(nil) },

@@ -9,21 +9,17 @@ import PRMasterCore
 /// or `AppearanceStore`, both of which persist and take effect on the spot — so
 /// there is no Save button, and nothing to undo but the switch itself.
 ///
-/// Three tabs, because those are three unrelated jobs. Which pull requests exist
-/// has nothing to do with what colour they are, and the appearance controls
-/// arrived last, which had them sitting underneath an organization list of
-/// unbounded length — the one place in the window nobody scrolls to. Merged gets
-/// its own rather than joining Pull Requests: everything on that tab is about
-/// what is still open, and burying the one control about what already shipped at
-/// the bottom of it would be the same mistake again.
+/// Split by job, not by store. Appearance arrived last and would otherwise sit
+/// under an organization list of unbounded length — the one place nobody scrolls.
 struct SettingsView: View {
     @Bindable var store: PRStore
     @Bindable var reviews: ReviewStore
     @Bindable var appearance: AppearanceStore
     @Bindable var jira: JiraAccountStore
+    @Bindable var jiraStore: JiraStore
 
     private enum Tab: String {
-        case pullRequests, merged, teams, jira, appearance
+        case pullRequests, teams, jira, appearance
     }
 
     /// Only ever moved by a click, except under `PRMASTER_SETTINGS_TAB`, which is
@@ -35,9 +31,6 @@ struct SettingsView: View {
             pullRequests
                 .tabItem { Label("Pull Requests", systemImage: "arrow.triangle.pull") }
                 .tag(Tab.pullRequests)
-            mergedSettings
-                .tabItem { Label("Merged", systemImage: "shippingbox") }
-                .tag(Tab.merged)
             teamSettings
                 .tabItem { Label("Teams", systemImage: "person.2") }
                 .tag(Tab.teams)
@@ -86,13 +79,19 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+
+                Picker("Keep merged ones for", selection: $store.mergedWindow) {
+                    ForEach(MergedWindow.allCases, id: \.self) { window in
+                        Text(verbatim: window.label).tag(window)
+                    }
+                }
+                .pickerStyle(.segmented)
             } header: {
-                Text("Stale pull requests")
+                Text("Timing")
             } footer: {
-                // Two things a user cannot work out by looking, and the second is
-                // the one they would otherwise discover by being annoyed: this
-                // marks rows, it does not quietly change what the app acts on.
-                footnote(Text("Measured from when a pull request was opened, not from its last activity, so keeping a branch up to date doesn't reset it. Stale pull requests still notify and are still brought up to date — the marker only adds a way to close them."))
+                // The one thing neither picker can say for itself, and the reason
+                // a well-tended branch still goes stale.
+                footnote(Text("Both are measured from when a pull request was opened or merged, not from its last activity."))
             }
 
             Section {
@@ -106,62 +105,12 @@ struct SettingsView: View {
             } footer: {
                 // The one thing about this window that is not self-evident, and
                 // the thing a user would be annoyed to discover by accident.
-                footnote(Text("Hidden pull requests are left out of the menu bar count, never notify, and are never brought up to date automatically."))
+                footnote(Text("Hidden pull requests are left out of the menu bar count, never notify, and are never brought up to date."))
             }
         }
         .formStyle(.grouped)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-    }
-
-    /// What happens to them after they are merged.
-    private var mergedSettings: some View {
-        Form {
-            Section {
-                Picker("Keep merged pull requests for", selection: $store.mergedWindow) {
-                    ForEach(MergedWindow.allCases, id: \.self) { window in
-                        Text(verbatim: window.label).tag(window)
-                    }
-                }
-                .pickerStyle(.segmented)
-            } header: {
-                Text("Recently merged")
-            } footer: {
-                // Three things a user cannot work out by looking: where the
-                // section is, what the version actually means, and that Off is
-                // how you get rid of it.
-                footnote(Text("The popover lists what you merged inside this window and what became of it — its pipeline still building, the check that failed, or the version it went out in. Measured from when a pull request was merged, so the section empties itself on this schedule. Off hides it entirely."))
-            }
-
-            Section {
-                footnote(Text(verbatim: versionSummary))
-            } header: {
-                Text("About the version")
-            } footer: {
-                // The claim this feature must not overstate. Said plainly here
-                // because it is the one thing somebody could act on wrongly.
-                footnote(Text("A version means the release whose tag contains your merge commit — that it was cut. Repositories that cut no releases show how their checks did and nothing more."))
-                footnote(Text("An **stg** or **prod** chip means Kargo committed that version to the deployments repository, and green means your merge commit is provably inside it. Promoted is not deployed: Argo CD syncs separately, so a failed sync or a crash-looping pod still shows as promoted. No chip means nothing could be established, which is never the same as nothing being there."))
-            }
-        }
-        .formStyle(.grouped)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-    }
-
-    /// Says what the setting is worth right now, the same way the private
-    /// repositories footer does — a window with nothing in it is the difference
-    /// between a setting that does nothing and one somebody is looking for.
-    private var versionSummary: String {
-        guard store.mergedWindow != .off else {
-            return "The section is switched off, so nothing merged is listed."
-        }
-        let count = store.shipments.count
-        switch count {
-        case 0: return "Nothing of yours has merged inside this window."
-        case 1: return "1 merged pull request is listed right now."
-        default: return "\(count) merged pull requests are listed right now."
-        }
     }
 
     /// Which of the user's teams the popover lists review requests for.
@@ -180,7 +129,7 @@ struct SettingsView: View {
                 // Measured from opening rather than from last activity, which is
                 // the whole reason the list is short: teams accumulate hundreds of
                 // forgotten bot pull requests that keep touching themselves.
-                footnote(Text("Open pull requests your teams have been asked to review. Measured from when one was opened, not from its last activity, so abandoned ones drop out by themselves. Off hides the section."))
+                footnote(Text("Measured from when a pull request was opened, so abandoned ones drop out by themselves."))
             }
 
             Section {
@@ -195,13 +144,13 @@ struct SettingsView: View {
                 footnote(Text(verbatim: teamSummary))
                 // The one thing a user would otherwise discover by being annoyed:
                 // the button in this section is not a private bookmark.
-                footnote(Text("**Approve** posts a public review under your own name, after a confirmation. The repository filter on the Pull Requests tab applies here too."))
+                footnote(Text("**Approve** posts a public review under your own name, after a confirmation."))
             }
 
             Section {
                 Toggle("Comment something funny when approving", isOn: $reviews.approvalQuipsEnabled)
             } footer: {
-                footnote(Text("The approval carries a one-line remark chosen from the pull request itself — its size, its title, the state of its checks. The confirmation shows the line before anything is posted."))
+                footnote(Text("The confirmation shows the remark before anything is posted."))
             }
         }
         .formStyle(.grouped)
@@ -283,12 +232,14 @@ struct SettingsView: View {
                     Text("Opaque").tag(PopoverBackground.opaque)
                 }
                 .pickerStyle(.segmented)
+
+                Toggle("Hide emoji in titles", isOn: $appearance.hidesEmoji)
             } footer: {
                 // The one thing a user cannot discover by looking: liquid glass
                 // is prettier and measurably less legible, and which of those
                 // matters more is theirs to decide, not ours. Said in terms of
                 // what they will see rather than in contrast ratios.
-                footnote(Text("Liquid glass lets the desktop through, the way a macOS popover normally does. Over a window that strongly contrasts with it, the status colours get harder to read — Opaque fixes the background so they stay legible whatever is behind."))
+                footnote(Text("Liquid glass lets the desktop through. Opaque keeps the status colours legible whatever is behind."))
             }
 
             Section {
@@ -300,7 +251,7 @@ struct SettingsView: View {
                 // reading off while the app draws monochrome, because macOS asked
                 // and a local preference does not override an accessibility
                 // setting.
-                footnote(Text("Monochrome drops the status colours and leans on each row's icon and label instead. It also turns on by itself when macOS is set to differentiate without colour."))
+                footnote(Text("Turns on by itself when macOS is set to differentiate without colour."))
             }
         }
         .formStyle(.grouped)
@@ -311,6 +262,10 @@ struct SettingsView: View {
     /// Sign-in rather than preferences, which is why it has a button at all
     /// while every other tab writes through on the spot: a half-typed token is
     /// not a state worth saving.
+    private static let apiTokenURL = URL(
+        string: "https://id.atlassian.com/manage-profile/security/api-tokens"
+    )!
+
     private var jiraSettings: some View {
         Form {
             Section {
@@ -326,19 +281,22 @@ struct SettingsView: View {
                         .textFieldStyle(.roundedBorder)
                         .labelsHidden()
                 }
-                LabeledContent("API token") {
+                LabeledContent {
                     SecureField("", text: $jira.apiToken,
                                 prompt: Text(verbatim: "Paste your token"))
                         .textFieldStyle(.roundedBorder)
                         .labelsHidden()
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("API token")
+                        Link(destination: Self.apiTokenURL) {
+                            Image(systemName: "arrow.up.forward.app")
+                        }
+                        .help("Create an API token at id.atlassian.com")
+                        .accessibilityLabel("Create an API token")
+                    }
                 }
-            } header: {
-                Text("Jira account")
-            } footer: {
-                footnote(Text("Create an API token at id.atlassian.com under Security. PR Master Tray keeps it in your Keychain and sends it only to your own site."))
-            }
 
-            Section {
                 LabeledContent("") {
                     HStack(spacing: 8) {
                         Button(jira.isConfigured ? "Test and Update" : "Test and Save") {
@@ -366,13 +324,39 @@ struct SettingsView: View {
                         statusLine("exclamationmark.triangle.fill", failure)
                     }
                 }
+            } header: {
+                Text("Jira account")
             } footer: {
                 footnote(Text("Nothing is saved until it has been tested."))
+            }
+
+            Section {
+                Picker("Show issues finished within", selection: $jiraStore.window) {
+                    ForEach(JiraWindow.allCases, id: \.self) { window in
+                        Text(verbatim: window.label).tag(window)
+                    }
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text("Done")
+            } footer: {
+                footnote(Text(verbatim: jiraDoneSummary))
             }
         }
         .formStyle(.grouped)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    /// Says what the window is worth right now rather than in the abstract,
+    /// the shape every other footer in this window uses.
+    private var jiraDoneSummary: String {
+        guard jiraStore.window != .off else {
+            return "Finished issues are hidden. To do and In progress still show."
+        }
+        let count = jiraStore.groups.done.count
+        let shown = count == 1 ? "1 issue" : "\(count) issues"
+        return "Measured from when an issue moved to Done. \(shown) would show right now."
     }
 
     private func statusLine(_ symbol: String, _ text: String) -> some View {

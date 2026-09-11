@@ -87,12 +87,11 @@ GitHub would merge right now.
   pull requests carrying its key in their title. One issue routinely spans
   several repositories, which is what the nesting is for.
 
-  An issue with nothing open says **no pull request of yours yet**. "Of yours"
-  is exact rather than modest: the search is scoped to your own pull requests,
-  so a colleague's work on your issue does not appear, and the shorter claim
-  would be false. An issue whose lookup *failed* says so instead, because
-  "nothing found" and "couldn't check" look identical otherwise, and the first
-  is a lie when the second is true.
+  An issue with nothing against it says **No PRs open**. The search is scoped to
+  your own pull requests, so a colleague's work on your issue does not appear
+  here. An issue whose lookup *failed* says so instead, because "nothing found"
+  and "couldn't check" look identical otherwise, and the first is a lie when the
+  second is true.
 
   Statuses are grouped by Jira's status category rather than its name. A site
   can rename or localise a status freely — this one has **Awaiting Customer**,

@@ -37,9 +37,19 @@ public struct JiraIssue: Sendable, Equatable, Identifiable {
     public let statusName: String
     public let statusCategory: JiraStatusCategory
     public let issueType: String
+    public let priority: JiraPriority
     public let updatedAt: Date
+    public let createdAt: Date?
+    /// When the status category last changed, which is when it reached Done.
+    public let categoryChangedAt: Date?
 
     public var id: String { key }
+
+    /// A container for other people's work rather than a task of your own, and
+    /// never the thing a pull request is raised against.
+    public var isEpic: Bool {
+        issueType.caseInsensitiveCompare("epic") == .orderedSame
+    }
 
     public init(
         key: String,
@@ -47,13 +57,19 @@ public struct JiraIssue: Sendable, Equatable, Identifiable {
         statusName: String,
         statusCategory: JiraStatusCategory,
         issueType: String,
-        updatedAt: Date
+        priority: JiraPriority = .unset,
+        updatedAt: Date,
+        createdAt: Date? = nil,
+        categoryChangedAt: Date? = nil
     ) {
         self.key = key
         self.summary = summary
         self.statusName = statusName
         self.statusCategory = statusCategory
         self.issueType = issueType
+        self.priority = priority
         self.updatedAt = updatedAt
+        self.createdAt = createdAt
+        self.categoryChangedAt = categoryChangedAt
     }
 }

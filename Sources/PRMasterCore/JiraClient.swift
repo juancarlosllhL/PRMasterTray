@@ -1,9 +1,17 @@
 import Foundation
 
 enum JiraQueries {
-    static let assignedAndOpen =
-        "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC"
-    static let issueFields = "key,summary,status,issuetype,updated"
+    /// Everything still open, plus whatever reached Done inside the window.
+    static func assigned(within window: JiraWindow) -> String {
+        guard let done = window.doneQualifier else {
+            return "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC"
+        }
+        return "assignee = currentUser() AND (statusCategory != Done OR \(done)) "
+            + "ORDER BY updated DESC"
+    }
+
+    static let issueFields =
+        "key,summary,status,issuetype,updated,created,priority,statuscategorychangedate"
     static let pageSize = 100
     /// The old `/rest/api/3/search` answers HTTP 410 with a migration notice.
     static let searchPath = "/rest/api/3/search/jql"
@@ -20,17 +28,18 @@ public actor JiraClient {
         self.session = session
     }
 
-    /// Every issue assigned to the signed-in user that is not done.
-    public func fetchAssignedIssues() async throws -> [JiraIssue] {
-        try await assignedIssues()
+    /// Every issue assigned to the signed-in user that is not done, plus the
+    /// ones finished inside the window.
+    public func fetchAssignedIssues(within window: JiraWindow) async throws -> [JiraIssue] {
+        try await assignedIssues(within: window)
     }
 
-    public func assignedIssues() async throws -> [JiraIssue] {
+    public func assignedIssues(within window: JiraWindow = .default) async throws -> [JiraIssue] {
         var collected: [JiraIssue] = []
         var pageToken: String?
 
         while true {
-            let payload = try await searchPage(pageToken: pageToken)
+            let payload = try await searchPage(pageToken: pageToken, window: window)
             collected.append(contentsOf: payload.issues.map(\.domain))
 
             guard payload.isLast != true, let next = payload.nextPageToken, !next.isEmpty
@@ -56,13 +65,13 @@ public actor JiraClient {
         return name
     }
 
-    private func searchPage(pageToken: String?) async throws -> SearchPage {
+    private func searchPage(pageToken: String?, window: JiraWindow) async throws -> SearchPage {
         var components = URLComponents(
             url: credentials.baseURL.appendingPathComponent(JiraQueries.searchPath),
             resolvingAgainstBaseURL: false
         )!
         var items = [
-            URLQueryItem(name: "jql", value: JiraQueries.assignedAndOpen),
+            URLQueryItem(name: "jql", value: JiraQueries.assigned(within: window)),
             URLQueryItem(name: "fields", value: JiraQueries.issueFields),
             URLQueryItem(name: "maxResults", value: String(JiraQueries.pageSize)),
         ]
@@ -117,6 +126,13 @@ struct IssueNode: Decodable {
         let status: Status?
         let issuetype: IssueType?
         let updated: String?
+        let created: String?
+        let priority: Priority?
+        let statuscategorychangedate: String?
+
+        struct Priority: Decodable {
+            let id: String?
+        }
 
         struct Status: Decodable {
             let name: String?
@@ -140,7 +156,10 @@ struct IssueNode: Decodable {
             statusCategory: fields.status?.statusCategory?.key
                 .flatMap(JiraStatusCategory.init(rawValue:)) ?? .unknown,
             issueType: fields.issuetype?.name ?? "",
-            updatedAt: fields.updated.flatMap(JiraDecoder.date(from:)) ?? .distantPast
+            priority: fields.priority?.id.flatMap(JiraPriority.init(id:)) ?? .unset,
+            updatedAt: fields.updated.flatMap(JiraDecoder.date(from:)) ?? .distantPast,
+            createdAt: fields.created.flatMap(JiraDecoder.date(from:)),
+            categoryChangedAt: fields.statuscategorychangedate.flatMap(JiraDecoder.date(from:))
         )
     }
 }

@@ -15,7 +15,10 @@
           "isDraft": false,
           "state": "MERGED"
         }
-      ]
+      ],
+      "priority": "2",
+      "doneDaysAgo": null,
+      "createdHoursAgo": 0.2
     },
     {
       "key": "ACME-58715",
@@ -24,13 +27,58 @@
       "statusCategory": "indeterminate",
       "issueType": "Epic",
       "links": [
-        { "number": 964, "title": "drop the v1 reporting endpoint", "repo": "acme/apps-catalog", "isPrivate": false, "isDraft": false, "state": "MERGED" },
-        { "number": 476, "title": "stop writing the legacy table", "repo": "acme/reports-executor", "isPrivate": false, "isDraft": false, "state": "MERGED" },
-        { "number": 146, "title": "remove the boards consumer shim", "repo": "acme/boards-consumer", "isPrivate": false, "isDraft": false, "state": "OPEN" },
-        { "number": 2385, "title": "delete the pipeline chart", "repo": "acme/deployments", "isPrivate": false, "isDraft": false, "state": "OPEN" },
-        { "number": 2382, "title": "scale the old workers to zero", "repo": "acme/deployments", "isPrivate": false, "isDraft": true, "state": "OPEN" },
-        { "number": 88, "title": "update the runbook", "repo": "acme/docs", "isPrivate": false, "isDraft": false, "state": "CLOSED" }
-      ]
+        {
+          "number": 964,
+          "title": "drop the v1 reporting endpoint",
+          "repo": "acme/apps-catalog",
+          "isPrivate": false,
+          "isDraft": false,
+          "state": "MERGED"
+        },
+        {
+          "number": 476,
+          "title": "stop writing the legacy table",
+          "repo": "acme/reports-executor",
+          "isPrivate": false,
+          "isDraft": false,
+          "state": "MERGED"
+        },
+        {
+          "number": 146,
+          "title": "remove the boards consumer shim",
+          "repo": "acme/boards-consumer",
+          "isPrivate": false,
+          "isDraft": false,
+          "state": "OPEN"
+        },
+        {
+          "number": 2385,
+          "title": "delete the pipeline chart",
+          "repo": "acme/deployments",
+          "isPrivate": false,
+          "isDraft": false,
+          "state": "OPEN"
+        },
+        {
+          "number": 2382,
+          "title": "scale the old workers to zero",
+          "repo": "acme/deployments",
+          "isPrivate": false,
+          "isDraft": true,
+          "state": "OPEN"
+        },
+        {
+          "number": 88,
+          "title": "update the runbook",
+          "repo": "acme/docs",
+          "isPrivate": false,
+          "isDraft": false,
+          "state": "CLOSED"
+        }
+      ],
+      "priority": "1",
+      "doneDaysAgo": null,
+      "createdHoursAgo": 5
     },
     {
       "key": "ACME-62814",
@@ -38,7 +86,10 @@
       "statusName": "To Do",
       "statusCategory": "new",
       "issueType": "Task",
-      "links": []
+      "links": [],
+      "priority": "3",
+      "doneDaysAgo": null,
+      "createdHoursAgo": 26
     },
     {
       "key": "ACME-62235",
@@ -46,25 +97,41 @@
       "statusName": "Awaiting Customer",
       "statusCategory": "new",
       "issueType": "Bug",
-      "links": []
+      "links": [],
+      "priority": "2",
+      "doneDaysAgo": null,
+      "createdHoursAgo": 80
     },
     {
       "key": "ACME-56194",
       "summary": "Create a tool to run ClickHouse queries safely",
       "statusName": "On Hold",
       "statusCategory": "new",
-      "issueType": "Task",
-      "links": []
+      "issueType": "Story",
+      "links": [],
+      "priority": "4",
+      "doneDaysAgo": null,
+      "createdHoursAgo": 400
     },
     {
       "key": "ACME-60593",
       "summary": "Add missing GenAI semantics to the honeycomb agent",
       "statusName": "Testing",
       "statusCategory": "indeterminate",
-      "issueType": "Task",
+      "issueType": "Customer Support Ticket",
       "links": [
-        { "number": 927, "title": "complete the GenAI semantic conventions", "repo": "acme/chat-assistant", "isPrivate": true, "isDraft": false, "state": "MERGED" }
-      ]
+        {
+          "number": 927,
+          "title": "complete the GenAI semantic conventions",
+          "repo": "acme/chat-assistant",
+          "isPrivate": true,
+          "isDraft": false,
+          "state": "MERGED"
+        }
+      ],
+      "priority": "3",
+      "doneDaysAgo": null,
+      "createdHoursAgo": 1500
     },
     {
       "key": "ACME-61347",
@@ -72,7 +139,52 @@
       "statusName": "New",
       "statusCategory": "new",
       "issueType": "Bug",
-      "links": []
+      "links": [],
+      "priority": "10000",
+      "doneDaysAgo": null,
+      "createdHoursAgo": 9000
+    },
+    {
+      "key": "ACME-62647",
+      "summary": "Cache the governance ruling lookup",
+      "statusName": "Done",
+      "statusCategory": "done",
+      "issueType": "Task",
+      "priority": "2",
+      "doneDaysAgo": 1,
+      "links": [
+        {
+          "number": 771,
+          "title": "cache the ruling lookup",
+          "repo": "acme/luzmo-plugin",
+          "isPrivate": false,
+          "isDraft": false,
+          "state": "MERGED"
+        }
+      ],
+      "createdHoursAgo": 3
+    },
+    {
+      "key": "ACME-62827",
+      "summary": "Remove the adMembership lookup",
+      "statusName": "Done",
+      "statusCategory": "done",
+      "issueType": "Sub-task",
+      "priority": "3",
+      "doneDaysAgo": 4,
+      "links": [],
+      "createdHoursAgo": 200
+    },
+    {
+      "key": "ACME-60999",
+      "summary": "Finished a long time ago, must not show",
+      "statusName": "Done",
+      "statusCategory": "done",
+      "issueType": "Task",
+      "priority": "3",
+      "doneDaysAgo": 40,
+      "links": [],
+      "createdHoursAgo": 26000
     }
   ]
 }
