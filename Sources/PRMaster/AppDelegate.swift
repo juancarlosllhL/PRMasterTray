@@ -93,13 +93,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the same reason as the rest: a fixture's issue keys would spend real
         // search calls looking for pull requests that do not exist.
         var issueClient: (any JiraIssueFetching)?
-        if !Debug.overridesActive, let credentials = jiraAccount.current {
+        var linkClient: (any IssueLinkFetching)? = Debug.overridesActive ? nil : client
+        if let fixture = Debug.jiraFixturePath {
+            let served = JiraFixtureClient(path: fixture)
+            issueClient = served
+            linkClient = served
+        } else if !Debug.overridesActive, let credentials = jiraAccount.current {
             issueClient = JiraClient(credentials: credentials)
         }
-        jira = JiraStore(
-            issues: issueClient,
-            links: Debug.overridesActive ? nil : client
-        )
+        jira = JiraStore(issues: issueClient, links: linkClient)
 
         updates = AppUpdateStore(
             checker: ReleaseClient(),

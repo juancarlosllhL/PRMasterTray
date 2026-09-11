@@ -1,0 +1,78 @@
+{
+  "issues": [
+    {
+      "key": "ACME-62941",
+      "summary": "Let Lens answer AI governance questions",
+      "statusName": "In Progress",
+      "statusCategory": "indeterminate",
+      "issueType": "Task",
+      "links": [
+        {
+          "number": 941,
+          "title": "let Lens answer AI governance questions",
+          "repo": "acme/chat-assistant",
+          "isPrivate": false,
+          "isDraft": false,
+          "state": "MERGED"
+        }
+      ]
+    },
+    {
+      "key": "ACME-58715",
+      "summary": "Retire the legacy reporting pipeline",
+      "statusName": "In Progress",
+      "statusCategory": "indeterminate",
+      "issueType": "Epic",
+      "links": [
+        { "number": 964, "title": "drop the v1 reporting endpoint", "repo": "acme/apps-catalog", "isPrivate": false, "isDraft": false, "state": "MERGED" },
+        { "number": 476, "title": "stop writing the legacy table", "repo": "acme/reports-executor", "isPrivate": false, "isDraft": false, "state": "MERGED" },
+        { "number": 146, "title": "remove the boards consumer shim", "repo": "acme/boards-consumer", "isPrivate": false, "isDraft": false, "state": "OPEN" },
+        { "number": 2385, "title": "delete the pipeline chart", "repo": "acme/deployments", "isPrivate": false, "isDraft": false, "state": "OPEN" },
+        { "number": 2382, "title": "scale the old workers to zero", "repo": "acme/deployments", "isPrivate": false, "isDraft": true, "state": "OPEN" },
+        { "number": 88, "title": "update the runbook", "repo": "acme/docs", "isPrivate": false, "isDraft": false, "state": "CLOSED" }
+      ]
+    },
+    {
+      "key": "ACME-62814",
+      "summary": "Remove feature flags for the source display name",
+      "statusName": "To Do",
+      "statusCategory": "new",
+      "issueType": "Task",
+      "links": []
+    },
+    {
+      "key": "ACME-62235",
+      "summary": "Custom reports intermittently return no rows",
+      "statusName": "Awaiting Customer",
+      "statusCategory": "new",
+      "issueType": "Bug",
+      "links": []
+    },
+    {
+      "key": "ACME-56194",
+      "summary": "Create a tool to run ClickHouse queries safely",
+      "statusName": "On Hold",
+      "statusCategory": "new",
+      "issueType": "Task",
+      "links": []
+    },
+    {
+      "key": "ACME-60593",
+      "summary": "Add missing GenAI semantics to the honeycomb agent",
+      "statusName": "Testing",
+      "statusCategory": "indeterminate",
+      "issueType": "Task",
+      "links": [
+        { "number": 927, "title": "complete the GenAI semantic conventions", "repo": "acme/chat-assistant", "isPrivate": true, "isDraft": false, "state": "MERGED" }
+      ]
+    },
+    {
+      "key": "ACME-61347",
+      "summary": "Fix the raw export cast for the new governance column",
+      "statusName": "New",
+      "statusCategory": "new",
+      "issueType": "Bug",
+      "links": []
+    }
+  ]
+}

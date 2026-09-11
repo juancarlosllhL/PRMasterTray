@@ -132,6 +132,13 @@ enum Debug {
         ProcessInfo.processInfo.environment["PRMASTER_TAB"]
     }
 
+    /// `PRMASTER_JIRA_FIXTURE=<path>` serves captured issues, so the pane and
+    /// its expandable rows can be inspected without live credentials.
+    static var jiraFixturePath: String? {
+        ProcessInfo.processInfo.environment["PRMASTER_JIRA_FIXTURE"]
+            .flatMap { FileManager.default.isReadableFile(atPath: $0) ? $0 : nil }
+    }
+
     /// `PRMASTER_DEMO_MERGE=confirm|fail` drives the merge dialogs directly,
     /// so the irreversible path can be inspected without a mergeable PR. Any
     /// other value swaps in the no-op merger without opening a dialog.

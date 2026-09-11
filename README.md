@@ -80,6 +80,34 @@ GitHub would merge right now.
   organizations to include, and whether pull requests from private repositories
   show at all. Hidden ones are left out of the count, never notify, and are never
   brought up to date automatically. Both also apply to the teams section above.
+- The popover has two tabs. **Pull requests** is everything above, in the order
+  it has always been in. **Jira** is the issues assigned to you that are not
+  done. Command-1 and Command-2 switch between them.
+- **Jira** lists each assigned issue with its own status, and expands to the
+  pull requests carrying its key in their title. One issue routinely spans
+  several repositories, which is what the nesting is for.
+
+  An issue with nothing open says **no pull request of yours yet**. "Of yours"
+  is exact rather than modest: the search is scoped to your own pull requests,
+  so a colleague's work on your issue does not appear, and the shorter claim
+  would be false. An issue whose lookup *failed* says so instead, because
+  "nothing found" and "couldn't check" look identical otherwise, and the first
+  is a lie when the second is true.
+
+  Statuses are grouped by Jira's status category rather than its name. A site
+  can rename or localise a status freely — this one has **Awaiting Customer**,
+  **On Hold**, **New** and **Testing** — and only the category underneath is
+  stable.
+
+  Finding the pull requests costs one request no matter how many issues you
+  have, and the key match is exact: `ACME-6023` never pulls in `ACME-60236`.
+- **Jira** in Settings is where you sign in: your site, your email, and an API
+  token from [id.atlassian.com](https://id.atlassian.com) under Security.
+  Nothing is stored until it has been tested, so a typo is refused where you
+  typed it rather than an hour later as a failed refresh. On success it names
+  who it signed in as. A rejection blames the email and token together, because
+  Jira answers a bad token, a wrong email and outright nonsense identically, and
+  naming one would be a guess. **Sign Out** removes the token from the Keychain.
 - Refreshes every minute, on opening the popover, and on waking the machine. A
   failed refresh keeps the last good list and tells you it is stale.
 - Checks for new versions of the app and installs them for you.
@@ -87,7 +115,11 @@ GitHub would merge right now.
   starts straight into the menu bar, with no window to dismiss. The first time,
   macOS may ask you to approve it under **System Settings → General → Login
   Items**; the menu says so, and offers a way there.
-- Signs in through the `gh` CLI, so it stores no credentials of its own.
+- GitHub access comes from the `gh` CLI, so there is no GitHub credential of its
+  own to leak. Jira is different, and worth being plain about: it needs an API
+  token you create yourself, and that token is a credential the app does hold.
+  It goes in your login Keychain, is sent only to your own Jira site, and never
+  reaches preferences, a log or a fixture.
 
 ## Install
 
