@@ -20,9 +20,10 @@ struct SettingsView: View {
     @Bindable var store: PRStore
     @Bindable var reviews: ReviewStore
     @Bindable var appearance: AppearanceStore
+    @Bindable var jira: JiraAccountStore
 
     private enum Tab: String {
-        case pullRequests, merged, teams, appearance
+        case pullRequests, merged, teams, jira, appearance
     }
 
     /// Only ever moved by a click, except under `PRMASTER_SETTINGS_TAB`, which is
@@ -40,6 +41,9 @@ struct SettingsView: View {
             teamSettings
                 .tabItem { Label("Teams", systemImage: "person.2") }
                 .tag(Tab.teams)
+            jiraSettings
+                .tabItem { Label("Jira", systemImage: "square.stack.3d.up") }
+                .tag(Tab.jira)
             appearanceSettings
                 .tabItem { Label("Appearance", systemImage: "paintbrush") }
                 .tag(Tab.appearance)
@@ -312,6 +316,55 @@ struct SettingsView: View {
     /// paragraphs *right*, while a local build of the identical commit against
     /// the macOS 26 SDK ranged them left. Stating it makes both agree, and is
     /// the only version of this that can be verified from either machine.
+    /// Sign-in rather than preferences, which is why it has a button at all
+    /// while every other tab writes through on the spot: a half-typed token is
+    /// not a state worth saving.
+    private var jiraSettings: some View {
+        Form {
+            Section {
+                TextField("Site", text: $jira.site,
+                          prompt: Text(verbatim: "https://acme.atlassian.net"))
+                TextField("Email", text: $jira.email)
+                SecureField("API token", text: $jira.apiToken)
+
+                HStack(spacing: 8) {
+                    Button(jira.isConfigured ? "Test and Update" : "Test and Save") {
+                        Task { await jira.testAndSave() }
+                    }
+                    .disabled(jira.signInState.isBusy)
+
+                    if jira.signInState.isBusy {
+                        ProgressView().controlSize(.small)
+                    }
+                    if jira.isConfigured {
+                        Button("Sign Out") { jira.signOut() }
+                    }
+                    Spacer(minLength: 0)
+                }
+
+                if let name = jira.signInState.succeededName {
+                    Label(
+                        String(localized: "Signed in as \(name)"),
+                        systemImage: "checkmark.circle.fill"
+                    )
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                }
+                if let failure = jira.signInState.failureMessage {
+                    Label(failure, systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Jira")
+            } footer: {
+                footnote(Text("Create an API token at id.atlassian.com under Security. PR Master Tray keeps it in your Keychain and sends it only to your own site. Nothing is saved until it has been tested."))
+            }
+        }
+        .formStyle(.grouped)
+        .padding(.vertical, 8)
+    }
+
     private func footnote(_ text: Text) -> some View {
         text
             .font(.system(size: 11))

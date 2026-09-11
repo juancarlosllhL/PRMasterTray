@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var appearanceStore: AppearanceStore!
     private var launchAtLogin: LaunchAtLoginStore!
     private let tabSelection = TabSelectionStore()
+    private let jiraAccount = JiraAccountStore()
     private let settingsWindow = SettingsWindowController()
     private var observers: [NSObjectProtocol] = []
     private var dismissMonitors: [Any] = []
@@ -134,7 +135,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updates.start()
 
         if Debug.openSettings {
-            settingsWindow.show(store: store, reviews: reviews, appearance: appearanceStore)
+            settingsWindow.show(
+                store: store, reviews: reviews,
+                appearance: appearanceStore, jira: jiraAccount
+            )
         }
 
         // Under a fixture, open straight away so the UI can be inspected and
@@ -247,7 +251,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openSettingsFromMenu() {
-        settingsWindow.show(store: store, reviews: reviews, appearance: appearanceStore)
+        settingsWindow.show(
+                store: store, reviews: reviews,
+                appearance: appearanceStore, jira: jiraAccount
+            )
     }
 
     @objc private func quitFromMenu() {
@@ -360,7 +367,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     // panel activates the app, and two things fighting over who
                     // is key is how the popover ends up half-dismissed.
                     popover.performClose(nil)
-                    settingsWindow.show(store: store, reviews: reviews, appearance: appearanceStore)
+                    settingsWindow.show(
+                store: store, reviews: reviews,
+                appearance: appearanceStore, jira: jiraAccount
+            )
                 },
                 onQuit: { NSApp.terminate(nil) },
                 canMerge: Debug.mergingOffered,

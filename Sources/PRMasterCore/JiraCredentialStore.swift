@@ -77,16 +77,39 @@ public struct JiraCredentialStore: JiraCredentialStoring {
 }
 
 /// A generic password in the login keychain, holding the JSON above.
-public enum Keychain {
+///
+/// Service and account are parameters so a test can exercise the real SecItem
+/// calls against its own throwaway item rather than the user's.
+public struct Keychain: Sendable {
 
-    public static func read() throws -> String? {
-        let query: [String: Any] = [
+    let service: String
+    let account: String
+
+    public init(
+        service: String = JiraCredentialStore.keychainService,
+        account: String = JiraCredentialStore.keychainAccount
+    ) {
+        self.service = service
+        self.account = account
+    }
+
+    public static func read() throws -> String? { try Keychain().read() }
+    public static func write(_ value: String) throws { try Keychain().write(value) }
+    public static func delete() throws { try Keychain().delete() }
+
+    private var base: [String: Any] {
+        [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: JiraCredentialStore.keychainService,
-            kSecAttrAccount as String: JiraCredentialStore.keychainAccount,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
         ]
+    }
+
+    public func read() throws -> String? {
+        var query = base
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         if status == errSecItemNotFound { return nil }
@@ -96,12 +119,7 @@ public enum Keychain {
         return String(decoding: data, as: UTF8.self)
     }
 
-    public static func write(_ value: String) throws {
-        let base: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: JiraCredentialStore.keychainService,
-            kSecAttrAccount as String: JiraCredentialStore.keychainAccount,
-        ]
+    public func write(_ value: String) throws {
         let data = Data(value.utf8)
 
         let update = SecItemUpdate(
@@ -121,13 +139,8 @@ public enum Keychain {
         }
     }
 
-    public static func delete() throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: JiraCredentialStore.keychainService,
-            kSecAttrAccount as String: JiraCredentialStore.keychainAccount,
-        ]
-        let status = SecItemDelete(query as CFDictionary)
+    public func delete() throws {
+        let status = SecItemDelete(base as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw PRMasterError.jiraKeychainFailure(status: Int(status))
         }

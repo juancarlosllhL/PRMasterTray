@@ -16,14 +16,21 @@ final class SettingsWindowController {
 
     private var panel: NSPanel?
 
-    func show(store: PRStore, reviews: ReviewStore, appearance: AppearanceStore) {
+    func show(
+        store: PRStore,
+        reviews: ReviewStore,
+        appearance: AppearanceStore,
+        jira: JiraAccountStore
+    ) {
         if let panel {
             present(panel)
             return
         }
 
         let hosting = NSHostingController(
-            rootView: SettingsView(store: store, reviews: reviews, appearance: appearance)
+            rootView: SettingsView(
+                store: store, reviews: reviews, appearance: appearance, jira: jira
+            )
         )
         // Without this the panel is sized once from a stale measurement, which
         // for a form whose organization list arrives with the first fetch means
