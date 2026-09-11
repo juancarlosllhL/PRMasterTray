@@ -312,3 +312,87 @@ struct WorkflowLinkTests {
         #expect(WorkflowLink.pick(from: [], fallback: fallback) == fallback)
     }
 }
+
+/// GitHub sets a release's `createdAt` from the tag's commit, not from when the
+/// release was cut, so a release built by CI *from* the merge can carry a
+/// timestamp a second before it. Measured on LECAnalytics#1870: merged at
+/// 08:37:56Z, release createdAt 08:37:55Z, publishedAt 09:10:17Z, tag pointing
+/// at the merge commit itself. The row claimed "building" for an hour.
+@Suite("Shipment release timing")
+struct ShipmentReleaseTimingTests {
+
+    private static let mergedAt = Date(timeIntervalSince1970: 1_789_000_676)
+
+    private func cutRelease(
+        created: TimeInterval, published: TimeInterval?
+    ) -> Release {
+        Release(
+            tagName: "lec-analytics-api-v1.100.0",
+            url: URL(string: "https://github.com/acme/one/releases/tag/v1.100.0")!,
+            tagCommitOid: "9f4c1ab7e0d25c3184bb6f70a1e5d8c92374ef60",
+            createdAt: Date(timeIntervalSince1970: created),
+            publishedAt: published.map { Date(timeIntervalSince1970: $0) }
+        )
+    }
+
+    private var pr: MergedPullRequest {
+        merged(mergedAt: Self.mergedAt)
+    }
+
+    /// One second earlier than the merge, published half an hour after it.
+    private var realWorldRelease: Release {
+        cutRelease(
+            created: Self.mergedAt.timeIntervalSince1970 - 1,
+            published: Self.mergedAt.timeIntervalSince1970 + 1_941
+        )
+    }
+
+    @Test("a release published after the merge is worth asking about")
+    func publishedAfterIsACandidate() {
+        let candidates = ShipmentResolver.candidates(
+            merged: [pr], releases: ["R_1": [realWorldRelease]]
+        )
+        #expect(candidates.map(\.release.tagName) == ["lec-analytics-api-v1.100.0"])
+    }
+
+    @Test("and is reported as released rather than as building")
+    func publishedAfterIsReleased() {
+        let shipments = ShipmentResolver.resolve(
+            merged: [pr],
+            releases: ["R_1": [realWorldRelease]],
+            containment: [
+                ContainmentKey(
+                    pullRequestID: "PR_1", tagName: "lec-analytics-api-v1.100.0"
+                ): true
+            ]
+        )
+        #expect(shipments.first?.status == .released(
+            version: "lec-analytics-api-v1.100.0",
+            url: URL(string: "https://github.com/acme/one/releases/tag/v1.100.0")!
+        ))
+    }
+
+    /// A draft has no publication date, so the tag's own timestamp still rules.
+    @Test("a release with no publication date falls back to when it was created")
+    func fallsBackToCreated() {
+        let old = cutRelease(
+            created: Self.mergedAt.timeIntervalSince1970 - 1, published: nil
+        )
+        #expect(ShipmentResolver.candidates(
+            merged: [pr], releases: ["R_1": [old]]
+        ).isEmpty)
+    }
+
+    /// The gate still has to keep genuinely older releases out, or every merge
+    /// would spend a request per release in the window.
+    @Test("a release cut and published before the merge is still skipped")
+    func genuinelyOlderIsSkipped() {
+        let old = cutRelease(
+            created: Self.mergedAt.timeIntervalSince1970 - 86_400,
+            published: Self.mergedAt.timeIntervalSince1970 - 80_000
+        )
+        #expect(ShipmentResolver.candidates(
+            merged: [pr], releases: ["R_1": [old]]
+        ).isEmpty)
+    }
+}

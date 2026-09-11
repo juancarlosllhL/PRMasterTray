@@ -9,12 +9,24 @@ public struct Release: Sendable, Equatable {
     /// decided — see `ShipmentResolver`.
     public let tagCommitOid: String
     public let createdAt: Date
+    public let publishedAt: Date?
 
-    public init(tagName: String, url: URL, tagCommitOid: String, createdAt: Date) {
+    /// GitHub dates a release from its tag's commit, so a release CI cuts from
+    /// a merge can read as older than the merge. Publication is when it was cut.
+    public var cutAt: Date { publishedAt ?? createdAt }
+
+    public init(
+        tagName: String,
+        url: URL,
+        tagCommitOid: String,
+        createdAt: Date,
+        publishedAt: Date? = nil
+    ) {
         self.tagName = tagName
         self.url = url
         self.tagCommitOid = tagCommitOid
         self.createdAt = createdAt
+        self.publishedAt = publishedAt
     }
 }
 
@@ -219,7 +231,7 @@ public enum ShipmentResolver {
     ) -> Bool? {
         guard let release = releases.first(where: { ReleaseVersion.strip($0.tagName) == version })
         else { return nil }
-        guard release.createdAt >= pr.mergedAt else { return false }
+        guard release.cutAt >= pr.mergedAt else { return false }
         return containment[ContainmentKey(pullRequestID: pr.id, tagName: release.tagName)]
     }
 
@@ -266,7 +278,7 @@ public enum ShipmentResolver {
         containment: [ContainmentKey: Bool]
     ) -> Release? {
         releases
-            .sorted { $0.createdAt < $1.createdAt }
+            .sorted { $0.cutAt < $1.cutAt }
             .first { containment[ContainmentKey(pullRequestID: pr.id, tagName: $0.tagName)] == true }
     }
 
@@ -322,8 +334,8 @@ public enum ShipmentResolver {
         merged.flatMap { pr -> [ContainmentCandidate] in
             guard pr.mergeCommitOid != nil else { return [] }
             return (releases[pr.repositoryID] ?? [])
-                .filter { $0.createdAt >= pr.mergedAt }
-                .sorted { $0.createdAt < $1.createdAt }
+                .filter { $0.cutAt >= pr.mergedAt }
+                .sorted { $0.cutAt < $1.cutAt }
                 .map { ContainmentCandidate(pullRequest: pr, release: $0) }
         }
     }

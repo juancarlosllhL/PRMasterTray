@@ -464,6 +464,7 @@ struct ReleasesPayload: Decodable {
                 let tagName: String
                 let url: URL
                 let createdAt: Date
+                let publishedAt: Date?
                 let isDraft: Bool
                 /// `null` when the tag points at something other than a commit.
                 let tagCommit: Commit?
@@ -478,7 +479,8 @@ struct ReleasesPayload: Decodable {
                         tagName: tagName,
                         url: url,
                         tagCommitOid: tagCommit.oid,
-                        createdAt: createdAt
+                        createdAt: createdAt,
+                        publishedAt: publishedAt
                     )
                 }
             }

@@ -246,6 +246,7 @@ enum Queries {
               tagName
               url
               createdAt
+              publishedAt
               isDraft
               tagCommit { oid }
             }
@@ -447,7 +448,8 @@ enum Queries {
 
     /// The same selection `releases` makes, so both paths decode into `Release`
     /// through one payload type and a draft is excluded on both.
-    private static let releaseFields = "tagName url createdAt isDraft tagCommit { oid }"
+    private static let releaseFields =
+        "tagName url createdAt publishedAt isDraft tagCommit { oid }"
 
     static let issueKeyAliasCap = 20
 
