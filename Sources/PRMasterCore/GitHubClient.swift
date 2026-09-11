@@ -87,6 +87,20 @@ public actor GitHubClient {
         try PullRequestDecoder.decodeTeams(try await perform(query: Queries.myTeams))
     }
 
+    /// Empty rather than a request when there is nothing to ask about, on the
+    /// same terms as every other builder that can answer `nil`.
+    public func fetchPullRequests(
+        forIssueKeys keys: [String]
+    ) async throws -> [String: [LinkedPullRequest]] {
+        guard let built = Queries.pullRequestsForIssueKeys(keys) else { return [:] }
+
+        let data = try await perform(
+            query: built.query,
+            variables: built.variables.mapValues(GraphQLValue.string)
+        )
+        return try PullRequestDecoder.decodeIssueLinks(data, keys: keys)
+    }
+
     /// What each of the user's teams has been asked to review.
     ///
     /// One request covering every team, with rows fetched only for the ones the
