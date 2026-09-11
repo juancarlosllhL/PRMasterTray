@@ -22,3 +22,6 @@ plans/
 reviews/
 stories/
 FOLLOWUP.md
+.codex/**
+.mdkb/**
+.wiz/

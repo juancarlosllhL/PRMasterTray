@@ -10,11 +10,13 @@ VERSION := $(shell /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString
 # version in the filename would break both on every release.
 ZIP := PRMaster.app.zip
 
-# Ad-hoc by default. Override with a Developer ID once one exists:
+# Prefers the local identity from `make signing-identity`, falling back to
+# ad-hoc. Ad-hoc has no stable identity, so the Keychain re-asks after every
+# rebuild — see that target. Override for release:
 #   make dist SIGN_ID="Developer ID Application: Your Name (TEAMID)"
-# Ad-hoc signing is enough to run locally, but Gatekeeper will refuse the app
-# on any other Mac — see `make dist`.
-SIGN_ID ?= -
+LOCAL_SIGN_ID := PRMaster Local Signing
+SIGN_ID ?= $(shell security find-identity -v -p codesigning 2>/dev/null \
+             | grep -q "$(LOCAL_SIGN_ID)" && echo "$(LOCAL_SIGN_ID)" || echo "-")
 
 # Swift Testing ships with the Command Line Tools but is not on SPM's search
 # path there, and Testing.framework loads lib_TestingInterop.dylib from a
@@ -28,7 +30,7 @@ TESTFLAGS := -Xswiftc -F -Xswiftc $(FW) \
              -Xlinker -rpath -Xlinker $(FW) \
              -Xlinker -rpath -Xlinker $(INTEROP)
 
-.PHONY: build test bundle run install uninstall dist verify-version clean
+.PHONY: build test bundle run install uninstall dist verify-version clean signing-identity
 
 build:
 	swift build -c release
@@ -49,6 +51,10 @@ bundle: build
 
 run: bundle
 	open $(APP)
+
+# One-time. Stops the Keychain re-asking after every rebuild and every update.
+signing-identity:
+	@bash scripts/signing-identity.sh
 
 # Install for real use. Worth doing beyond convenience: macOS treats an app
 # living in /Applications more like a real app than one run out of .build,
