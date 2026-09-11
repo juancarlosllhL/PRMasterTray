@@ -105,6 +105,7 @@ them. All of them fake only *fetching* — merging always goes to the real API.
 | `PRMASTER_AUTO_OPEN=1` | open the popover at launch |
 | `PRMASTER_OPEN_SETTINGS=1` | open the settings window at launch |
 | `PRMASTER_SETTINGS_TAB=pullRequests\|appearance` | which settings tab to open on |
+| `PRMASTER_WHATS_NEW=1` | open the changelog window, which otherwise needs an update |
 
 The last three fake nothing — they only open something a screenshot script cannot
 click — so none of them counts as an override below.

@@ -19,6 +19,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let jiraAccount = JiraAccountStore()
     private var jira: JiraStore!
     private let settingsWindow = SettingsWindowController()
+    private let whatsNewWindow = WhatsNewWindowController()
+    private var whatsNew: WhatsNewStore!
+
+    /// Read from the bundle, not from `PRMasterCore.version`, which is a second
+    /// copy of the number that nothing keeps in step.
+    private static var bundleVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+    }
     private var observers: [NSObjectProtocol] = []
     private var dismissMonitors: [Any] = []
 
@@ -105,15 +113,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         updates = AppUpdateStore(
             checker: ReleaseClient(),
-            // Read from the bundle, not from PRMasterCore.version, which is a
-            // second copy of the number that nothing keeps in step.
-            currentVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"]
-                as? String ?? "0.0.0",
+            currentVersion: Self.bundleVersion,
             // Never under a debug override. Sharper than the merge and branch
             // gates: this path does not write to GitHub, it replaces this app's
             // own bundle on disk.
             installer: Debug.overridesActive ? nil : AppUpdateInstaller()
         )
+
+        let changelog = Changelog.load(
+            from: Bundle.main.url(forResource: "CHANGELOG", withExtension: "md")
+        )
+        whatsNew = WhatsNewStore(changelog: changelog, currentVersion: Self.bundleVersion)
 
         // Registered before this method returns: a category set up after the
         // first delivery means the Open and Merge buttons never appear.
@@ -151,6 +161,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Started last so the first update check never competes with the fetch
         // the user is actually waiting to see.
         updates.start()
+
+        whatsNewWindow.show(
+            entries: Debug.showWhatsNew && whatsNew.entries.isEmpty
+                ? Array(changelog.prefix(1))
+                : whatsNew.entries
+        ) { [weak self] in
+            self?.whatsNew.markSeen()
+        }
 
         if Debug.openSettings {
             settingsWindow.show(

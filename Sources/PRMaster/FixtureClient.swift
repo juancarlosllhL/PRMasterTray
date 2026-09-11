@@ -118,6 +118,12 @@ enum Debug {
         ProcessInfo.processInfo.environment["PRMASTER_OPEN_SETTINGS"] == "1"
     }
 
+    /// `PRMASTER_WHATS_NEW=1` opens the changelog window, which otherwise only
+    /// appears after an update to the release it describes.
+    static var showWhatsNew: Bool {
+        ProcessInfo.processInfo.environment["PRMASTER_WHATS_NEW"] == "1"
+    }
+
     /// `PRMASTER_SETTINGS_TAB=pullRequests|appearance` selects which tab the
     /// settings window opens on. Same reason as `openSettings` one line up: a tab
     /// is a click, and a screenshot has no mouse. Falls through to the first tab

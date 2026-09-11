@@ -188,6 +188,16 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
     private var storedHidesEmoji = false
     func hidesEmoji() -> Bool { lock.withLock { storedHidesEmoji } }
     func setHidesEmoji(_ value: Bool) { lock.withLock { storedHidesEmoji = value } }
+
+    private var storedLastSeenVersion: String?
+    private var written = false
+    func lastSeenVersion() -> String? { lock.withLock { storedLastSeenVersion } }
+    func setLastSeenVersion(_ value: String) {
+        lock.withLock { storedLastSeenVersion = value; written = true }
+    }
+    func hasStoredSettings() -> Bool { lock.withLock { written } }
+    /// Stands in for an install that has been used before, whatever it wrote.
+    func markUsed() { lock.withLock { written = true } }
 }
 
 @MainActor

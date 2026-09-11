@@ -109,7 +109,9 @@ GitHub would merge right now.
   naming one would be a guess. **Sign Out** removes the token from the Keychain.
 - Refreshes every minute, on opening the popover, and on waking the machine. A
   failed refresh keeps the last good list and tells you it is stale.
-- Checks for new versions of the app and installs them for you.
+- Checks for new versions of the app and installs them for you. The first launch
+  after an update says what changed, from `Resources/CHANGELOG.md`, and says it
+  once. A fresh install is spared it.
 - **Open at login** in the gear menu brings it back by itself after a restart. It
   starts straight into the menu bar, with no window to dismiss. The first time,
   macOS may ask you to approve it under **System Settings → General → Login

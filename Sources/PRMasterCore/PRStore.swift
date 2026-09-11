@@ -101,6 +101,11 @@ public protocol PreferenceStoring: Sendable {
     /// Whether pull request titles are shown without their gitmoji.
     func hidesEmoji() -> Bool
     func setHidesEmoji(_ value: Bool)
+    func lastSeenVersion() -> String?
+    func setLastSeenVersion(_ value: String)
+    /// Whether this install has ever written a setting, which is how a first
+    /// run is told from an upgrade made before versions were recorded.
+    func hasStoredSettings() -> Bool
     func staleThreshold() -> StaleThreshold
     func setStaleThreshold(_ value: StaleThreshold)
     func mergedWindow() -> MergedWindow
@@ -703,6 +708,7 @@ public struct UserDefaultsPreferences: PreferenceStoring {
     private let monochromeKey = "highContrastMonochrome"
     private let popoverBackgroundKey = "popoverBackground"
     private let hidesEmojiKey = "hideTitleEmoji"
+    private let lastSeenVersionKey = "lastSeenVersion"
     private let staleThresholdKey = "staleThreshold"
     private let mergedWindowKey = "mergedWindow"
     private let appLocationsKey = "appLocations"
@@ -788,6 +794,21 @@ public struct UserDefaultsPreferences: PreferenceStoring {
 
     public func setHidesEmoji(_ value: Bool) {
         defaults.set(value, forKey: hidesEmojiKey)
+    }
+
+    public func lastSeenVersion() -> String? {
+        defaults.string(forKey: lastSeenVersionKey)
+    }
+
+    public func setLastSeenVersion(_ value: String) {
+        defaults.set(value, forKey: lastSeenVersionKey)
+    }
+
+    /// The app's own domain rather than `dictionaryRepresentation()`, which also
+    /// carries the global domain and is never empty.
+    public func hasStoredSettings() -> Bool {
+        guard let domain = Bundle.main.bundleIdentifier else { return false }
+        return !(defaults.persistentDomain(forName: domain) ?? [:]).isEmpty
     }
 
     public func staleThreshold() -> StaleThreshold {

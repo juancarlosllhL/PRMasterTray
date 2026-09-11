@@ -46,6 +46,7 @@ bundle: build
 	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources
 	cp $(BIN) $(APP)/Contents/MacOS/PRMaster
 	cp Resources/Info.plist $(APP)/Contents/Info.plist
+	cp Resources/CHANGELOG.md $(APP)/Contents/Resources/CHANGELOG.md
 	codesign -s "$(SIGN_ID)" --force --options runtime --timestamp=none $(APP)
 	@codesign --verify --strict $(APP) && echo "signed: $(SIGN_ID)"
 
