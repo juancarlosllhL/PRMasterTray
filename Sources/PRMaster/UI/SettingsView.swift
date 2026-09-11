@@ -308,6 +308,83 @@ struct SettingsView: View {
         .padding(.vertical, 8)
     }
 
+    /// Sign-in rather than preferences, which is why it has a button at all
+    /// while every other tab writes through on the spot: a half-typed token is
+    /// not a state worth saving.
+    private var jiraSettings: some View {
+        Form {
+            Section {
+                LabeledContent("Site") {
+                    TextField("", text: $jira.site,
+                              prompt: Text(verbatim: "https://acme.atlassian.net"))
+                        .textFieldStyle(.roundedBorder)
+                        .labelsHidden()
+                }
+                LabeledContent("Email") {
+                    TextField("", text: $jira.email,
+                              prompt: Text(verbatim: "you@company.com"))
+                        .textFieldStyle(.roundedBorder)
+                        .labelsHidden()
+                }
+                LabeledContent("API token") {
+                    SecureField("", text: $jira.apiToken,
+                                prompt: Text(verbatim: "Paste your token"))
+                        .textFieldStyle(.roundedBorder)
+                        .labelsHidden()
+                }
+            } header: {
+                Text("Jira account")
+            } footer: {
+                footnote(Text("Create an API token at id.atlassian.com under Security. PR Master Tray keeps it in your Keychain and sends it only to your own site."))
+            }
+
+            Section {
+                LabeledContent("") {
+                    HStack(spacing: 8) {
+                        Button(jira.isConfigured ? "Test and Update" : "Test and Save") {
+                            Task { await jira.testAndSave() }
+                        }
+                        .disabled(jira.signInState.isBusy)
+                        .keyboardShortcut(.defaultAction)
+
+                        if jira.signInState.isBusy {
+                            ProgressView().controlSize(.small)
+                        }
+                        if jira.isConfigured {
+                            Button("Sign Out") { jira.signOut() }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                }
+                if let name = jira.signInState.succeededName {
+                    LabeledContent("") {
+                        statusLine("checkmark.circle.fill", "Signed in as \(name)")
+                    }
+                }
+                if let failure = jira.signInState.failureMessage {
+                    LabeledContent("") {
+                        statusLine("exclamationmark.triangle.fill", failure)
+                    }
+                }
+            } footer: {
+                footnote(Text("Nothing is saved until it has been tested."))
+            }
+        }
+        .formStyle(.grouped)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    private func statusLine(_ symbol: String, _ text: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: symbol)
+            Text(verbatim: text)
+            Spacer(minLength: 0)
+        }
+        .font(.system(size: 11))
+        .foregroundStyle(.secondary)
+    }
+
     /// Secondary copy — footers, and the empty-organizations line.
     ///
     /// Both alignment modifiers are load-bearing, not belt-and-braces. The
@@ -316,55 +393,6 @@ struct SettingsView: View {
     /// paragraphs *right*, while a local build of the identical commit against
     /// the macOS 26 SDK ranged them left. Stating it makes both agree, and is
     /// the only version of this that can be verified from either machine.
-    /// Sign-in rather than preferences, which is why it has a button at all
-    /// while every other tab writes through on the spot: a half-typed token is
-    /// not a state worth saving.
-    private var jiraSettings: some View {
-        Form {
-            Section {
-                TextField("Site", text: $jira.site,
-                          prompt: Text(verbatim: "https://acme.atlassian.net"))
-                TextField("Email", text: $jira.email)
-                SecureField("API token", text: $jira.apiToken)
-
-                HStack(spacing: 8) {
-                    Button(jira.isConfigured ? "Test and Update" : "Test and Save") {
-                        Task { await jira.testAndSave() }
-                    }
-                    .disabled(jira.signInState.isBusy)
-
-                    if jira.signInState.isBusy {
-                        ProgressView().controlSize(.small)
-                    }
-                    if jira.isConfigured {
-                        Button("Sign Out") { jira.signOut() }
-                    }
-                    Spacer(minLength: 0)
-                }
-
-                if let name = jira.signInState.succeededName {
-                    Label(
-                        String(localized: "Signed in as \(name)"),
-                        systemImage: "checkmark.circle.fill"
-                    )
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                }
-                if let failure = jira.signInState.failureMessage {
-                    Label(failure, systemImage: "exclamationmark.triangle.fill")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-            } header: {
-                Text("Jira")
-            } footer: {
-                footnote(Text("Create an API token at id.atlassian.com under Security. PR Master Tray keeps it in your Keychain and sends it only to your own site. Nothing is saved until it has been tested."))
-            }
-        }
-        .formStyle(.grouped)
-        .padding(.vertical, 8)
-    }
-
     private func footnote(_ text: Text) -> some View {
         text
             .font(.system(size: 11))

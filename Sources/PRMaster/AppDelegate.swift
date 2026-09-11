@@ -136,6 +136,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // registration pointing at nothing. A no-op for anybody who never asked.
         launchAtLogin.repairIfNeeded()
 
+        installEditMenu()
         installStatusItem()
         installPopover()
         observeWake()
@@ -194,6 +195,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updates?.stop()
         // Must match the centre it was registered on, or removal is a no-op.
         observers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
+    }
+
+    /// Draws no menu bar, since an accessory app has none. AppKit still walks
+    /// the main menu for key equivalents, and that walk is what makes Cmd+V
+    /// work in a text field.
+    private func installEditMenu() {
+        let edit = NSMenu(title: "Edit")
+        for item in EditMenuItem.allCases {
+            let menuItem = NSMenuItem(
+                title: item.title,
+                action: NSSelectorFromString(item.selectorName),
+                keyEquivalent: item.keyEquivalent
+            )
+            if item.requiresShift {
+                menuItem.keyEquivalentModifierMask = [.command, .shift]
+            }
+            edit.addItem(menuItem)
+            if item.isFollowedBySeparator { edit.addItem(.separator()) }
+        }
+        let editHolder = NSMenuItem()
+        editHolder.submenu = edit
+        let main = NSMenu()
+        main.addItem(editHolder)
+        NSApp.mainMenu = main
     }
 
     // MARK: - Status item
