@@ -78,71 +78,103 @@ public struct JiraCredentialStore: JiraCredentialStoring {
 
 /// A generic password in the login keychain, holding the JSON above.
 ///
-/// Service and account are parameters so a test can exercise the real SecItem
-/// calls against its own throwaway item rather than the user's.
+/// Driven through `/usr/bin/security` rather than `SecItem` on purpose. An item
+/// created in-process carries a partition list keyed on the app's code hash,
+/// which changes with every build and asks for the login password again.
 public struct Keychain: Sendable {
+
+    public struct RunResult: Sendable {
+        public let stdout: String
+        public let exitCode: Int32
+
+        public init(stdout: String, exitCode: Int32) {
+            self.stdout = stdout
+            self.exitCode = exitCode
+        }
+    }
+
+    public static let tool = "/usr/bin/security"
+    static let itemNotFound: Int32 = 44
 
     let service: String
     let account: String
+    private let run: @Sendable ([String], String?) throws -> RunResult
 
     public init(
         service: String = JiraCredentialStore.keychainService,
-        account: String = JiraCredentialStore.keychainAccount
+        account: String = JiraCredentialStore.keychainAccount,
+        run: @escaping @Sendable ([String], String?) throws -> RunResult = Keychain.execute
     ) {
         self.service = service
         self.account = account
+        self.run = run
     }
 
     public static func read() throws -> String? { try Keychain().read() }
     public static func write(_ value: String) throws { try Keychain().write(value) }
     public static func delete() throws { try Keychain().delete() }
 
-    private var base: [String: Any] {
-        [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-    }
+    private var locator: [String] { ["-s", service, "-a", account] }
 
     public func read() throws -> String? {
-        var query = base
-        query[kSecReturnData as String] = true
-        query[kSecMatchLimit as String] = kSecMatchLimitOne
-
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        if status == errSecItemNotFound { return nil }
-        guard status == errSecSuccess, let data = item as? Data else {
-            throw PRMasterError.jiraKeychainFailure(status: Int(status))
+        let result = try run(["find-generic-password"] + locator + ["-w"], nil)
+        if result.exitCode == Self.itemNotFound { return nil }
+        guard result.exitCode == 0 else {
+            throw PRMasterError.jiraKeychainFailure(status: Int(result.exitCode))
         }
-        return String(decoding: data, as: UTF8.self)
+
+        let printed = result.stdout.hasSuffix("\n")
+            ? String(result.stdout.dropLast())
+            : result.stdout
+        guard let data = Data(base64Encoded: printed),
+              let decoded = String(data: data, encoding: .utf8)
+        else { return printed }
+        return decoded
     }
 
+    /// Replaced rather than updated: an item left by a build that wrote it
+    /// in-process cannot be modified without the login password. The value is
+    /// an argument because security's prompt reads at most 128 characters.
     public func write(_ value: String) throws {
-        let data = Data(value.utf8)
+        try delete()
 
-        let update = SecItemUpdate(
-            base as CFDictionary, [kSecValueData as String: data] as CFDictionary
-        )
-        if update == errSecSuccess { return }
-        if update != errSecItemNotFound {
-            throw PRMasterError.jiraKeychainFailure(status: Int(update))
-        }
-
-        var insert = base
-        insert[kSecValueData as String] = data
-        insert[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
-        let add = SecItemAdd(insert as CFDictionary, nil)
-        guard add == errSecSuccess else {
-            throw PRMasterError.jiraKeychainFailure(status: Int(add))
+        let encoded = Data(value.utf8).base64EncodedString()
+        let result = try run(["add-generic-password"] + locator + ["-w", encoded], nil)
+        guard result.exitCode == 0 else {
+            throw PRMasterError.jiraKeychainFailure(status: Int(result.exitCode))
         }
     }
 
     public func delete() throws {
-        let status = SecItemDelete(base as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw PRMasterError.jiraKeychainFailure(status: Int(status))
+        let result = try run(["delete-generic-password"] + locator, nil)
+        guard result.exitCode == 0 || result.exitCode == Self.itemNotFound else {
+            throw PRMasterError.jiraKeychainFailure(status: Int(result.exitCode))
         }
+    }
+
+    public static func execute(_ arguments: [String], input: String?) throws -> RunResult {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: tool)
+        process.arguments = arguments
+
+        let out = Pipe()
+        process.standardOutput = out
+        process.standardError = FileHandle.nullDevice
+
+        let stdin = Pipe()
+        process.standardInput = input == nil ? FileHandle.nullDevice : stdin
+
+        try process.run()
+        if let input {
+            stdin.fileHandleForWriting.write(Data(input.utf8))
+            try? stdin.fileHandleForWriting.close()
+        }
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+
+        return RunResult(
+            stdout: String(decoding: data, as: UTF8.self),
+            exitCode: process.terminationStatus
+        )
     }
 }

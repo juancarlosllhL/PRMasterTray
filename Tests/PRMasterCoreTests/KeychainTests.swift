@@ -43,6 +43,18 @@ struct KeychainTests {
         #expect(try subject.read() == "second")
     }
 
+    /// A real sign-in is a site, an email and an API token, which is well past
+    /// the 128 characters security's own password prompt stops at.
+    @Test("a value longer than a prompt can carry survives the round trip")
+    func longValueSurvives() throws {
+        let subject = keychain("long-\(UUID().uuidString)")
+        defer { try? subject.delete() }
+
+        let value = #"{"token":"\#(String(repeating: "a", count: 400))"}"#
+        try subject.write(value)
+        #expect(try subject.read() == value)
+    }
+
     @Test("deleting removes it")
     func deleteRemoves() throws {
         let subject = keychain("delete-\(UUID().uuidString)")
