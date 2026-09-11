@@ -10,6 +10,7 @@ public protocol IssueLinkFetching: Sendable {
 }
 
 extension GitHubClient: IssueLinkFetching {}
+extension JiraClient: JiraIssueFetching {}
 
 /// `none` and `unknown` look identical on screen unless kept apart: one means
 /// the issue has no pull request, the other that the lookup failed.

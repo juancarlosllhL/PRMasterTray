@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var launchAtLogin: LaunchAtLoginStore!
     private let tabSelection = TabSelectionStore()
     private let jiraAccount = JiraAccountStore()
+    private var jira: JiraStore!
     private let settingsWindow = SettingsWindowController()
     private var observers: [NSObjectProtocol] = []
     private var dismissMonitors: [Any] = []
@@ -88,6 +89,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             preferences: UserDefaultsPreferences()
         )
 
+        // Absent until the user signs in, and never under a debug override for
+        // the same reason as the rest: a fixture's issue keys would spend real
+        // search calls looking for pull requests that do not exist.
+        var issueClient: (any JiraIssueFetching)?
+        if !Debug.overridesActive, let credentials = jiraAccount.current {
+            issueClient = JiraClient(credentials: credentials)
+        }
+        jira = JiraStore(
+            issues: issueClient,
+            links: Debug.overridesActive ? nil : client
+        )
+
         updates = AppUpdateStore(
             checker: ReleaseClient(),
             // Read from the bundle, not from PRMasterCore.version, which is a
@@ -130,6 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Started after the user's own list: the section it feeds sits below
         // theirs, so it has no business competing for the first fetch.
         reviews.start()
+        jira.start()
         // Started last so the first update check never competes with the fetch
         // the user is actually waiting to see.
         updates.start()
@@ -173,6 +187,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         store?.stop()
+        jira?.stop()
         reviews?.stop()
         updates?.stop()
         // Must match the centre it was registered on, or removal is a no-op.
@@ -381,7 +396,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 updates: updates,
                 appearance: appearanceStore,
                 launchAtLogin: launchAtLogin,
-                selection: tabSelection
+                selection: tabSelection,
+                jira: jira,
+                onOpenIssue: { [weak self] issue in
+                    guard let self, let base = jiraAccount.current?.baseURL else { return }
+                    open(base.appendingPathComponent("browse/\(issue.key)"))
+                    popover.performClose(nil)
+                },
+                onOpenLinkedPullRequest: { [weak self] pull in
+                    self?.open(pull.url)
+                    self?.popover.performClose(nil)
+                }
             )
         )
         // Without this the popover sizes itself once from a stale measurement
@@ -433,6 +458,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await NotificationManager.shared.refreshAuthorizationStatus()
             await store.refresh()
             await reviews.refresh()
+            await jira.refresh()
         }
     }
 

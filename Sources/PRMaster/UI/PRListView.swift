@@ -48,6 +48,9 @@ struct PRListView: View {
     var paletteInputs = PaletteInputs()
 
     let selection: TabSelectionStore
+    let jira: JiraStore
+    let onOpenIssue: (JiraIssue) -> Void
+    let onOpenLinkedPullRequest: (LinkedPullRequest) -> Void
 
     var visibleTabs: [PopoverTab] { PopoverTab.allCases }
 
@@ -76,7 +79,7 @@ struct PRListView: View {
     private func rowCount(_ tab: PopoverTab) -> Int {
         switch tab {
         case .pullRequests: return store.prs.count
-        case .jira:         return 0
+        case .jira:         return jira.issues.count
         }
     }
 
@@ -88,7 +91,12 @@ struct PRListView: View {
                 lastError: store.lastError, lastSuccessfulFetch: store.lastSuccessfulFetch
             )
         case .jira:
-            return .empty
+            // An unconfigured integration is not a pane still loading.
+            guard jira.isConfigured else { return .empty }
+            return PaneState.resolve(
+                rowCount: jira.issues.count, hiddenCount: 0,
+                lastError: jira.lastError, lastSuccessfulFetch: jira.lastSuccessfulFetch
+            )
         }
     }
 
@@ -264,10 +272,12 @@ struct PRListView: View {
                     onOpenSettings: onOpenSettings
                 )
             case .jira:
-                PaneMessageView(
-                    icon: "square.stack.3d.up",
-                    title: "Jira isn't set up yet",
-                    detail: "Your assigned issues and their pull requests will appear here."
+                JiraPaneView(
+                    jira: jira,
+                    filter: store.filter,
+                    onOpenIssue: onOpenIssue,
+                    onOpenLink: onOpenLinkedPullRequest,
+                    onOpenSettings: onOpenSettings
                 )
             }
         }

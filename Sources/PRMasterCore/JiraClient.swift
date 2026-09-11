@@ -21,6 +21,10 @@ public actor JiraClient {
     }
 
     /// Every issue assigned to the signed-in user that is not done.
+    public func fetchAssignedIssues() async throws -> [JiraIssue] {
+        try await assignedIssues()
+    }
+
     public func assignedIssues() async throws -> [JiraIssue] {
         var collected: [JiraIssue] = []
         var pageToken: String?
