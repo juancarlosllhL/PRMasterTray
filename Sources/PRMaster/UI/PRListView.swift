@@ -143,6 +143,7 @@ struct PRListView: View {
         .background { popoverBackground }
         // Hands the resolved palette to every row and banner below.
         .environment(\.palette, palette)
+        .environment(\.hidesEmoji, appearance.hidesEmoji)
     }
 
     /// Nothing at all for liquid glass.

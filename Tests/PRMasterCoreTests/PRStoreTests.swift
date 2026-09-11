@@ -158,6 +158,10 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
         }
     }
 
+    private var storedJiraWindow: JiraWindow = .default
+    func jiraWindow() -> JiraWindow { lock.withLock { storedJiraWindow } }
+    func setJiraWindow(_ value: JiraWindow) { lock.withLock { storedJiraWindow = value } }
+
     private var storedAppLocations: [String: [AppLocation]] = [:]
     var appLocationWrites = 0
     func appLocations() -> [String: [AppLocation]] { lock.withLock { storedAppLocations } }
@@ -180,6 +184,10 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
     private var storedQuips = true
     func approvalQuipsEnabled() -> Bool { lock.withLock { storedQuips } }
     func setApprovalQuipsEnabled(_ value: Bool) { lock.withLock { storedQuips = value } }
+
+    private var storedHidesEmoji = false
+    func hidesEmoji() -> Bool { lock.withLock { storedHidesEmoji } }
+    func setHidesEmoji(_ value: Bool) { lock.withLock { storedHidesEmoji = value } }
 }
 
 @MainActor

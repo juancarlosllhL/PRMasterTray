@@ -48,6 +48,26 @@ public enum EmojiShortcodes {
     /// let` under strict concurrency, and rebuilding one per row to render a list
     /// is worse than the dozen lines below.
     public static func render(_ text: String) -> String {
+        substitute(text) { $0 }
+    }
+
+    /// Both forms of it: the shortcode this app would have rendered, and a glyph
+    /// the author typed straight into the title.
+    public static func strip(_ text: String) -> String {
+        let plain = substitute(text) { _ in "" }.filter { !isEmoji($0) }
+        return plain.split(separator: " ").joined(separator: " ")
+    }
+
+    static func isEmoji(_ character: Character) -> Bool {
+        let scalars = character.unicodeScalars
+        if scalars.contains(where: { $0.value == 0xFE0F }) { return true }
+        return scalars.first?.properties.isEmojiPresentation ?? false
+    }
+
+    private static func substitute(
+        _ text: String,
+        with transform: (String) -> String
+    ) -> String {
         guard text.contains(":") else { return text }
 
         var out = ""
@@ -74,7 +94,7 @@ public enum EmojiShortcodes {
             }
 
             out += rest[..<open]
-            out += glyph
+            out += transform(glyph)
             rest = rest[rest.index(after: end)...]
         }
 
@@ -95,16 +115,21 @@ extension PullRequest {
     /// Every user-facing surface uses this; `title` is the raw wire value and is
     /// only appropriate where the exact bytes matter.
     public var displayTitle: String { EmojiShortcodes.render(title) }
+    /// The same title with the decoration taken out, for whoever asked for that
+    /// in Settings.
+    public var plainTitle: String { EmojiShortcodes.strip(title) }
 }
 
 extension MergedPullRequest {
     /// The same rule as the open rows above it: a merged row sits directly
     /// under them, so a raw `:sparkles:` there reads as a bug in the list.
     public var displayTitle: String { EmojiShortcodes.render(title) }
+    public var plainTitle: String { EmojiShortcodes.strip(title) }
 }
 
 extension ReviewRequest {
     /// The same rule again, and these titles need it most: they are written by
     /// everybody else in the organization, where gitmoji is the house style.
     public var displayTitle: String { EmojiShortcodes.render(title) }
+    public var plainTitle: String { EmojiShortcodes.strip(title) }
 }

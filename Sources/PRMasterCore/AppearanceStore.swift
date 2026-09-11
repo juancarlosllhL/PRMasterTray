@@ -64,6 +64,12 @@ public final class AppearanceStore {
         didSet { preferences.setPopoverBackground(popoverBackground) }
     }
 
+    /// Gitmoji left out of pull request titles. Off by default: the glyphs are
+    /// what the app has always drawn.
+    public var hidesEmoji: Bool {
+        didSet { preferences.setHidesEmoji(hidesEmoji) }
+    }
+
     private let preferences: PreferenceStoring
 
     public init(preferences: PreferenceStoring = UserDefaultsPreferences()) {
@@ -73,6 +79,7 @@ public final class AppearanceStore {
         self.theme = preferences.theme()
         self.monochromeEnabled = preferences.monochromeEnabled()
         self.popoverBackground = preferences.popoverBackground()
+        self.hidesEmoji = preferences.hidesEmoji()
     }
 
     /// What the palette should actually use, given this switch and what macOS

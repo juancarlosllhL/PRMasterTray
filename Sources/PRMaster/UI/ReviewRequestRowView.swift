@@ -16,6 +16,9 @@ struct ReviewRequestRowView: View {
 
     @State private var isHovering = false
     @Environment(\.palette) private var palette
+    @Environment(\.hidesEmoji) private var hidesEmoji
+
+    private var title: String { hidesEmoji ? request.plainTitle : request.displayTitle }
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
@@ -28,10 +31,11 @@ struct ReviewRequestRowView: View {
             VStack(alignment: .leading, spacing: 2) {
                 // verbatim: a pull request title is user content and must never
                 // be parsed as a LocalizedStringKey format string.
-                Text(verbatim: request.displayTitle)
-                    .font(.system(size: 12, weight: .medium))
+                Text(verbatim: title)
+                    .font(.rowTitle)
                     .lineLimit(1)
                     .truncationMode(.tail)
+                    .helpWhenTruncated(title)
 
                 HStack(spacing: 6) {
                     // verbatim again, or #1204 renders as "1.204".
@@ -63,8 +67,8 @@ struct ReviewRequestRowView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
+                    .helpWhenTruncated(attribution, font: .system(size: 11))
             }
-            .help(request.displayTitle)
 
             Spacer(minLength: 4)
 
@@ -116,7 +120,7 @@ struct ReviewRequestRowView: View {
     private var accessibilityDescription: String {
         let teams = request.teams.map(\.name).joined(separator: " and ")
         return "\(request.repo) pull request \(request.number), "
-            + "\(request.displayTitle), \(request.state.label), "
+            + "\(title), \(request.state.label), "
             + "opened by \(request.author) \(spokenAge), waiting on \(teams)"
     }
 }

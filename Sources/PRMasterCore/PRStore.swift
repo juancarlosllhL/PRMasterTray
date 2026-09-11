@@ -98,6 +98,9 @@ public protocol PreferenceStoring: Sendable {
     func setMonochromeEnabled(_ value: Bool)
     func popoverBackground() -> PopoverBackground
     func setPopoverBackground(_ value: PopoverBackground)
+    /// Whether pull request titles are shown without their gitmoji.
+    func hidesEmoji() -> Bool
+    func setHidesEmoji(_ value: Bool)
     func staleThreshold() -> StaleThreshold
     func setStaleThreshold(_ value: StaleThreshold)
     func mergedWindow() -> MergedWindow
@@ -105,6 +108,9 @@ public protocol PreferenceStoring: Sendable {
     /// How far back the team section reaches.
     func reviewWindow() -> ReviewWindow
     func setReviewWindow(_ value: ReviewWindow)
+    /// How far back the Jira Done section reaches.
+    func jiraWindow() -> JiraWindow
+    func setJiraWindow(_ value: JiraWindow)
     /// Which teams the user has switched off.
     func teamFilter() -> TeamFilter
     func setTeamFilter(_ value: TeamFilter)
@@ -696,11 +702,13 @@ public struct UserDefaultsPreferences: PreferenceStoring {
     private let themeKey = "appearanceTheme"
     private let monochromeKey = "highContrastMonochrome"
     private let popoverBackgroundKey = "popoverBackground"
+    private let hidesEmojiKey = "hideTitleEmoji"
     private let staleThresholdKey = "staleThreshold"
     private let mergedWindowKey = "mergedWindow"
     private let appLocationsKey = "appLocations"
     private let launchAtLoginKey = "launchAtLoginRequested"
     private let reviewWindowKey = "reviewWindow"
+    private let jiraWindowKey = "jiraWindow"
     private let disabledTeamsKey = "disabledTeams"
     private let knownTeamsKey = "knownTeams"
     private let approvalQuipsKey = "approvalQuips"
@@ -773,6 +781,15 @@ public struct UserDefaultsPreferences: PreferenceStoring {
         defaults.set(value.rawValue, forKey: popoverBackgroundKey)
     }
 
+    public func hidesEmoji() -> Bool {
+        // `object(forKey:)` again: a stored false has to outlive a relaunch.
+        defaults.object(forKey: hidesEmojiKey) as? Bool ?? false
+    }
+
+    public func setHidesEmoji(_ value: Bool) {
+        defaults.set(value, forKey: hidesEmojiKey)
+    }
+
     public func staleThreshold() -> StaleThreshold {
         // The one default in here that is not "what the app did before this
         // setting existed" — before it, nothing was marked at all. Marking
@@ -814,6 +831,15 @@ public struct UserDefaultsPreferences: PreferenceStoring {
         // The raw string, not an index — `defaults read com.jcll.PRMaster` is how
         // this gets debugged, and "2" says nothing.
         defaults.set(value.rawValue, forKey: reviewWindowKey)
+    }
+
+    public func jiraWindow() -> JiraWindow {
+        defaults.string(forKey: jiraWindowKey)
+            .flatMap(JiraWindow.init(rawValue:)) ?? .default
+    }
+
+    public func setJiraWindow(_ value: JiraWindow) {
+        defaults.set(value.rawValue, forKey: jiraWindowKey)
     }
 
     public func teamFilter() -> TeamFilter {

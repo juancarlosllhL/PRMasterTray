@@ -137,6 +137,17 @@ struct AppearanceStoreTests {
         #expect(store.popoverBackground == style)
     }
 
+    @Test("hiding emoji persists and is restored")
+    func hidesEmojiPersists() {
+        let preferences = MemoryPreferences()
+        let store = AppearanceStore(preferences: preferences)
+
+        #expect(store.hidesEmoji == false)
+        store.hidesEmoji = true
+        #expect(preferences.hidesEmoji() == true)
+        #expect(AppearanceStore(preferences: preferences).hidesEmoji == true)
+    }
+
     // MARK: - Contrast
 
     /// The convenience the view actually calls: the store supplies its own

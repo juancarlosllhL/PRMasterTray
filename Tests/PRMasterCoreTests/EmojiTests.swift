@@ -81,6 +81,72 @@ struct EmojiTests {
     }
 }
 
+@Suite("Emoji stripping")
+struct EmojiStrippingTests {
+
+    @Test("a shortcode leaves nothing behind, not even its space", arguments: [
+        (":sparkles: add feature", "add feature"),
+        (":bug: fix :zap: perf", "fix perf"),
+        (":bug::zap: both", "both"),
+        ("release :rocket: now", "release now"),
+    ])
+    func shortcodesGo(input: String, expected: String) {
+        #expect(EmojiShortcodes.strip(input) == expected)
+    }
+
+    /// A title written with the glyph already in it reads the same to the user
+    /// as one written with a shortcode, so both have to go.
+    @Test("a glyph written directly goes too", arguments: [
+        ("✨ add feature", "add feature"),
+        ("♻️ ACME-1 extract the thing", "ACME-1 extract the thing"),
+        ("⚠️ careful", "careful"),
+        ("🧑‍💻 pair work", "pair work"),
+        ("fix 🐛 the thing", "fix the thing"),
+        ("done ✅", "done"),
+    ])
+    func glyphsGo(input: String, expected: String) {
+        #expect(EmojiShortcodes.strip(input) == expected)
+    }
+
+    /// An unknown shortcode is not an emoji as far as this app knows, and
+    /// removing text it cannot identify would be guessing.
+    @Test("what is not an emoji is left alone", arguments: [
+        ":foo: bar",
+        "deploy at 12:30:45 today",
+        "TODO: rename this",
+        "ratio 3:1",
+        "Phase 1 — extract pure logic",
+        "add + and - handling",
+        "",
+    ])
+    func nonEmojiSurvives(input: String) {
+        #expect(EmojiShortcodes.strip(input) == input)
+    }
+
+    @Test("a title that is nothing but emoji comes out empty")
+    func emojiOnly() {
+        #expect(EmojiShortcodes.strip(":bug: ✨") == "")
+    }
+
+    @Test("plainTitle strips what displayTitle renders")
+    func plainTitleStrips() {
+        let pr = makePR(title: ":sparkles: actionable notifications")
+        #expect(pr.plainTitle == "actionable notifications")
+        #expect(pr.displayTitle == "✨ actionable notifications")
+        #expect(pr.title == ":sparkles: actionable notifications")
+    }
+
+    /// Every glyph the app can substitute must also be one it can remove, or a
+    /// title would render an emoji the setting claims to have hidden.
+    @Test("every glyph in the table is recognised as an emoji")
+    func tableGlyphsAreStrippable() {
+        for (code, glyph) in EmojiShortcodes.map {
+            #expect(EmojiShortcodes.strip(":\(code): x") == "x")
+            #expect(EmojiShortcodes.strip("\(glyph) x") == "x")
+        }
+    }
+}
+
 private func makePR(title: String) -> PullRequest {
     PullRequest(
         id: "PR_1",

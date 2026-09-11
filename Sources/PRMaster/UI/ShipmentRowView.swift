@@ -10,8 +10,10 @@ struct ShipmentRowView: View {
 
     @State private var isHovering = false
     @Environment(\.palette) private var palette
+    @Environment(\.hidesEmoji) private var hidesEmoji
 
     private var pr: MergedPullRequest { shipment.pr }
+    private var title: String { hidesEmoji ? pr.plainTitle : pr.displayTitle }
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
@@ -24,10 +26,11 @@ struct ShipmentRowView: View {
             VStack(alignment: .leading, spacing: 2) {
                 // verbatim: a pull request title is user content and must never
                 // be parsed as a LocalizedStringKey format string.
-                Text(verbatim: pr.displayTitle)
-                    .font(.system(size: 12, weight: .medium))
+                Text(verbatim: title)
+                    .font(.rowTitle)
                     .lineLimit(1)
                     .truncationMode(.tail)
+                    .helpWhenTruncated(title)
 
                 HStack(spacing: 6) {
                     // verbatim again, or #1204 renders as "1.204".
@@ -84,7 +87,6 @@ struct ShipmentRowView: View {
                     .lineLimit(1)
                 }
             }
-            .help(pr.displayTitle)
 
             Spacer(minLength: 4)
         }
@@ -192,7 +194,7 @@ struct ShipmentRowView: View {
     private var accessibilityDescription: String {
         let chips = shipment.environments.compactMap(spokenChip)
         return ([
-            "\(pr.repo) pull request \(pr.number)", pr.displayTitle, statusLabel,
+            "\(pr.repo) pull request \(pr.number)", title, statusLabel,
         ] + chips).joined(separator: ", ")
     }
 
