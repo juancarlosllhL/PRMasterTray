@@ -4,7 +4,7 @@ What each release changed, newest first. The app shows the entries you missed
 the first time it runs after an update, so keep the lines short and written for
 whoever has to read them in a small window.
 
-## 0.11.0 — 2026-09-11
+## 0.11.0 — 2026-09-14
 
 - Jira issues in testing now have a section of their own, below In progress.
 - A filter field at the top of the Jira pane narrows every section at once, on issue key or summary.

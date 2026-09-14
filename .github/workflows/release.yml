@@ -75,10 +75,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REF_NAME: ${{ github.ref_name }}
         run: |
-          gh release create "$REF_NAME" \
-            dist/PRMaster.app.zip \
-            --title "$REF_NAME" \
-            --generate-notes
+          TAG="$REF_NAME" bash scripts/release-notes.sh > /tmp/notes.md
+          if [ -s /tmp/notes.md ]; then
+            gh release create "$REF_NAME" \
+              dist/PRMaster.app.zip \
+              --title "$REF_NAME" \
+              --notes-file /tmp/notes.md
+          else
+            echo "No changelog section for $REF_NAME; falling back to generated notes."
+            gh release create "$REF_NAME" \
+              dist/PRMaster.app.zip \
+              --title "$REF_NAME" \
+              --generate-notes
+          fi
 
       # The in-app updater refuses to install an asset with no published digest —
       # it fails closed rather than skipping the integrity check. That makes the
