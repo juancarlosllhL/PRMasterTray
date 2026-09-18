@@ -179,6 +179,15 @@ struct ApprovalQuipTests {
         }
     }
 
+    /// A line repeated across buckets would be picked far more often than the
+    /// rest, and the joke only survives if nobody sees it twice in a week.
+    @Test("no line is written twice")
+    func noRepeats() {
+        let all = ApprovalQuip.Bucket.allCases.flatMap { ApprovalQuip.lines(for: $0) }
+
+        #expect(Set(all).count == all.count)
+    }
+
     @Test("the chosen line comes from the matching bucket")
     func picksFromTheBucket() {
         let request = pr(additions: 10, deletions: 5, changedFiles: 1)

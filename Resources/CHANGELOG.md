@@ -4,6 +4,11 @@ What each release changed, newest first. The app shows the entries you missed
 the first time it runs after an update, so keep the lines short and written for
 whoever has to read them in a small window.
 
+## 0.11.1 — 2026-09-18
+
+- The remark posted with an approval draws from twice as many lines, so the same joke stops coming back.
+- Every kind of pull request now has several remarks to choose from, not one. A single-file change, a revert and a dependency bump each had only one before.
+
 ## 0.11.0 — 2026-09-14
 
 - Jira issues in testing now have a section of their own, below In progress.
