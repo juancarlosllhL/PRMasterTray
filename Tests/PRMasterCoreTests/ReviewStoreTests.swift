@@ -602,12 +602,20 @@ struct ReviewStoreTests {
             teams: (0..<3).map { _ in .success([cortex]) },
             searches: (0..<3).map { _ in .success(.empty) }
         )
+        // Cancelled on the second lap rather than after a fixed wait: a loaded
+        // runner gets through one refresh in 30ms and the wait proved nothing.
+        let (laps, lap) = AsyncStream<Void>.makeStream()
         let store = makeStore(client: client, sleep: { _ in
+            lap.yield()
             try await Task.sleep(for: .milliseconds(1))
         })
 
         let task = Task { await store.pollLoop() }
-        try? await Task.sleep(for: .milliseconds(30))
+        var seen = 0
+        for await _ in laps {
+            seen += 1
+            if seen == 2 { break }
+        }
         task.cancel()
         await task.value
 
