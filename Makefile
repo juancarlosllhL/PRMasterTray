@@ -32,8 +32,16 @@ TESTFLAGS := -Xswiftc -F -Xswiftc $(FW) \
 
 .PHONY: build test bundle run install uninstall dist verify-version clean signing-identity
 
+# Without this the linker records the deployment target as the SDK version, and
+# AppKit serves pre-Tahoe popover chrome to anything claiming an SDK that old.
+# Read from the toolchain so CI's 26.5 and a local 27.0 both record themselves.
+MIN_MACOS := 14.0
+SDK_VERSION := $(shell xcrun --show-sdk-version)
+LINK_SDK := -Xlinker -platform_version -Xlinker macos \
+            -Xlinker $(MIN_MACOS) -Xlinker $(SDK_VERSION)
+
 build:
-	swift build -c release
+	swift build -c release $(LINK_SDK)
 
 # Pass extra args through: make test ARGS="--filter ReadinessTests"
 test:
@@ -47,8 +55,19 @@ bundle: build
 	cp $(BIN) $(APP)/Contents/MacOS/PRMaster
 	cp Resources/Info.plist $(APP)/Contents/Info.plist
 	cp Resources/CHANGELOG.md $(APP)/Contents/Resources/CHANGELOG.md
+	@if [ -d Resources/WhatsNew ]; then \
+	  cp Resources/WhatsNew/*.png $(APP)/Contents/Resources/ 2>/dev/null || true; \
+	fi
 	codesign -s "$(SIGN_ID)" --force --options runtime --timestamp=none $(APP)
 	@codesign --verify --strict $(APP) && echo "signed: $(SIGN_ID)"
+	@linked=$$(vtool -show-build $(APP)/Contents/MacOS/PRMaster \
+	   | awk '/^ *sdk/ { print $$2 }'); \
+	 if [ "$$linked" = "$(MIN_MACOS)" ]; then \
+	   echo "linked against sdk $$linked, the deployment target."; \
+	   echo "AppKit will draw the popover with pre-Tahoe chrome. See LINK_SDK."; \
+	   exit 1; \
+	 fi; \
+	 echo "linked sdk: $$linked"
 
 run: bundle
 	open $(APP)
