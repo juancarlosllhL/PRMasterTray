@@ -4,6 +4,15 @@ What each release changed, newest first. The app shows the entries you missed
 the first time it runs after an update, so keep the lines short and written for
 whoever has to read them in a small window.
 
+## 0.12.0 — 2026-09-22
+
+![The Jira tab as a board, a column per group](whats-new-0.12.0.png)
+
+- The Jira tab can be drawn as a board, a column per group, with each issue as a card. It is off until you switch it on: Settings, Jira, Layout, Board.
+- The popover widens to fit the columns while the board is open, and narrows again when you leave it.
+- Done keeps its own column unless its window is off, in which case the column goes rather than sit permanently empty.
+- Leaving Layout on List keeps the Jira tab exactly as it was.
+
 ## 0.11.1 — 2026-09-18
 
 - The remark posted with an approval draws from twice as many lines, so the same joke stops coming back.

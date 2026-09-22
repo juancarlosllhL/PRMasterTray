@@ -4,12 +4,15 @@ import Foundation
 public struct ChangelogEntry: Sendable, Equatable, Identifiable {
     public let version: String
     public let lines: [String]
+    /// A bare file name inside the bundle, never a path. See `Changelog.image`.
+    public let image: String?
 
     public var id: String { version }
 
-    public init(version: String, lines: [String]) {
+    public init(version: String, lines: [String], image: String? = nil) {
         self.version = version
         self.lines = lines
+        self.image = image
     }
 }
 
@@ -23,10 +26,14 @@ public enum Changelog {
         var entries: [ChangelogEntry] = []
         var version: String?
         var lines: [String] = []
+        var image: String?
 
         func close() {
-            if let version { entries.append(ChangelogEntry(version: version, lines: lines)) }
+            if let version {
+                entries.append(ChangelogEntry(version: version, lines: lines, image: image))
+            }
             lines = []
+            image = nil
         }
 
         for raw in markdown.split(separator: "\n", omittingEmptySubsequences: false) {
@@ -36,10 +43,24 @@ public enum Changelog {
                 version = self.version(in: line.dropFirst(3))
             } else if line.hasPrefix("- "), version != nil {
                 lines.append(String(line.dropFirst(2)))
+            } else if line.hasPrefix("!["), version != nil, image == nil {
+                image = self.image(in: line)
             }
         }
         close()
         return entries
+    }
+
+    /// A bare file name only. Anything with a path separator is refused rather
+    /// than resolved, so a changelog cannot point the window at a file on disk.
+    static func image(in line: String) -> String? {
+        guard let open = line.firstIndex(of: "("),
+              let close = line.lastIndex(of: ")"), open < close
+        else { return nil }
+        let name = line[line.index(after: open)..<close]
+            .trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty, !name.contains("/"), name != ".", name != ".." else { return nil }
+        return name
     }
 
     private static func version(in heading: Substring) -> String? {

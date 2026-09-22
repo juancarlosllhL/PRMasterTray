@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import PRMasterCore
 
@@ -27,7 +28,7 @@ struct WhatsNewView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
         }
-        .frame(width: 420, height: 380)
+        .frame(width: 420, height: entries.contains { picture($0.image) != nil } ? 560 : 380)
     }
 
     private var header: some View {
@@ -46,6 +47,16 @@ struct WhatsNewView: View {
         .padding(.bottom, 12)
     }
 
+    /// Missing is not a failure: a changelog naming a picture that did not make
+    /// it into the bundle still has its lines worth showing.
+    private func picture(_ name: String?) -> NSImage? {
+        guard let name,
+              let url = Bundle.main.url(forResource: name, withExtension: nil, subdirectory: nil)
+                  ?? Bundle.main.url(forResource: name, withExtension: nil, subdirectory: "WhatsNew")
+        else { return nil }
+        return NSImage(contentsOf: url)
+    }
+
     private func subtitle(upTo version: String) -> String {
         entries.count == 1
             ? "Version \(version)"
@@ -60,6 +71,18 @@ struct WhatsNewView: View {
                 Text(verbatim: entry.version)
                     .font(.system(size: 12, weight: .semibold, design: .monospaced))
                     .foregroundStyle(.secondary)
+            }
+            if let shot = picture(entry.image) {
+                Image(nsImage: shot)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(Color.primary.opacity(0.12))
+                    }
+                    .accessibilityLabel("A picture of what changed")
             }
             ForEach(entry.lines, id: \.self) { line in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {

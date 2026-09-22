@@ -55,6 +55,55 @@ struct ChangelogTests {
         #expect(entries.first?.lines == ["The one line that matters."])
     }
 
+    @Test("an image line becomes the entry's picture, not a bullet")
+    func parsesImage() {
+        let entries = Changelog.parse("""
+        ## 0.12.0
+
+        ![A board, a column per group](board.png)
+
+        - A line that is still a line.
+        """)
+
+        #expect(entries.first?.image == "board.png")
+        #expect(entries.first?.lines == ["A line that is still a line."])
+    }
+
+    @Test("an entry with no image has none")
+    func noImage() {
+        #expect(Changelog.parse(sample).allSatisfy { $0.image == nil })
+    }
+
+    /// The window has room for one picture, and the first is the one written
+    /// closest to the heading.
+    @Test("the first image wins when several are written")
+    func firstImageWins() {
+        let markdown = "## 0.12.0\n\n![one](a.png)\n\n![two](b.png)\n\n- a line"
+        #expect(Changelog.parse(markdown).first?.image == "a.png")
+    }
+
+    @Test("a malformed image line is left out entirely", arguments: [
+        "![no closing paren](a.png",
+        "![](   )",
+        "!not an image at all",
+    ])
+    func malformedImage(line: String) {
+        let entries = Changelog.parse("## 0.12.0\n\n\(line)\n\n- a line")
+        #expect(entries.first?.image == nil)
+        #expect(entries.first?.lines == ["a line"])
+    }
+
+    /// A path out of the bundle would be a way to point the window at any file
+    /// on disk, so only a bare file name is accepted.
+    @Test("a path is refused, only a bare file name is taken", arguments: [
+        "![x](../../etc/passwd)",
+        "![x](/etc/passwd)",
+        "![x](sub/dir/board.png)",
+    ])
+    func refusesPaths(line: String) {
+        #expect(Changelog.parse("## 0.12.0\n\n\(line)\n\n- a line").first?.image == nil)
+    }
+
     @Test("a file with no headings yields nothing", arguments: ["", "# Changelog", "- orphan"])
     func nothingToParse(text: String) {
         #expect(Changelog.parse(text).isEmpty)
