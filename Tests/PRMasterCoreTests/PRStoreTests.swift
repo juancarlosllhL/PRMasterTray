@@ -162,6 +162,10 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
     func jiraWindow() -> JiraWindow { lock.withLock { storedJiraWindow } }
     func setJiraWindow(_ value: JiraWindow) { lock.withLock { storedJiraWindow = value } }
 
+    private var storedJiraLayout: JiraLayout = .default
+    func jiraLayout() -> JiraLayout { lock.withLock { storedJiraLayout } }
+    func setJiraLayout(_ value: JiraLayout) { lock.withLock { storedJiraLayout = value } }
+
     private var storedAppLocations: [String: [AppLocation]] = [:]
     var appLocationWrites = 0
     func appLocations() -> [String: [AppLocation]] { lock.withLock { storedAppLocations } }

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import PRMasterCore
 
@@ -139,11 +140,29 @@ struct PRListView: View {
                 footer(last)
             }
         }
-        .frame(width: 380)
+        .frame(width: popoverWidth)
         .background { popoverBackground }
         // Hands the resolved palette to every row and banner below.
         .environment(\.palette, palette)
         .environment(\.hidesEmoji, appearance.hidesEmoji)
+    }
+
+    /// One deterministic value per render, never one derived from what the last
+    /// render measured, or `.preferredContentSize` makes the popover oscillate.
+    private var popoverWidth: CGFloat {
+        CGFloat(
+            JiraBoard.popoverWidth(
+                isJiraTab: activeTab == .jira,
+                showsBoard: jira.showsBoard,
+                columns: jira.boardColumns.count,
+                available: availableWidth
+            )
+        )
+    }
+
+    private var availableWidth: Double {
+        let screen = NSApp.keyWindow?.screen ?? NSScreen.main
+        return Double(screen?.visibleFrame.width ?? 1440)
     }
 
     /// Nothing at all for liquid glass.

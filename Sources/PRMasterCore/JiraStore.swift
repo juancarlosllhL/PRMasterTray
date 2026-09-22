@@ -46,6 +46,15 @@ public final class JiraStore {
         }
     }
 
+    /// No refetch, unlike `window`: this changes how the issues in hand are
+    /// drawn, not which ones were asked for.
+    public var layout: JiraLayout {
+        didSet {
+            guard layout != oldValue else { return }
+            preferences.setJiraLayout(layout)
+        }
+    }
+
     /// Deliberately not persisted: a filter still in force on the next launch,
     /// with nothing on screen to say so, reads as a list that has broken.
     public var searchQuery = ""
@@ -55,6 +64,16 @@ public final class JiraStore {
     }
 
     public var visibleGroups: JiraGroups { groups.matching(searchQuery) }
+
+    public var boardColumns: [JiraColumn] {
+        visibleGroups.boardColumns(includesDone: window != .off)
+    }
+
+    /// The one flag the pane and the popover's width both read, so the two cannot
+    /// disagree about whether a board is on screen.
+    public var showsBoard: Bool {
+        layout == .board && isConfigured && !visibleGroups.isEmpty
+    }
 
     private static let intervals: [Duration] = [.seconds(60), .seconds(120), .seconds(300)]
 
@@ -84,6 +103,7 @@ public final class JiraStore {
         self.now = now
         self.sleep = sleep
         self.window = preferences.jiraWindow()
+        self.layout = preferences.jiraLayout()
     }
 
     var currentInterval: Duration {

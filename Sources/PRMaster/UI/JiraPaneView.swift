@@ -117,7 +117,7 @@ struct JiraPaneView: View {
                         + "outside the window on the Jira settings tab."
                 )
             case .content, .stale:
-                rows
+                if jira.showsBoard { board } else { rows }
             }
         }
     }
@@ -147,6 +147,16 @@ struct JiraPaneView: View {
             ),
             Section(title: "Done", issues: groups.done, cap: 4, height: 180),
         ].filter { !$0.issues.isEmpty }
+    }
+
+    private var board: some View {
+        JiraBoardView(
+            columns: jira.boardColumns,
+            jira: jira,
+            filter: filter,
+            onOpenIssue: onOpenIssue,
+            onOpenLink: onOpenLink
+        )
     }
 
     private var rows: some View {

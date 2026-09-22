@@ -116,6 +116,9 @@ public protocol PreferenceStoring: Sendable {
     /// How far back the Jira Done section reaches.
     func jiraWindow() -> JiraWindow
     func setJiraWindow(_ value: JiraWindow)
+    /// Whether the Jira pane draws as a list or as a board.
+    func jiraLayout() -> JiraLayout
+    func setJiraLayout(_ value: JiraLayout)
     /// Which teams the user has switched off.
     func teamFilter() -> TeamFilter
     func setTeamFilter(_ value: TeamFilter)
@@ -715,6 +718,7 @@ public struct UserDefaultsPreferences: PreferenceStoring {
     private let launchAtLoginKey = "launchAtLoginRequested"
     private let reviewWindowKey = "reviewWindow"
     private let jiraWindowKey = "jiraWindow"
+    private let jiraLayoutKey = "jiraLayout"
     private let disabledTeamsKey = "disabledTeams"
     private let knownTeamsKey = "knownTeams"
     private let approvalQuipsKey = "approvalQuips"
@@ -861,6 +865,15 @@ public struct UserDefaultsPreferences: PreferenceStoring {
 
     public func setJiraWindow(_ value: JiraWindow) {
         defaults.set(value.rawValue, forKey: jiraWindowKey)
+    }
+
+    public func jiraLayout() -> JiraLayout {
+        defaults.string(forKey: jiraLayoutKey)
+            .flatMap(JiraLayout.init(rawValue:)) ?? .default
+    }
+
+    public func setJiraLayout(_ value: JiraLayout) {
+        defaults.set(value.rawValue, forKey: jiraLayoutKey)
     }
 
     public func teamFilter() -> TeamFilter {

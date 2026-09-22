@@ -331,6 +331,19 @@ struct SettingsView: View {
             }
 
             Section {
+                Picker("Show issues as", selection: $jiraStore.layout) {
+                    ForEach(JiraLayout.allCases, id: \.self) { layout in
+                        Text(verbatim: layout.label).tag(layout)
+                    }
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text("Layout")
+            } footer: {
+                footnote(Text(verbatim: jiraLayoutSummary))
+            }
+
+            Section {
                 Picker("Show issues finished within", selection: $jiraStore.window) {
                     ForEach(JiraWindow.allCases, id: \.self) { window in
                         Text(verbatim: window.label).tag(window)
@@ -346,6 +359,10 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    private var jiraLayoutSummary: String {
+        JiraBoard.layoutSummary(jiraStore.layout, columns: jiraStore.boardColumns.count)
     }
 
     /// Says what the window is worth right now rather than in the abstract,
