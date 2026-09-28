@@ -129,7 +129,11 @@ struct DiffTableView: NSViewRepresentable {
             self.matches = matches
             matchesByRow = Dictionary(grouping: matches, by: \.row)
             self.currentMatch = currentMatch
-            table.reloadData()
+            if contentChanged {
+                table.reloadData()
+            } else {
+                refreshAvailableCells(table)
+            }
             if currentMoved, let currentMatch { reveal(currentMatch, in: table) }
             if let file = pendingFile {
                 pendingFile = nil
@@ -146,7 +150,9 @@ struct DiffTableView: NSViewRepresentable {
             let top = topVisibleRow(table)
             rewrap(table, force: false)
             guard capacities != before else { return }
-            table.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 0..<rows.count))
+            // Not noteHeightOfRows: it animates, and leaves the cells on screen
+            // drawing their old wrapping inside the new heights.
+            table.reloadData()
             scroll(table, toRow: top)
             updatePinnedHeader()
         }
@@ -282,6 +288,18 @@ struct DiffTableView: NSViewRepresentable {
             }
         }
 
+        /// Find only changes highlights, so the cells already built, including
+        /// the ones prepared off screen, are redrawn in place rather than reloaded.
+        private func refreshAvailableCells(_ table: NSTableView) {
+            table.enumerateAvailableRowViews { rowView, row in
+                for index in 0..<rowView.numberOfColumns {
+                    guard let cell = rowView.view(atColumn: index) as? DiffCellView else { continue }
+                    let column = rowView.isGroupRowStyle ? nil : table.tableColumns[safe: index]
+                    configure(cell, row: row, tableColumn: column, in: table)
+                }
+            }
+        }
+
         func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
             let identifier = NSUserInterfaceItemIdentifier("DiffCell")
             let cell = tableView.makeView(withIdentifier: identifier, owner: nil) as? DiffCellView ?? {
@@ -289,6 +307,12 @@ struct DiffTableView: NSViewRepresentable {
                 view.identifier = identifier
                 return view
             }()
+            configure(cell, row: row, tableColumn: tableColumn, in: tableView)
+            return cell
+        }
+
+        private func configure(_ cell: DiffCellView, row: Int, tableColumn: NSTableColumn?, in tableView: NSTableView) {
+            guard rows.indices.contains(row) else { return }
             let columnIndex = tableColumn.flatMap { tableView.tableColumns.firstIndex(of: $0) } ?? 0
             let segments = wraps.indices.contains(row)
                 ? wraps[row].segments[min(columnIndex, wraps[row].segments.count - 1)]
@@ -301,7 +325,6 @@ struct DiffTableView: NSViewRepresentable {
                 palette: palette ?? .init(appearance: .light, contrast: .standard),
                 segments: segments, metrics: metrics, highlights: highlights
             )
-            return cell
         }
 
         private func content(for row: DiffRow, column: NSTableColumn?) -> DiffCellView.Content {
@@ -317,6 +340,10 @@ struct DiffTableView: NSViewRepresentable {
             }
         }
     }
+}
+
+private extension Array {
+    subscript(safe index: Int) -> Element? { indices.contains(index) ? self[index] : nil }
 }
 
 final class CopyingTableView: NSTableView {
