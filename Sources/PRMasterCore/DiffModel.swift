@@ -10,17 +10,22 @@ public struct DiffLine: Sendable, Equatable {
     public let newNumber: Int?
     public let text: String
     public let noNewlineAtEnd: Bool
+    public var tokens: [TokenRange]
 
-    public init(kind: Kind, oldNumber: Int?, newNumber: Int?, text: String, noNewlineAtEnd: Bool = false) {
+    public init(
+        kind: Kind, oldNumber: Int?, newNumber: Int?, text: String,
+        noNewlineAtEnd: Bool = false, tokens: [TokenRange] = []
+    ) {
         self.kind = kind
         self.oldNumber = oldNumber
         self.newNumber = newNumber
         self.text = text
         self.noNewlineAtEnd = noNewlineAtEnd
+        self.tokens = tokens
     }
 
     func withNoNewlineAtEnd() -> DiffLine {
-        DiffLine(kind: kind, oldNumber: oldNumber, newNumber: newNumber, text: text, noNewlineAtEnd: true)
+        DiffLine(kind: kind, oldNumber: oldNumber, newNumber: newNumber, text: text, noNewlineAtEnd: true, tokens: tokens)
     }
 }
 
