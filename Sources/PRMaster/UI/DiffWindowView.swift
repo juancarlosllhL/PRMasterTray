@@ -68,6 +68,7 @@ struct DiffWindowView: View {
     var paletteInputs = PaletteInputs()
     @State private var scrollTarget: String?
     @State private var selectedFile: String?
+    @State private var fileFilter = Debug.fileFilter ?? ""
 
     var body: some View {
         let palette = paletteInputs.resolved(monochromeEnabled: appearance.monochromeEnabled)
@@ -107,11 +108,40 @@ struct DiffWindowView: View {
     private var files: [DiffFile] { store.diff?.files ?? [] }
 
     private func sidebar(_ palette: ResolvedPalette) -> some View {
-        List(selection: $selectedFile) {
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                TextField("Filter files", text: $fileFilter)
+                    .textFieldStyle(.plain)
+                if !fileFilter.isEmpty {
+                    Button { fileFilter = "" } label: { Image(systemName: "xmark.circle.fill") }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .help("Clear filter")
+                        .accessibilityLabel("Clear filter")
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            Divider()
+            fileList(palette)
+        }
+    }
+
+    private func fileList(_ palette: ResolvedPalette) -> some View {
+        let shown = DiffSearch.filter(files, by: fileFilter)
+        return List(selection: $selectedFile) {
             Section {
-                ForEach(files) { file in
+                if shown.isEmpty && !files.isEmpty {
+                    Text("No files match.")
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(shown) { file in
                     DiffFileRow(
                         file: file,
+                        highlights: DiffSearch.pathHighlights(of: fileFilter, in: file.path),
                         canMarkViewed: store.canMarkViewed,
                         failure: store.viewedFailures[file.path],
                         onViewed: { viewed in Task { await store.setViewed(file.path, viewed) } }
@@ -216,6 +246,7 @@ struct DiffWindowView: View {
 
 private struct DiffFileRow: View {
     let file: DiffFile
+    let highlights: (directory: [Range<Int>], name: [Range<Int>])
     let canMarkViewed: Bool
     let failure: String?
     let onViewed: (Bool) -> Void
@@ -228,10 +259,10 @@ private struct DiffFileRow: View {
                 .frame(width: 14)
                 .accessibilityLabel(file.change.rawValue)
             VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: (file.path as NSString).lastPathComponent)
+                Text(SearchHighlight.text((file.path as NSString).lastPathComponent, highlights.name))
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Text(verbatim: directory)
+                Text(SearchHighlight.text(directory, highlights.directory))
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

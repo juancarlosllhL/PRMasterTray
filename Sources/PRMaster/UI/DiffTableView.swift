@@ -304,6 +304,25 @@ final class CopyingTableView: NSTableView {
     }
 }
 
+/// Find highlights: dark text on yellow reads in both appearances, and the
+/// current match is orange so it stands out from the rest.
+enum SearchHighlight {
+    static let match = NSColor.systemYellow
+    static let current = NSColor.systemOrange
+    static let text = NSColor.black
+
+    static func text(_ string: String, _ ranges: [Range<Int>]) -> AttributedString {
+        var attributed = AttributedString(string)
+        for range in ranges {
+            guard let bounds = Range(NSRange(location: range.lowerBound, length: range.count), in: string),
+                  let span = Range(bounds, in: attributed) else { continue }
+            attributed[span].backgroundColor = Color(nsColor: match)
+            attributed[span].foregroundColor = Color(nsColor: text)
+        }
+        return attributed
+    }
+}
+
 /// The current file's header, drawn above the rows while its own row is scrolled away.
 final class PinnedHeaderView: NSView {
     var onClick: (() -> Void)?

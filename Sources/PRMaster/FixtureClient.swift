@@ -164,6 +164,11 @@ enum Debug {
         ProcessInfo.processInfo.environment["PRMASTER_OPEN_FILE"]
     }
 
+    /// `PRMASTER_FILE_FILTER=<text>` types into the review window's file filter.
+    static var fileFilter: String? {
+        ProcessInfo.processInfo.environment["PRMASTER_FILE_FILTER"]
+    }
+
     /// `PRMASTER_SCROLL=<points>` scrolls that far past the file opened by
     /// `PRMASTER_OPEN_FILE`, to snapshot the middle of a file.
     static var scrollOffset: CGFloat? {
