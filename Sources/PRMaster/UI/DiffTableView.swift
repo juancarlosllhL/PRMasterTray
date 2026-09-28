@@ -55,6 +55,16 @@ struct DiffTableView: NSViewRepresentable {
             context.coordinator, selector: #selector(Coordinator.tableResized),
             name: NSView.frameDidChangeNotification, object: scroll.contentView
         )
+        scroll.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            context.coordinator, selector: #selector(Coordinator.updatePinnedHeader),
+            name: NSView.boundsDidChangeNotification, object: scroll.contentView
+        )
+        let pinned = PinnedHeaderView()
+        pinned.isHidden = true
+        pinned.onClick = { [weak coordinator = context.coordinator] in coordinator?.pinnedHeaderClicked() }
+        scroll.addSubview(pinned, positioned: .below, relativeTo: scroll.verticalScroller)
+        context.coordinator.pinned = pinned
         context.coordinator.table = table
         return scroll
     }
@@ -65,12 +75,14 @@ struct DiffTableView: NSViewRepresentable {
         coordinator.update(rows: rows, layout: layout, palette: palette, metrics: metrics)
         guard let target = scrollTarget else { return }
         coordinator.scroll(toFile: target)
+        if let offset = Debug.scrollOffset { coordinator.scroll(by: offset) }
         DispatchQueue.main.async { scrollTarget = nil }
     }
 
     @MainActor
     final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         weak var table: NSTableView?
+        weak var pinned: PinnedHeaderView?
         var onToggleFile: ((String) -> Void)?
         private(set) var rows: [DiffRow] = []
         private var layout: DiffLayout?
@@ -79,6 +91,7 @@ struct DiffTableView: NSViewRepresentable {
         private var wraps: [RowWrap] = []
         private var capacities: [Int] = []
         private var isRewrapping = false
+        private var pendingFile: String?
 
         /// Each column's wrapped segments for one row, and the height they need.
         private struct RowWrap {
@@ -101,6 +114,11 @@ struct DiffTableView: NSViewRepresentable {
             self.palette = palette
             rewrap(table, force: true)
             table.reloadData()
+            if let file = pendingFile {
+                pendingFile = nil
+                scroll(toFile: file)
+            }
+            updatePinnedHeader()
         }
 
         /// Rewraps only when a column's width in characters changed. A large diff
@@ -113,6 +131,39 @@ struct DiffTableView: NSViewRepresentable {
             guard capacities != before else { return }
             table.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 0..<rows.count))
             scroll(table, toRow: top)
+            updatePinnedHeader()
+        }
+
+        /// Shows the header of the file under the top edge once its own header
+        /// has scrolled past, and lets the next file's header push it away.
+        @objc func updatePinnedHeader() {
+            guard let table, let pinned, let scroll = table.enclosingScrollView else { return }
+            let clip = scroll.contentView
+            let top = clip.bounds.minY
+            let topRow = table.row(at: NSPoint(x: 0, y: top))
+            guard topRow >= 0, let header = DiffRows.fileHeaderIndex(owning: topRow, in: rows),
+                  table.rect(ofRow: header).minY < top, wraps.indices.contains(header),
+                  case .fileHeader(let path) = rows[header]
+            else {
+                pinned.isHidden = true
+                return
+            }
+            let height = wraps[header].height
+            let push = DiffRows.nextFileHeaderIndex(after: header, in: rows)
+                .map { min(0, table.rect(ofRow: $0).minY - top - height) } ?? 0
+            pinned.configure(
+                path: path, segments: wraps[header].segments[0],
+                palette: palette ?? .init(appearance: .light, contrast: .standard), metrics: metrics
+            )
+            let frame = NSRect(x: clip.bounds.minX, y: top + push, width: clip.bounds.width, height: height)
+            pinned.frame = scroll.convert(frame, from: clip)
+            pinned.isHidden = false
+        }
+
+        func pinnedHeaderClicked() {
+            guard let path = pinned?.path else { return }
+            pendingFile = path
+            onToggleFile?(path)
         }
 
         /// Rewrapping changes every height above the fold, so the row at the top
@@ -162,6 +213,12 @@ struct DiffTableView: NSViewRepresentable {
         func scroll(toFile path: String) {
             guard let table else { return }
             scroll(table, toRow: DiffRows.index(ofFile: path, in: rows))
+        }
+
+        func scroll(by offset: CGFloat) {
+            guard let clip = table?.enclosingScrollView?.contentView else { return }
+            clip.scroll(to: NSPoint(x: clip.bounds.minX, y: clip.bounds.minY + offset))
+            table?.enclosingScrollView?.reflectScrolledClipView(clip)
         }
 
         @objc func clicked(_ sender: NSTableView) {
@@ -244,6 +301,59 @@ final class CopyingTableView: NSTableView {
         guard let text = coordinator?.copyText(of: selectedRowIndexes), !text.isEmpty else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+}
+
+/// The current file's header, drawn above the rows while its own row is scrolled away.
+final class PinnedHeaderView: NSView {
+    var onClick: (() -> Void)?
+    private(set) var path: String?
+    private let cell = DiffCellView()
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        cell.autoresizingMask = [.width, .height]
+        addSubview(cell)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    func configure(path: String, segments: [Range<Int>], palette: ResolvedPalette, metrics: DiffMetrics) {
+        self.path = path
+        cell.frame = bounds
+        cell.configure(.header(path, isFile: true), palette: palette, segments: segments, metrics: metrics)
+        setAccessibilityLabel(path)
+        needsDisplay = true
+    }
+
+    override func layout() {
+        super.layout()
+        cell.frame = bounds
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        isHidden || !frame.contains(point) ? nil : self
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        onClick?()
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        onClick?()
+        return true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {}
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        wantsLayer = true
+        layer?.shadowOpacity = 0.15
+        layer?.shadowRadius = 2
+        layer?.shadowOffset = NSSize(width: 0, height: -1)
     }
 }
 

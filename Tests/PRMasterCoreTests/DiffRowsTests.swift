@@ -109,6 +109,26 @@ struct DiffRowsTests {
         #expect(DiffRows.index(ofFile: "missing", in: rows) == nil)
     }
 
+    /// The pinned header names the file the reader is inside, so a hunk or line
+    /// row resolves to the header above it, never to the next file's.
+    @Test("any row belongs to the file header above it")
+    func owningHeader() throws {
+        let content = DiffContent.hunks([try hunk("@@ -1 +1 @@\n-b\n+c")])
+        let rows = DiffRows.build([file("a.swift", content), file("b.swift", content)], layout: .unified, collapsed: [])
+        #expect((0...3).map { DiffRows.fileHeaderIndex(owning: $0, in: rows) } == [0, 0, 0, 0])
+        #expect((4...7).map { DiffRows.fileHeaderIndex(owning: $0, in: rows) } == [4, 4, 4, 4])
+        #expect(DiffRows.fileHeaderIndex(owning: 99, in: rows) == nil)
+        #expect(DiffRows.fileHeaderIndex(owning: 0, in: []) == nil)
+    }
+
+    @Test("the next file header after a row is where the pinned header gets pushed away")
+    func nextHeader() throws {
+        let content = DiffContent.hunks([try hunk("@@ -1 +1 @@\n-b\n+c")])
+        let rows = DiffRows.build([file("a.swift", content), file("b.swift", .omitted(.tooLarge))], layout: .unified, collapsed: [])
+        #expect(DiffRows.nextFileHeaderIndex(after: 0, in: rows) == 4)
+        #expect(DiffRows.nextFileHeaderIndex(after: 4, in: rows) == nil)
+    }
+
     @Test("copying unified rows gives the code with its markers, headers as they read")
     func copyUnified() throws {
         let content = DiffContent.hunks([try hunk("@@ -1,2 +1,2 @@\n a\n-b\n+c")])

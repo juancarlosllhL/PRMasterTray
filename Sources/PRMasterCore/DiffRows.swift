@@ -77,6 +77,16 @@ public enum DiffRows {
         rows.firstIndex(of: .fileHeader(path: path))
     }
 
+    public static func fileHeaderIndex(owning row: Int, in rows: [DiffRow]) -> Int? {
+        guard rows.indices.contains(row) else { return nil }
+        return rows[...row].lastIndex { if case .fileHeader = $0 { return true } else { return false } }
+    }
+
+    public static func nextFileHeaderIndex(after row: Int, in rows: [DiffRow]) -> Int? {
+        guard row + 1 < rows.count else { return nil }
+        return rows[(row + 1)...].firstIndex { if case .fileHeader = $0 { return true } else { return false } }
+    }
+
     /// Unified lines keep their marker so the copy still reads as a diff; a
     /// split row copies its new side, or its old side where the new is blank.
     public static func copyText(_ rows: [DiffRow]) -> String {

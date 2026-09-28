@@ -164,6 +164,12 @@ enum Debug {
         ProcessInfo.processInfo.environment["PRMASTER_OPEN_FILE"]
     }
 
+    /// `PRMASTER_SCROLL=<points>` scrolls that far past the file opened by
+    /// `PRMASTER_OPEN_FILE`, to snapshot the middle of a file.
+    static var scrollOffset: CGFloat? {
+        ProcessInfo.processInfo.environment["PRMASTER_SCROLL"].flatMap(Double.init).map { CGFloat($0) }
+    }
+
     /// `PRMASTER_SNAPSHOT=<path.png>` writes the review window opened by
     /// `PRMASTER_OPEN_DIFF` to disk, for screenshots without screen recording.
     static var snapshotPath: String? {
