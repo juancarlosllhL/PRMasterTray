@@ -38,6 +38,8 @@ struct DiffTableView: NSViewRepresentable {
         scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = true
         scroll.autohidesScrollers = true
+        scroll.automaticallyAdjustsContentInsets = false
+        scroll.contentInsets = NSEdgeInsetsZero
         context.coordinator.table = table
         return scroll
     }
@@ -96,15 +98,15 @@ struct DiffTableView: NSViewRepresentable {
             }
         }
 
-        /// Columns never shrink below their longest line, so long lines scroll
-        /// sideways instead of being cut off.
+        /// Unified never shrinks below its longest line, so long lines scroll
+        /// sideways. Split shares the width, so both sides stay on screen.
         private func sizeColumns(_ table: NSTableView) {
-            let longest = rows.reduce(0) { max($0, DiffMetrics.columns(in: $1)) }
+            let longest = layout == .split ? 40 : rows.reduce(0) { max($0, DiffMetrics.columns(in: $1)) }
             let gutter = layout == .split ? DiffMetrics.splitGutter : DiffMetrics.unifiedGutter
             let width = CGFloat(gutter + longest) * DiffMetrics.advance + DiffMetrics.padding * 2
             for column in table.tableColumns {
                 column.minWidth = width
-                column.width = max(column.width, width)
+                column.width = width
             }
             table.sizeToFit()
         }
