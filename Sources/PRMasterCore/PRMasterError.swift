@@ -59,6 +59,8 @@ public enum PRMasterError: Error, LocalizedError {
     case jiraUnauthorized
     /// Jira's own reason for refusing a transition, verbatim.
     case jiraMoveRefused(String)
+    /// The branch was pushed to twice while its diff was being read.
+    case diffHeadMoved
 
     public var errorDescription: String? {
         switch self {
@@ -123,6 +125,8 @@ public enum PRMasterError: Error, LocalizedError {
             return "The update failed its integrity check and was not installed."
         case .updateFailed(let detail):
             return "Couldn't install the update — \(detail)"
+        case .diffHeadMoved:
+            return "New commits kept arriving while the diff was loading. Try again in a moment."
         }
     }
 }
@@ -136,7 +140,8 @@ extension PRMasterError: Equatable {
              (.noReleaseYet, .noReleaseYet),
              (.releaseAssetMissing, .releaseAssetMissing),
              (.updateVerificationFailed, .updateVerificationFailed),
-             (.jiraUnauthorized, .jiraUnauthorized):
+             (.jiraUnauthorized, .jiraUnauthorized),
+             (.diffHeadMoved, .diffHeadMoved):
             return true
         case (.notAuthenticated(let l), .notAuthenticated(let r)):
             return l == r

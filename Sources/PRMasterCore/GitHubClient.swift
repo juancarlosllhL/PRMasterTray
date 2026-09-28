@@ -373,7 +373,7 @@ public actor GitHubClient {
     static func name(of repo: String) -> String { String(repo.drop { $0 != "/" }.dropFirst()) }
 
     /// Sends a REST GET, retrying once on 401 on the same terms as `perform`.
-    private func get(_ url: URL) async throws -> Data {
+    func get(_ url: URL) async throws -> Data {
         do {
             return try await sendGET(url, token: try token())
         } catch PRMasterError.unauthorized {
@@ -457,13 +457,13 @@ public actor GitHubClient {
 
     /// Whether the body is even worth handing to a JSON decoder.
     ///
-    /// A GraphQL reply is always a JSON object, so anything that does not open
-    /// with `{` came from something other than the API — GitHub's own edge
-    /// error page, a corporate proxy, or a captive portal.
+    /// A GraphQL reply is a JSON object and a REST list an array, so anything
+    /// else came from something other than the API — GitHub's own edge error
+    /// page, a corporate proxy, or a captive portal.
     private static func looksLikeJSON(_ data: Data) -> Bool {
         let whitespace: Set<UInt8> = [0x20, 0x09, 0x0A, 0x0D]
         guard let first = data.first(where: { !whitespace.contains($0) }) else { return false }
-        return first == UInt8(ascii: "{")
+        return first == UInt8(ascii: "{") || first == UInt8(ascii: "[")
     }
 
     private static func resetDate(from response: HTTPURLResponse) -> Date {

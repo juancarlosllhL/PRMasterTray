@@ -573,4 +573,40 @@ enum Queries {
       }
     }
     """
+
+    /// Everything the diff is pinned to, plus one page of viewed states.
+    /// `changedFiles` rather than `files.totalCount`: `files` is nullable.
+    static let diffMeta = """
+    query($owner: String!, $name: String!, $number: Int!, $after: String) {
+      repository(owner: $owner, name: $name) {
+        pullRequest(number: $number) {
+          id baseRefOid headRefOid changedFiles
+          files(first: 100, after: $after) {
+            pageInfo { hasNextPage endCursor }
+            nodes { path viewerViewedState }
+          }
+        }
+      }
+    }
+    """
+
+    static let diffHead = """
+    query($owner: String!, $name: String!, $number: Int!) {
+      repository(owner: $owner, name: $name) {
+        pullRequest(number: $number) { headRefOid }
+      }
+    }
+    """
+
+    static let markFileViewed = """
+    mutation($id: ID!, $path: String!) {
+      markFileAsViewed(input: { pullRequestId: $id, path: $path }) { clientMutationId }
+    }
+    """
+
+    static let unmarkFileViewed = """
+    mutation($id: ID!, $path: String!) {
+      unmarkFileAsViewed(input: { pullRequestId: $id, path: $path }) { clientMutationId }
+    }
+    """
 }
