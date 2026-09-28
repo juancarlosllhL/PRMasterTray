@@ -127,6 +127,8 @@ public protocol PreferenceStoring: Sendable {
     func setApprovalQuipsEnabled(_ value: Bool)
     func diffLayout() -> DiffLayout
     func setDiffLayout(_ value: DiffLayout)
+    func diffFontFamily() -> String?
+    func setDiffFontFamily(_ value: String?)
     /// The teams discovered last time. Stored so a failed discovery falls back to
     /// the last good list instead of emptying the section, and so the settings
     /// window has something to show before the first fetch lands.
@@ -725,6 +727,7 @@ public struct UserDefaultsPreferences: PreferenceStoring {
     private let knownTeamsKey = "knownTeams"
     private let approvalQuipsKey = "approvalQuips"
     private let diffLayoutKey = "diffLayout"
+    private let diffFontFamilyKey = "diffFontFamily"
     // UserDefaults is documented as thread-safe but predates Sendable.
     nonisolated(unsafe) private let defaults: UserDefaults
 
@@ -876,6 +879,14 @@ public struct UserDefaultsPreferences: PreferenceStoring {
 
     public func setDiffLayout(_ value: DiffLayout) {
         defaults.set(value.rawValue, forKey: diffLayoutKey)
+    }
+
+    public func diffFontFamily() -> String? {
+        defaults.string(forKey: diffFontFamilyKey)
+    }
+
+    public func setDiffFontFamily(_ value: String?) {
+        if let value { defaults.set(value, forKey: diffFontFamilyKey) } else { defaults.removeObject(forKey: diffFontFamilyKey) }
     }
 
     public func jiraLayout() -> JiraLayout {

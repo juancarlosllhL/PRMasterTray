@@ -163,6 +163,7 @@ struct DiffWindowView: View {
         } else {
             DiffTableView(
                 rows: store.rows, layout: store.layout, palette: palette,
+                fontFamily: appearance.diffFontFamily,
                 scrollTarget: $scrollTarget, onToggleFile: store.toggleCollapsed
             )
         }

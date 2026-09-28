@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import PRMasterCore
 
 /// Serves PRs from a local JSON file instead of GitHub.
@@ -168,6 +168,14 @@ enum Debug {
     /// `PRMASTER_OPEN_DIFF` to disk, for screenshots without screen recording.
     static var snapshotPath: String? {
         ProcessInfo.processInfo.environment["PRMASTER_SNAPSHOT"]
+    }
+
+    @MainActor
+    static func snapshot(_ window: NSWindow, to url: URL) {
+        guard let view = window.contentView?.superview,
+              let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        try? rep.representation(using: .png, properties: [:])?.write(to: url)
     }
 
     /// `PRMASTER_DEMO_MERGE=confirm|fail` drives the merge dialogs directly,

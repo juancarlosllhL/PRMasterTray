@@ -66,10 +66,8 @@ final class DiffWindowController: NSObject, NSWindowDelegate {
     }
 
     func snapshotFrontWindow(to url: URL) {
-        guard let view = NSApp.windows.first(where: { $0.delegate === self && $0.isVisible })?.contentView?.superview,
-              let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
-        view.cacheDisplay(in: view.bounds, to: rep)
-        try? rep.representation(using: .png, properties: [:])?.write(to: url)
+        guard let window = NSApp.windows.first(where: { $0.delegate === self && $0.isVisible }) else { return }
+        Debug.snapshot(window, to: url)
     }
 
     func windowWillClose(_ notification: Notification) {

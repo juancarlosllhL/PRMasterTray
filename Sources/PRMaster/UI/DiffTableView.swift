@@ -12,6 +12,7 @@ struct DiffTableView: NSViewRepresentable {
     let rows: [DiffRow]
     let layout: DiffLayout
     let palette: ResolvedPalette
+    let fontFamily: String?
     @Binding var scrollTarget: String?
     let onToggleFile: (String) -> Void
 
@@ -20,7 +21,7 @@ struct DiffTableView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSScrollView {
         let table = CopyingTableView()
         table.headerView = nil
-        table.rowHeight = DiffMetrics.lineHeight + DiffMetrics.verticalPadding * 2
+        table.rowHeight = DiffMetrics.forFamily(fontFamily).lineHeight + DiffMetrics.verticalPadding * 2
         table.intercellSpacing = .zero
         table.gridStyleMask = []
         table.style = .plain
@@ -54,7 +55,7 @@ struct DiffTableView: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         let coordinator = context.coordinator
         coordinator.onToggleFile = onToggleFile
-        coordinator.update(rows: rows, layout: layout, palette: palette)
+        coordinator.update(rows: rows, layout: layout, palette: palette, metrics: .forFamily(fontFamily))
         guard let target = scrollTarget else { return }
         coordinator.scroll(toFile: target)
         DispatchQueue.main.async { scrollTarget = nil }
@@ -67,6 +68,7 @@ struct DiffTableView: NSViewRepresentable {
         private(set) var rows: [DiffRow] = []
         private var layout: DiffLayout?
         private var palette: ResolvedPalette?
+        private var metrics = DiffMetrics.forFamily(nil)
         private var wraps: [RowWrap] = []
         private var capacities: [Int] = []
         private var isRewrapping = false
@@ -77,8 +79,12 @@ struct DiffTableView: NSViewRepresentable {
             let height: CGFloat
         }
 
-        func update(rows: [DiffRow], layout: DiffLayout, palette: ResolvedPalette) {
-            guard let table, rows != self.rows || layout != self.layout || palette != self.palette else { return }
+        func update(rows: [DiffRow], layout: DiffLayout, palette: ResolvedPalette, metrics: DiffMetrics) {
+            guard let table,
+                  rows != self.rows || layout != self.layout || palette != self.palette || metrics !== self.metrics
+            else { return }
+            self.metrics = metrics
+            table.rowHeight = metrics.lineHeight + DiffMetrics.verticalPadding * 2
             if layout != self.layout {
                 rebuildColumns(table, layout)
                 table.sizeToFit()
@@ -106,14 +112,14 @@ struct DiffTableView: NSViewRepresentable {
             let width = table.enclosingScrollView?.contentView.bounds.width ?? table.bounds.width
             let gutter = layout == .split ? DiffMetrics.splitGutter : DiffMetrics.unifiedGutter
             let columnWidth = width / CGFloat(max(table.tableColumns.count, 1))
-            let code = table.tableColumns.map { _ in DiffMetrics.capacity(columnWidth, gutter: gutter) }
-            let full = DiffMetrics.capacity(width, gutter: 0)
+            let code = table.tableColumns.map { _ in metrics.capacity(columnWidth, gutter: gutter) }
+            let full = metrics.capacity(width, gutter: 0)
             let capacities = code + [full]
             guard force || capacities != self.capacities else { return }
             self.capacities = capacities
 
             func wrap(_ text: String?, _ width: Int) -> [Range<Int>] {
-                LineWrap.segments(text ?? "", width: width, tabWidth: DiffMetrics.tabWidth, columns: DiffMetrics.columns)
+                LineWrap.segments(text ?? "", width: width, tabWidth: DiffMetrics.tabWidth, columns: metrics.columns)
             }
             wraps = rows.map { row in
                 let segments: [[Range<Int>]]
@@ -126,7 +132,7 @@ struct DiffTableView: NSViewRepresentable {
                     segments = [wrap(left?.text, code.first ?? full), wrap(right?.text, code.last ?? full)]
                 }
                 let lines = segments.map(\.count).max() ?? 1
-                return RowWrap(segments: segments, height: CGFloat(lines) * DiffMetrics.lineHeight + DiffMetrics.verticalPadding * 2)
+                return RowWrap(segments: segments, height: CGFloat(lines) * metrics.lineHeight + DiffMetrics.verticalPadding * 2)
             }
         }
 
@@ -185,7 +191,7 @@ struct DiffTableView: NSViewRepresentable {
             cell.configure(
                 content(for: rows[row], column: tableColumn),
                 palette: palette ?? .init(appearance: .light, contrast: .standard),
-                segments: segments
+                segments: segments, metrics: metrics
             )
             return cell
         }
@@ -220,32 +226,51 @@ final class CopyingTableView: NSTableView {
     }
 }
 
+/// Everything about drawing that depends on the chosen font, one per family.
 @MainActor
-enum DiffMetrics {
-    static let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-    static let boldFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .semibold)
-    static let advance = ("0" as NSString).size(withAttributes: [.font: font]).width
-    static let lineHeight = ceil(font.ascender - font.descender + font.leading)
-    static let verticalPadding: CGFloat = 2
+final class DiffMetrics {
     static let padding: CGFloat = 6
+    static let verticalPadding: CGFloat = 2
     static let tabWidth = 4
     /// Old number, new number and the sign, in characters.
     static let unifiedGutter = 14
     static let splitGutter = 8
 
-    static let paragraph: NSParagraphStyle = {
+    private static var cache: [String: DiffMetrics] = [:]
+
+    static func forFamily(_ family: String?) -> DiffMetrics {
+        let key = family ?? ""
+        if let known = cache[key] { return known }
+        let metrics = DiffMetrics(family: family)
+        cache[key] = metrics
+        return metrics
+    }
+
+    let font: NSFont
+    let boldFont: NSFont
+    let advance: CGFloat
+    let lineHeight: CGFloat
+    let paragraph: NSParagraphStyle
+    private var measuredColumns: [UInt32: Double] = [:]
+
+    private init(family: String?) {
+        let size: CGFloat = 12
+        font = family.flatMap { MonospaceFonts.font(family: $0, size: size) }
+            ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+        boldFont = family.flatMap { MonospaceFonts.font(family: $0, size: size, bold: true) }
+            ?? NSFont.monospacedSystemFont(ofSize: size, weight: .semibold)
+        advance = ("0" as NSString).size(withAttributes: [.font: font]).width
+        lineHeight = ceil(font.ascender - font.descender + font.leading)
         let style = NSMutableParagraphStyle()
         style.tabStops = []
-        style.defaultTabInterval = CGFloat(tabWidth) * advance
+        style.defaultTabInterval = CGFloat(Self.tabWidth) * advance
         style.lineBreakMode = .byClipping
-        return style
-    }()
-
-    private static var measuredColumns: [UInt32: Double] = [:]
+        paragraph = style
+    }
 
     /// Fallback fonts draw non-ASCII at their own widths: gqlgen's Ogham
     /// separators, CJK and emoji all differ from the monospaced advance.
-    static func columns(_ scalar: Unicode.Scalar) -> Double {
+    func columns(_ scalar: Unicode.Scalar) -> Double {
         if scalar.isASCII { return 1 }
         if let known = measuredColumns[scalar.value] { return known }
         let width = (String(scalar) as NSString).size(withAttributes: [.font: font]).width / advance
@@ -254,8 +279,8 @@ enum DiffMetrics {
     }
 
     /// How many characters of code fit beside the gutter in a column this wide.
-    static func capacity(_ width: CGFloat, gutter: Int) -> Int {
-        max(10, Int(((width - padding * 2) / advance).rounded(.down)) - gutter)
+    func capacity(_ width: CGFloat, gutter: Int) -> Int {
+        max(10, Int(((width - Self.padding * 2) / advance).rounded(.down)) - gutter)
     }
 }
 
@@ -272,6 +297,7 @@ final class DiffCellView: NSTableCellView {
 
     private var content: Content = .blank
     private var segments: [Range<Int>] = [0..<0]
+    private var metrics = DiffMetrics.forFamily(nil)
     private var palette = ResolvedPalette(appearance: .light, contrast: .standard)
 
     override var backgroundStyle: NSView.BackgroundStyle {
@@ -280,7 +306,8 @@ final class DiffCellView: NSTableCellView {
 
     override var isFlipped: Bool { true }
 
-    func configure(_ content: Content, palette: ResolvedPalette, segments: [Range<Int>]) {
+    func configure(_ content: Content, palette: ResolvedPalette, segments: [Range<Int>], metrics: DiffMetrics) {
+        self.metrics = metrics
         self.content = content
         self.palette = palette
         self.segments = segments
@@ -307,15 +334,15 @@ final class DiffCellView: NSTableCellView {
         var origin = NSPoint(x: DiffMetrics.padding, y: DiffMetrics.verticalPadding)
         if case .line(let line, let side) = content {
             let gutterText = gutter(line, side)
-            NSAttributedString(string: gutterText, attributes: [.font: DiffMetrics.font, .foregroundColor: textColour])
+            NSAttributedString(string: gutterText, attributes: [.font: metrics.font, .foregroundColor: textColour])
                 .draw(at: origin)
-            origin.x += CGFloat(gutterText.count) * DiffMetrics.advance
+            origin.x += CGFloat(gutterText.count) * metrics.advance
         }
         let text = attributedText(colour: textColour)
         for (index, segment) in segments.enumerated() where segment.upperBound <= text.length {
             let range = NSRange(location: segment.lowerBound, length: segment.count)
             text.attributedSubstring(from: range)
-                .draw(at: NSPoint(x: origin.x, y: origin.y + CGFloat(index) * DiffMetrics.lineHeight))
+                .draw(at: NSPoint(x: origin.x, y: origin.y + CGFloat(index) * metrics.lineHeight))
         }
     }
 
@@ -334,14 +361,14 @@ final class DiffCellView: NSTableCellView {
 
     private func attributedText(colour: NSColor) -> NSAttributedString {
         let base: [NSAttributedString.Key: Any] = [
-            .font: DiffMetrics.font, .foregroundColor: colour, .paragraphStyle: DiffMetrics.paragraph,
+            .font: metrics.font, .foregroundColor: colour, .paragraphStyle: metrics.paragraph,
         ]
         switch content {
         case .blank:
             return NSAttributedString()
         case .header(let text, let isFile):
             var attributes = base
-            if isFile { attributes[.font] = DiffMetrics.boldFont }
+            if isFile { attributes[.font] = metrics.boldFont }
             return NSAttributedString(string: text, attributes: attributes)
         case .notice(let reason):
             return NSAttributedString(string: Self.explanation(reason), attributes: base)
@@ -352,7 +379,7 @@ final class DiffCellView: NSTableCellView {
             for token in line.tokens where token.location + token.length <= line.text.utf16.count {
                 let range = NSRange(location: start + token.location, length: token.length)
                 if palette.isMonochrome {
-                    if token.kind == .keyword { text.addAttribute(.font, value: DiffMetrics.boldFont, range: range) }
+                    if token.kind == .keyword { text.addAttribute(.font, value: metrics.boldFont, range: range) }
                 } else {
                     let tokenColour = Palette.token(token.kind, appearance: palette.appearance, contrast: palette.contrast)
                     text.addAttribute(.foregroundColor, value: tokenColour.nsColor, range: range)

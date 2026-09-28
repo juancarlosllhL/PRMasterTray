@@ -19,7 +19,7 @@ struct SettingsView: View {
     @Bindable var jiraStore: JiraStore
 
     private enum Tab: String {
-        case pullRequests, teams, jira, appearance
+        case pullRequests, teams, jira, appearance, diffViewer
     }
 
     /// Only ever moved by a click, except under `PRMASTER_SETTINGS_TAB`, which is
@@ -40,6 +40,9 @@ struct SettingsView: View {
             appearanceSettings
                 .tabItem { Label("Appearance", systemImage: "paintbrush") }
                 .tag(Tab.appearance)
+            DiffViewerSettings(appearance: appearance)
+                .tabItem { Label("Diff Viewer", systemImage: "doc.text.magnifyingglass") }
+                .tag(Tab.diffViewer)
         }
         // A fixed height rather than one per tab. Both would be native — System
         // Settings resizes per pane — but this panel is small enough that the

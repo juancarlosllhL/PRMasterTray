@@ -16,7 +16,8 @@ GitHub would merge right now.
   and **Merge** actions.
 - **Review** on any row opens a window with the pull request's whole diff: a
   file list down the side, unified or split, coloured by language, with
-  GitHub's own **Viewed** checkbox. Squash and merge happens from there, or
+  GitHub's own **Viewed** checkbox, in any monospaced font you have installed
+  (Settings, Diff Viewer). Squash and merge happens from there, or
   from the notification, after a confirmation.
 
   The window is pinned to the commit it loaded. If anybody pushes while it is

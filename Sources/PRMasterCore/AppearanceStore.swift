@@ -70,6 +70,11 @@ public final class AppearanceStore {
         didSet { preferences.setHidesEmoji(hidesEmoji) }
     }
 
+    /// The diff window's font family; nil is the system monospaced font.
+    public var diffFontFamily: String? {
+        didSet { preferences.setDiffFontFamily(diffFontFamily) }
+    }
+
     private let preferences: PreferenceStoring
 
     public init(preferences: PreferenceStoring = UserDefaultsPreferences()) {
@@ -80,6 +85,7 @@ public final class AppearanceStore {
         self.monochromeEnabled = preferences.monochromeEnabled()
         self.popoverBackground = preferences.popoverBackground()
         self.hidesEmoji = preferences.hidesEmoji()
+        self.diffFontFamily = preferences.diffFontFamily()
     }
 
     /// What the palette should actually use, given this switch and what macOS

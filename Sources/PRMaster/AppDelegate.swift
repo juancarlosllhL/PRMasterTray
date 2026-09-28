@@ -192,6 +192,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 store: store, reviews: reviews,
                 appearance: appearanceStore, jira: jiraAccount, jiraStore: jira
             )
+            if let path = Debug.snapshotPath, Debug.openDiff == nil {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(2))
+                    if let window = NSApp.windows.first(where: { $0.isVisible && $0.title.hasSuffix("Settings") }) {
+                        Debug.snapshot(window, to: URL(fileURLWithPath: path))
+                    }
+                }
+            }
         }
 
         // Under a fixture, open straight away so the UI can be inspected and

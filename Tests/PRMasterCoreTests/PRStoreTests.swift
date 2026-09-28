@@ -170,6 +170,10 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
     func diffLayout() -> DiffLayout { lock.withLock { storedDiffLayout } }
     func setDiffLayout(_ value: DiffLayout) { lock.withLock { storedDiffLayout = value } }
 
+    private var storedDiffFontFamily: String?
+    func diffFontFamily() -> String? { lock.withLock { storedDiffFontFamily } }
+    func setDiffFontFamily(_ value: String?) { lock.withLock { storedDiffFontFamily = value } }
+
     private var storedAppLocations: [String: [AppLocation]] = [:]
     var appLocationWrites = 0
     func appLocations() -> [String: [AppLocation]] { lock.withLock { storedAppLocations } }
