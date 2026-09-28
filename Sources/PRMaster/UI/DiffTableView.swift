@@ -113,7 +113,7 @@ struct DiffTableView: NSViewRepresentable {
             self.capacities = capacities
 
             func wrap(_ text: String?, _ width: Int) -> [Range<Int>] {
-                LineWrap.segments(text ?? "", width: width, tabWidth: DiffMetrics.tabWidth)
+                LineWrap.segments(text ?? "", width: width, tabWidth: DiffMetrics.tabWidth, columns: DiffMetrics.columns)
             }
             wraps = rows.map { row in
                 let segments: [[Range<Int>]]
@@ -240,6 +240,18 @@ enum DiffMetrics {
         style.lineBreakMode = .byClipping
         return style
     }()
+
+    private static var measuredColumns: [UInt32: Double] = [:]
+
+    /// Fallback fonts draw non-ASCII at their own widths: gqlgen's Ogham
+    /// separators, CJK and emoji all differ from the monospaced advance.
+    static func columns(_ scalar: Unicode.Scalar) -> Double {
+        if scalar.isASCII { return 1 }
+        if let known = measuredColumns[scalar.value] { return known }
+        let width = (String(scalar) as NSString).size(withAttributes: [.font: font]).width / advance
+        measuredColumns[scalar.value] = width
+        return width
+    }
 
     /// How many characters of code fit beside the gutter in a column this wide.
     static func capacity(_ width: CGFloat, gutter: Int) -> Int {

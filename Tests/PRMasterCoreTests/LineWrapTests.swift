@@ -62,4 +62,30 @@ struct LineWrapTests {
     func tinyWidth() {
         #expect(pieces("ab", width: 0) == ["a", "b"])
     }
+
+    @Test("a character wider than a column takes the room it really needs")
+    func wideCharacters() {
+        let wide: (Unicode.Scalar) -> Double = { $0.isASCII ? 1 : 1.6 }
+        let units = Array("ab漢漢漢".utf16)
+        let segments = LineWrap.segments("ab漢漢漢", width: 5, columns: wide)
+        let texts = segments.map { String(decoding: units[$0], as: UTF16.self) }
+        #expect(texts == ["ab漢", "漢漢"])
+    }
+
+    @Test("narrow characters let more fit on a line")
+    func narrowCharacters() {
+        let narrow: (Unicode.Scalar) -> Double = { $0.isASCII ? 1 : 0.5 }
+        #expect(LineWrap.segments("ᚋᚋᚋᚋᚋᚋ", width: 3, columns: narrow).count == 1)
+    }
+
+    @Test("gqlgen's Ogham separators wrap without spilling past the width")
+    func gqlgenIdentifier() {
+        let text = "unmarshalNAnalyticsFilterInput2ᚖgithubᚗcomᚋLansweeperᚋLECLuzmoPluginᚋinternal"
+        let measured: (Unicode.Scalar) -> Double = { $0.isASCII ? 1 : 1.03 }
+        let units = Array(text.utf16)
+        for segment in LineWrap.segments(text, width: 20, columns: measured) {
+            let width = String(decoding: units[segment], as: UTF16.self).unicodeScalars.reduce(0) { $0 + measured($1) }
+            #expect(width <= 20)
+        }
+    }
 }
