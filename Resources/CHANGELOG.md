@@ -4,6 +4,16 @@ What each release changed, newest first. The app shows the entries you missed
 the first time it runs after an update, so keep the lines short and written for
 whoever has to read them in a small window.
 
+## 0.13.0 — 2026-09-28
+
+- Issues under review get their own Reviewing section and board column, between In progress and Testing.
+- Jira issues can be moved between To do, In progress, Reviewing, Testing and Done: drag a card to another column on the board, or right-click an issue in either layout and pick where it goes.
+- When Jira's workflow has steps in between, such as In Progress on the way from To Do to Reviewing, the app walks through them for you.
+- The card lands in its new column at once. If Jira refuses, it goes back and a banner says where it stopped and why.
+- When a step needs fields, such as a bug going from Reviewing to Testing, a short form asks for them first: Changelog status, Changelog and Remark. Remark gets "PM:" added if you leave it out.
+- Moves never cancel an issue or park it.
+- Right-click any pull request or Jira issue, in either tab, to copy its link or its ID. An issue's ID is its key, a pull request's is repository#number.
+
 ## 0.12.0 — 2026-09-22
 
 ![The Jira tab as a board, a column per group](whats-new-0.12.0.png)
