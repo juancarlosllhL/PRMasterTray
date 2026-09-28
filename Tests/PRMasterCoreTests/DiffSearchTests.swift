@@ -56,4 +56,31 @@ struct DiffSearchTests {
         #expect(parts.directory.isEmpty)
         #expect(parts.name == [0..<4])
     }
+
+    @Test("find searches code lines, not the file and hunk headers")
+    func findInUnified() throws {
+        let hunks = try #require(PatchParser.hunks("@@ -1,2 +1,2 @@ render\n render()\n-render(old)\n+draw()").first)
+        let rows = DiffRows.build(
+            [DiffFile(path: "render.swift", previousPath: nil, change: .modified, additions: 1, deletions: 1, content: .hunks([hunks]))],
+            layout: .unified, collapsed: []
+        )
+        let matches = DiffSearch.matches(of: "render", in: rows)
+        #expect(matches == [DiffMatch(row: 2, column: 0, range: 0..<6), DiffMatch(row: 3, column: 0, range: 0..<6)])
+    }
+
+    /// Split view shows a context line on both sides, and both copies are
+    /// highlighted, so both count as they would in any find bar.
+    @Test("in split rows the old side is column 0 and the new side column 1")
+    func findInSplit() throws {
+        let hunk = try #require(PatchParser.hunks("@@ -1,2 +1,2 @@\n keep x\n-x old\n+x new").first)
+        let matches = DiffSearch.matches(of: "x", in: DiffRows.split(hunk))
+        #expect(matches.map(\.row) == [1, 1, 2, 2])
+        #expect(matches.map(\.column) == [0, 1, 0, 1])
+    }
+
+    @Test("a blank query finds nothing")
+    func findBlank() throws {
+        let hunk = try #require(PatchParser.hunks("@@ -1 +1 @@\n-a\n+b").first)
+        #expect(DiffSearch.matches(of: " ", in: DiffRows.split(hunk)).isEmpty)
+    }
 }

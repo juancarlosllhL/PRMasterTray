@@ -69,6 +69,7 @@ struct DiffWindowView: View {
     @State private var scrollTarget: String?
     @State private var selectedFile: String?
     @State private var fileFilter = Debug.fileFilter ?? ""
+    @FocusState private var findFocused: Bool
 
     var body: some View {
         let palette = paletteInputs.resolved(monochromeEnabled: appearance.monochromeEnabled)
@@ -84,6 +85,10 @@ struct DiffWindowView: View {
                     bannerView(banner, palette)
                 }
                 diffBody(palette)
+                if store.isFinding {
+                    Divider()
+                    findBar
+                }
                 Divider()
                 bottomBar(liveState)
             }
@@ -94,9 +99,13 @@ struct DiffWindowView: View {
         .task {
             await store.load()
             selectedFile = initialFile
+            if let query = Debug.findQuery { Debug.typeFind(query) }
         }
         .onChange(of: liveState, initial: true) { _, state in
             store.observe(liveHead: state.head, isReady: state.isReady)
+        }
+        .onChange(of: store.isFinding) { _, finding in
+            if finding { findFocused = true }
         }
         .onChange(of: selectedFile) { _, path in
             guard let path else { return }
@@ -196,9 +205,51 @@ struct DiffWindowView: View {
                 fontFamily: appearance.diffFontFamily,
                 fontSize: appearance.diffFontSize,
                 ligatures: appearance.diffLigatures,
+                matches: store.findMatches, currentMatch: store.currentFindMatch,
                 scrollTarget: $scrollTarget, onToggleFile: store.toggleCollapsed
             )
         }
+    }
+
+    private func closeFind() { store.closeFind() }
+
+    private var findBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            TextField("Find in diff", text: $store.findQuery)
+                .textFieldStyle(.roundedBorder)
+                .focused($findFocused)
+                .frame(maxWidth: 320)
+                .onKeyPress(.return, phases: .down) { press in
+                    press.modifiers.contains(.shift) ? store.findPrevious() : store.findNext()
+                    return .handled
+                }
+                .onExitCommand(perform: closeFind)
+            Text(verbatim: findCount)
+                .font(.system(size: 12).monospacedDigit())
+                .foregroundStyle(.secondary)
+            Button(action: store.findPrevious) { Image(systemName: "chevron.up") }
+                .help("Previous match (Shift-Return)")
+                .accessibilityLabel("Previous match")
+                .disabled(store.findMatches.isEmpty)
+            Button(action: store.findNext) { Image(systemName: "chevron.down") }
+                .help("Next match (Return)")
+                .accessibilityLabel("Next match")
+                .disabled(store.findMatches.isEmpty)
+            Spacer()
+            Button("Done", action: closeFind)
+        }
+        .controlSize(.small)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+    }
+
+    private var findCount: String {
+        guard !store.findQuery.trimmingCharacters(in: .whitespaces).isEmpty else { return "" }
+        guard let index = store.currentFindIndex else { return "No matches" }
+        return "\(index + 1) of \(store.findMatches.count)"
     }
 
     private func bannerView(_ banner: DiffBanner, _ palette: ResolvedPalette) -> some View {

@@ -16,6 +16,8 @@ struct DiffTableView: NSViewRepresentable {
     let fontFamily: String?
     let fontSize: Int
     let ligatures: Bool
+    let matches: [DiffMatch]
+    let currentMatch: DiffMatch?
     @Binding var scrollTarget: String?
     let onToggleFile: (String) -> Void
 
@@ -72,7 +74,8 @@ struct DiffTableView: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         let coordinator = context.coordinator
         coordinator.onToggleFile = onToggleFile
-        coordinator.update(rows: rows, layout: layout, palette: palette, metrics: metrics)
+        coordinator.update(rows: rows, layout: layout, palette: palette, metrics: metrics,
+                           matches: matches, currentMatch: currentMatch)
         guard let target = scrollTarget else { return }
         coordinator.scroll(toFile: target)
         if let offset = Debug.scrollOffset { coordinator.scroll(by: offset) }
@@ -92,6 +95,9 @@ struct DiffTableView: NSViewRepresentable {
         private var capacities: [Int] = []
         private var isRewrapping = false
         private var pendingFile: String?
+        private var matches: [DiffMatch] = []
+        private var matchesByRow: [Int: [DiffMatch]] = [:]
+        private var currentMatch: DiffMatch?
 
         /// Each column's wrapped segments for one row, and the height they need.
         private struct RowWrap {
@@ -99,21 +105,32 @@ struct DiffTableView: NSViewRepresentable {
             let height: CGFloat
         }
 
-        func update(rows: [DiffRow], layout: DiffLayout, palette: ResolvedPalette, metrics: DiffMetrics) {
-            guard let table,
-                  rows != self.rows || layout != self.layout || palette != self.palette || metrics !== self.metrics
-            else { return }
-            self.metrics = metrics
-            table.rowHeight = metrics.lineHeight + DiffMetrics.verticalPadding * 2
-            if layout != self.layout {
-                rebuildColumns(table, layout)
-                table.sizeToFit()
+        func update(
+            rows: [DiffRow], layout: DiffLayout, palette: ResolvedPalette, metrics: DiffMetrics,
+            matches: [DiffMatch], currentMatch: DiffMatch?
+        ) {
+            guard let table else { return }
+            let contentChanged = rows != self.rows || layout != self.layout || palette != self.palette
+                || metrics !== self.metrics
+            let currentMoved = currentMatch != self.currentMatch
+            guard contentChanged || currentMoved || matches != self.matches else { return }
+            if contentChanged {
+                self.metrics = metrics
+                table.rowHeight = metrics.lineHeight + DiffMetrics.verticalPadding * 2
+                if layout != self.layout {
+                    rebuildColumns(table, layout)
+                    table.sizeToFit()
+                }
+                self.rows = rows
+                self.layout = layout
+                self.palette = palette
+                rewrap(table, force: true)
             }
-            self.rows = rows
-            self.layout = layout
-            self.palette = palette
-            rewrap(table, force: true)
+            self.matches = matches
+            matchesByRow = Dictionary(grouping: matches, by: \.row)
+            self.currentMatch = currentMatch
             table.reloadData()
+            if currentMoved, let currentMatch { reveal(currentMatch, in: table) }
             if let file = pendingFile {
                 pendingFile = nil
                 scroll(toFile: file)
@@ -158,6 +175,16 @@ struct DiffTableView: NSViewRepresentable {
             let frame = NSRect(x: clip.bounds.minX, y: top + push, width: clip.bounds.width, height: height)
             pinned.frame = scroll.convert(frame, from: clip)
             pinned.isHidden = false
+        }
+
+        /// Centres the match, so neither the pinned header nor the find bar covers it.
+        private func reveal(_ match: DiffMatch, in table: NSTableView) {
+            guard match.row < table.numberOfRows, let clip = table.enclosingScrollView?.contentView else { return }
+            let row = table.rect(ofRow: match.row)
+            let highest = max(0, table.bounds.height - clip.bounds.height)
+            let y = min(max(0, row.midY - clip.bounds.height / 2), highest)
+            clip.scroll(to: NSPoint(x: clip.bounds.minX, y: y))
+            table.enclosingScrollView?.reflectScrolledClipView(clip)
         }
 
         func pinnedHeaderClicked() {
@@ -266,10 +293,13 @@ struct DiffTableView: NSViewRepresentable {
             let segments = wraps.indices.contains(row)
                 ? wraps[row].segments[min(columnIndex, wraps[row].segments.count - 1)]
                 : [0..<0]
+            let highlights = (matchesByRow[row] ?? [])
+                .filter { $0.column == columnIndex }
+                .map { (range: $0.range, isCurrent: $0 == currentMatch) }
             cell.configure(
                 content(for: rows[row], column: tableColumn),
                 palette: palette ?? .init(appearance: .light, contrast: .standard),
-                segments: segments, metrics: metrics
+                segments: segments, metrics: metrics, highlights: highlights
             )
             return cell
         }
@@ -460,6 +490,7 @@ final class DiffCellView: NSTableCellView {
 
     private var content: Content = .blank
     private var segments: [Range<Int>] = [0..<0]
+    private var highlights: [(range: Range<Int>, isCurrent: Bool)] = []
     private var metrics = DiffMetrics.forFont(family: nil, size: DiffFont.defaultSize, ligatures: true)
     private var palette = ResolvedPalette(appearance: .light, contrast: .standard)
 
@@ -469,8 +500,12 @@ final class DiffCellView: NSTableCellView {
 
     override var isFlipped: Bool { true }
 
-    func configure(_ content: Content, palette: ResolvedPalette, segments: [Range<Int>], metrics: DiffMetrics) {
+    func configure(
+        _ content: Content, palette: ResolvedPalette, segments: [Range<Int>], metrics: DiffMetrics,
+        highlights: [(range: Range<Int>, isCurrent: Bool)] = []
+    ) {
         self.metrics = metrics
+        self.highlights = highlights
         self.content = content
         self.palette = palette
         self.segments = segments
@@ -539,15 +574,23 @@ final class DiffCellView: NSTableCellView {
         case .line(let line, _):
             let text = NSMutableAttributedString(string: line.text, attributes: base)
             let start = 0
-            guard !(isSelected && backgroundStyle == .emphasized) else { return text }
-            for token in line.tokens where token.location + token.length <= line.text.utf16.count {
-                let range = NSRange(location: start + token.location, length: token.length)
-                if palette.isMonochrome {
-                    if token.kind == .keyword { text.addAttribute(.font, value: metrics.boldFont, range: range) }
-                } else {
-                    let tokenColour = Palette.token(token.kind, appearance: palette.appearance, contrast: palette.contrast)
-                    text.addAttribute(.foregroundColor, value: tokenColour.nsColor, range: range)
+            if !(isSelected && backgroundStyle == .emphasized) {
+                for token in line.tokens where token.location + token.length <= line.text.utf16.count {
+                    let range = NSRange(location: start + token.location, length: token.length)
+                    if palette.isMonochrome {
+                        if token.kind == .keyword { text.addAttribute(.font, value: metrics.boldFont, range: range) }
+                    } else {
+                        let tokenColour = Palette.token(token.kind, appearance: palette.appearance, contrast: palette.contrast)
+                        text.addAttribute(.foregroundColor, value: tokenColour.nsColor, range: range)
+                    }
                 }
+            }
+            for highlight in highlights where highlight.range.upperBound <= text.length {
+                let range = NSRange(location: highlight.range.lowerBound, length: highlight.range.count)
+                text.addAttributes([
+                    .backgroundColor: highlight.isCurrent ? SearchHighlight.current : SearchHighlight.match,
+                    .foregroundColor: SearchHighlight.text,
+                ], range: range)
             }
             return text
         }

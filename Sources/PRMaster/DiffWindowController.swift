@@ -10,6 +10,7 @@ import PRMasterCore
 final class DiffWindowController: NSObject, NSWindowDelegate {
 
     private let registry = WindowRegistry<NSPanel>()
+    private var keyMonitors: [String: Any] = [:]
 
     func show(
         _ subject: DiffSubject,
@@ -62,6 +63,15 @@ final class DiffWindowController: NSObject, NSWindowDelegate {
 
         panel.identifier = NSUserInterfaceItemIdentifier(subject.id)
         panel.delegate = self
+        // A text field's field editor takes Control-F as "move forward" before
+        // any SwiftUI shortcut sees it, so the window listens first.
+        keyMonitors[subject.id] = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard event.window === weakPanel,
+                  event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .control,
+                  event.charactersIgnoringModifiers?.lowercased() == "f" else { return event }
+            store.openFind()
+            return nil
+        }
         return panel
     }
 
@@ -73,5 +83,6 @@ final class DiffWindowController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         guard let key = (notification.object as? NSWindow)?.identifier?.rawValue else { return }
         registry.remove(key)
+        keyMonitors.removeValue(forKey: key).map(NSEvent.removeMonitor)
     }
 }

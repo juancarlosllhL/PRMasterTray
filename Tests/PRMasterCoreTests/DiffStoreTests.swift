@@ -221,6 +221,75 @@ struct DiffStoreTests {
         #expect(store.rows != unified)
     }
 
+    private func twoNeedles() -> PullRequestDiff {
+        diff(files: [file("a.swift", text: "needle"), file("b.swift", text: "Needle")])
+    }
+
+    @Test("a find query lands on the first match, and next and previous wrap around")
+    func findNavigation() async {
+        let (store, _) = await loadedStore(twoNeedles())
+        store.findQuery = "needle"
+        #expect(store.findMatches.count == 2)
+        #expect(store.currentFindIndex == 0)
+        store.findNext()
+        #expect(store.currentFindIndex == 1)
+        store.findNext()
+        #expect(store.currentFindIndex == 0)
+        store.findPrevious()
+        #expect(store.currentFindIndex == 1)
+        #expect(store.currentFindMatch == store.findMatches[1])
+    }
+
+    @Test("no matches means no current match, and moving does nothing")
+    func findNothing() async {
+        let (store, _) = await loadedStore(twoNeedles())
+        store.findQuery = "haystack"
+        store.findNext()
+        #expect(store.findMatches.isEmpty)
+        #expect(store.currentFindIndex == nil)
+        #expect(store.currentFindMatch == nil)
+    }
+
+    /// Matches point at row numbers, so anything that rebuilds the rows must
+    /// search again or the highlight lands on the wrong line.
+    @Test("collapsing a file or switching layout searches the new rows")
+    func findFollowsRows() async {
+        let (store, _) = await loadedStore(twoNeedles())
+        store.findQuery = "needle"
+        store.findNext()
+        store.toggleCollapsed("b.swift")
+        #expect(store.findMatches.count == 1)
+        #expect(store.currentFindIndex == 0)
+        store.toggleCollapsed("b.swift")
+        store.layout = .split
+        #expect(store.findMatches.count == 2)
+        #expect(store.findMatches.allSatisfy { match in
+            if case .pair(let left, _) = store.rows[match.row] { return left?.text.lowercased() == "needle" }
+            return false
+        })
+    }
+
+    @Test("closing the find bar clears the query and every highlight")
+    func findClosed() async {
+        let (store, _) = await loadedStore(twoNeedles())
+        store.openFind()
+        #expect(store.isFinding)
+        store.findQuery = "needle"
+        store.closeFind()
+        #expect(!store.isFinding)
+        #expect(store.findQuery.isEmpty)
+        #expect(store.findMatches.isEmpty)
+    }
+
+    @Test("clearing the query clears the matches")
+    func findCleared() async {
+        let (store, _) = await loadedStore(twoNeedles())
+        store.findQuery = "needle"
+        store.findQuery = ""
+        #expect(store.findMatches.isEmpty)
+        #expect(store.currentFindIndex == nil)
+    }
+
     @Test("a new store opens in the layout chosen last time")
     func layoutReadAtLaunch() {
         let preferences = MemoryPreferences()

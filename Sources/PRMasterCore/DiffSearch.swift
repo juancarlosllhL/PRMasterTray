@@ -1,5 +1,18 @@
 import Foundation
 
+/// One find hit: the table row, the column it is drawn in, and where in that line.
+public struct DiffMatch: Equatable, Hashable, Sendable {
+    public let row: Int
+    public let column: Int
+    public let range: Range<Int>
+
+    public init(row: Int, column: Int, range: Range<Int>) {
+        self.row = row
+        self.column = column
+        self.range = range
+    }
+}
+
 /// Case-insensitive text search for the review window, in UTF-16 ranges so
 /// the table can draw highlights straight onto its attributed strings.
 public enum DiffSearch {
@@ -38,5 +51,23 @@ public enum DiffSearch {
             if !inName.isEmpty { name.append((inName.lowerBound - nameStart)..<(inName.upperBound - nameStart)) }
         }
         return (directory, name)
+    }
+
+    public static func matches(of query: String, in rows: [DiffRow]) -> [DiffMatch] {
+        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }
+        var found: [DiffMatch] = []
+        for (index, row) in rows.enumerated() {
+            let sides: [DiffLine?]
+            switch row {
+            case .line(let line): sides = [line]
+            case .pair(let left, let right): sides = [left, right]
+            case .fileHeader, .hunkHeader, .omitted: continue
+            }
+            for (column, line) in sides.enumerated() {
+                guard let line else { continue }
+                found += ranges(of: query, in: line.text).map { DiffMatch(row: index, column: column, range: $0) }
+            }
+        }
+        return found
     }
 }

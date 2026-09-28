@@ -169,6 +169,34 @@ enum Debug {
         ProcessInfo.processInfo.environment["PRMASTER_FILE_FILTER"]
     }
 
+    /// `PRMASTER_FIND=<text>` presses Control-F in the review window, types the
+    /// text and presses Return once, through the real event queue.
+    static var findQuery: String? {
+        ProcessInfo.processInfo.environment["PRMASTER_FIND"]
+    }
+
+    @MainActor
+    static func typeFind(_ query: String) {
+        func post(_ characters: String, code: UInt16, modifiers: NSEvent.ModifierFlags = []) {
+            for type in [NSEvent.EventType.keyDown, .keyUp] {
+                guard let event = NSEvent.keyEvent(
+                    with: type, location: .zero, modifierFlags: modifiers, timestamp: 0,
+                    windowNumber: NSApp.keyWindow?.windowNumber ?? 0, context: nil,
+                    characters: characters, charactersIgnoringModifiers: modifiers.isEmpty ? characters : "f",
+                    isARepeat: false, keyCode: code
+                ) else { continue }
+                NSApp.postEvent(event, atStart: false)
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            post("\u{06}", code: 3, modifiers: .control)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                for character in query { post(String(character), code: 0) }
+                post("\r", code: 36)
+            }
+        }
+    }
+
     /// `PRMASTER_SCROLL=<points>` scrolls that far past the file opened by
     /// `PRMASTER_OPEN_FILE`, to snapshot the middle of a file.
     static var scrollOffset: CGFloat? {

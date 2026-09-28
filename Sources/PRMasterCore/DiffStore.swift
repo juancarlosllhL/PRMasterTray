@@ -33,6 +33,42 @@ public final class DiffStore {
         }
     }
 
+    public var findQuery = "" {
+        didSet {
+            guard findQuery != oldValue else { return }
+            search(keepingPlace: false)
+        }
+    }
+    public private(set) var isFinding = false
+    public private(set) var findMatches: [DiffMatch] = []
+    public private(set) var currentFindIndex: Int?
+
+    public var currentFindMatch: DiffMatch? { currentFindIndex.map { findMatches[$0] } }
+
+    public func openFind() { isFinding = true }
+
+    public func closeFind() {
+        isFinding = false
+        findQuery = ""
+    }
+
+    public func findNext() { moveFind(by: 1) }
+    public func findPrevious() { moveFind(by: -1) }
+
+    private func moveFind(by step: Int) {
+        guard let index = currentFindIndex, !findMatches.isEmpty else { return }
+        currentFindIndex = (index + step + findMatches.count) % findMatches.count
+    }
+
+    private func search(keepingPlace: Bool) {
+        findMatches = DiffSearch.matches(of: findQuery, in: rows)
+        guard !findMatches.isEmpty else {
+            currentFindIndex = nil
+            return
+        }
+        currentFindIndex = keepingPlace ? min(currentFindIndex ?? 0, findMatches.count - 1) : 0
+    }
+
     public var canMarkViewed: Bool { viewedWriter != nil }
 
     /// Nil unless what was read is still what GitHub would act on.
@@ -127,6 +163,7 @@ public final class DiffStore {
 
     private func rebuildRows() {
         rows = DiffRows.build(diff?.files ?? [], layout: layout, collapsed: collapsed)
+        search(keepingPlace: true)
     }
 
     private static func message(for error: Error) -> String {
