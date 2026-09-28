@@ -50,11 +50,14 @@ private final class WorkflowClient: JiraIssueMoving, @unchecked Sendable {
 
     func transitions(for key: String) async throws -> (JiraStatus, [JiraTransition]) {
         lock.withLock {
-            let offered = (workflow[current] ?? []).map { id, to in
-                JiraTransition(
+            let edges: [(String, String)] = workflow[current] ?? []
+            let atReviewing: Bool = current == "Reviewing"
+            let offered: [JiraTransition] = edges.map { (id: String, to: String) -> JiraTransition in
+                let isGlobal: Bool = id == "11" || id == "21"
+                let fields: [JiraField] = atReviewing ? (screens[id] ?? []) : []
+                return JiraTransition(
                     id: id, to: status(to),
-                    isGlobal: id == "11" || id == "21", needsInput: to == "Canceled",
-                    fields: current == "Reviewing" ? screens[id] ?? [] : []
+                    isGlobal: isGlobal, needsInput: to == "Canceled", fields: fields
                 )
             }
             return (status(current), offered)
