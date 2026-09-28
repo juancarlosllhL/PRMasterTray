@@ -100,4 +100,25 @@ struct DiffRowsTests {
     func empty() {
         #expect(DiffRows.build([], layout: .unified, collapsed: []).isEmpty)
     }
+
+    @Test("a file's header row is where the sidebar jumps to")
+    func fileIndex() throws {
+        let content = DiffContent.hunks([try hunk("@@ -1 +1 @@\n-b\n+c")])
+        let rows = DiffRows.build([file("a.swift", content), file("b.swift", content)], layout: .unified, collapsed: [])
+        #expect(DiffRows.index(ofFile: "b.swift", in: rows) == 4)
+        #expect(DiffRows.index(ofFile: "missing", in: rows) == nil)
+    }
+
+    @Test("copying unified rows gives the code with its markers, headers as they read")
+    func copyUnified() throws {
+        let content = DiffContent.hunks([try hunk("@@ -1,2 +1,2 @@\n a\n-b\n+c")])
+        let rows = DiffRows.build([file("a.swift", content)], layout: .unified, collapsed: [])
+        #expect(DiffRows.copyText(rows) == "a.swift\n@@ -1,2 +1,2 @@\n a\n-b\n+c")
+    }
+
+    @Test("copying split rows gives the new side, falling back to the old where the new is blank")
+    func copySplit() throws {
+        let rows = DiffRows.split(try hunk("@@ -1,2 +1 @@\n-a\n-b\n+x"))
+        #expect(DiffRows.copyText(Array(rows.dropFirst())) == "x\nb")
+    }
 }

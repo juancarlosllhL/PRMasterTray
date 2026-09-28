@@ -166,6 +166,10 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
     func jiraLayout() -> JiraLayout { lock.withLock { storedJiraLayout } }
     func setJiraLayout(_ value: JiraLayout) { lock.withLock { storedJiraLayout = value } }
 
+    private var storedDiffLayout: DiffLayout = .default
+    func diffLayout() -> DiffLayout { lock.withLock { storedDiffLayout } }
+    func setDiffLayout(_ value: DiffLayout) { lock.withLock { storedDiffLayout = value } }
+
     private var storedAppLocations: [String: [AppLocation]] = [:]
     var appLocationWrites = 0
     func appLocations() -> [String: [AppLocation]] { lock.withLock { storedAppLocations } }

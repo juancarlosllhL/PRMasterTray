@@ -1,0 +1,251 @@
+import Foundation
+import Testing
+@testable import PRMasterCore
+
+private final class StubDiffSource: PullRequestDiffing, @unchecked Sendable {
+    private let lock = NSLock()
+    private let result: Result<PullRequestDiff, Error>
+    private var failure: Error?
+    private var writes: [(path: String, viewed: Bool)] = []
+
+    init(_ result: Result<PullRequestDiff, Error>, viewedError: Error? = nil) {
+        self.result = result
+        self.failure = viewedError
+    }
+
+    var viewedError: Error? {
+        get { lock.withLock { failure } }
+        set { lock.withLock { failure = newValue } }
+    }
+
+    var viewedWrites: [(path: String, viewed: Bool)] { lock.withLock { writes } }
+
+    func loadDiff(repo: String, number: Int) async throws -> PullRequestDiff {
+        try result.get()
+    }
+
+    func setViewed(pullRequestID: String, path: String, viewed: Bool) async throws {
+        lock.withLock { writes.append((path, viewed)) }
+        if let viewedError { throw viewedError }
+    }
+}
+
+private func file(_ path: String, viewed: ViewedState = .unviewed, text: String = "a") -> DiffFile {
+    DiffFile(
+        path: path, previousPath: nil, change: .modified, additions: 1, deletions: 1,
+        content: .hunks([Hunk(
+            oldStart: 1, oldCount: 1, newStart: 1, newCount: 1, context: "",
+            lines: [DiffLine(kind: .removed, oldNumber: 1, newNumber: nil, text: text),
+                    DiffLine(kind: .added, oldNumber: nil, newNumber: 1, text: "b")]
+        )]),
+        viewed: viewed
+    )
+}
+
+private func diff(head: String = "H1", truncated: Bool = false, files: [DiffFile] = [file("a.swift")]) -> PullRequestDiff {
+    PullRequestDiff(pullRequestID: "PR_1", baseOid: "B1", headOid: head, files: files, isTruncated: truncated)
+}
+
+@MainActor
+private func loadedStore(
+    _ value: PullRequestDiff = diff(), viewedError: Error? = nil, writer: Bool = true,
+    preferences: PreferenceStoring = MemoryPreferences()
+) async -> (DiffStore, StubDiffSource) {
+    let source = StubDiffSource(.success(value), viewedError: viewedError)
+    let store = DiffStore(
+        repo: "acme/widget", number: 7, source: source, viewedWriter: writer ? source : nil,
+        preferences: preferences
+    )
+    await store.load()
+    return (store, source)
+}
+
+@MainActor
+@Suite("DiffStore")
+struct DiffStoreTests {
+
+    @Test("a store starts loading and is loaded once the diff arrives")
+    func loads() async {
+        let source = StubDiffSource(.success(diff()))
+        let store = DiffStore(repo: "acme/widget", number: 7, source: source, viewedWriter: source,
+                              preferences: MemoryPreferences())
+        #expect(store.phase == .loading)
+        await store.load()
+        #expect(store.phase == .loaded)
+        #expect(store.diff?.files.map(\.path) == ["a.swift"])
+        #expect(!store.rows.isEmpty)
+    }
+
+    @Test("a loaded diff arrives already highlighted")
+    func loadHighlights() async {
+        let (store, _) = await loadedStore()
+        let tokens = store.rows.compactMap { row -> [TokenRange]? in
+            guard case .line(let line) = row else { return nil }
+            return line.tokens
+        }
+        #expect(tokens.contains { !$0.isEmpty } == false)
+        let (swift, _) = await loadedStore(diff(files: [file("a.swift", text: "let a")]))
+        #expect(swift.rows.contains {
+            guard case .line(let line) = $0 else { return false }
+            return line.tokens.first?.kind == .keyword
+        })
+    }
+
+    @Test("a failed load shows GitHub's own words")
+    func failureKeepsGitHubsMessage() async {
+        let source = StubDiffSource(.failure(PRMasterError.graphQL(["Could not resolve to a PullRequest"])))
+        let store = DiffStore(repo: "acme/widget", number: 7, source: source, viewedWriter: nil,
+                              preferences: MemoryPreferences())
+        await store.load()
+        #expect(store.phase == .failed("Could not resolve to a PullRequest"))
+    }
+
+    @Test("with no source, as under a debug override, the store says why nothing loaded")
+    func noSource() async {
+        let store = DiffStore(repo: "acme/widget", number: 7, source: nil, viewedWriter: nil,
+                              preferences: MemoryPreferences())
+        await store.load()
+        guard case .failed = store.phase else {
+            Issue.record("expected a failure, got \(store.phase)")
+            return
+        }
+    }
+
+    @Test("marking a file viewed shows at once, collapses it, and reaches GitHub")
+    func viewedApplies() async {
+        let (store, source) = await loadedStore()
+        await store.setViewed("a.swift", true)
+        #expect(store.diff?.files[0].viewed == .viewed)
+        #expect(store.collapsed.contains("a.swift"))
+        #expect(source.viewedWrites.map(\.path) == ["a.swift"])
+    }
+
+    @Test("a refused viewed toggle reverts and says so on that file")
+    func viewedReverts() async {
+        let (store, _) = await loadedStore(viewedError: PRMasterError.graphQL(["Resource not accessible"]))
+        await store.setViewed("a.swift", true)
+        #expect(store.diff?.files[0].viewed == .unviewed)
+        #expect(!store.collapsed.contains("a.swift"))
+        #expect(store.viewedFailures["a.swift"] == "Resource not accessible")
+    }
+
+    @Test("a successful toggle clears an earlier failure on that file")
+    func viewedFailureClears() async {
+        let (store, source) = await loadedStore(viewedError: PRMasterError.graphQL(["nope"]))
+        await store.setViewed("a.swift", true)
+        #expect(store.viewedFailures["a.swift"] == "nope")
+        source.viewedError = nil
+        await store.setViewed("a.swift", true)
+        #expect(store.viewedFailures.isEmpty)
+        #expect(store.diff?.files[0].viewed == .viewed)
+    }
+
+    @Test("with no writer the toggle is refused and nothing is sent")
+    func noWriterRefuses() async {
+        let (store, source) = await loadedStore(writer: false)
+        #expect(!store.canMarkViewed)
+        await store.setViewed("a.swift", true)
+        #expect(store.diff?.files[0].viewed == .unviewed)
+        #expect(source.viewedWrites.isEmpty)
+    }
+
+    @Test("files already viewed on GitHub open collapsed")
+    func viewedStartCollapsed() async {
+        let (store, _) = await loadedStore(diff(files: [file("a.swift", viewed: .viewed), file("b.swift")]))
+        #expect(store.collapsed == ["a.swift"])
+    }
+
+    @Test("a live head that differs from the diff's means new commits arrived")
+    func headMoved() async {
+        let (store, _) = await loadedStore()
+        store.observe(liveHead: "H2", isReady: true)
+        #expect(store.phase == .headMoved)
+    }
+
+    @Test("a live row that is gone means the pull request was merged or closed elsewhere")
+    func closed() async {
+        let (store, _) = await loadedStore()
+        store.observe(liveHead: nil, isReady: false)
+        #expect(store.phase == .closed)
+    }
+
+    @Test("an observation that arrives before the diff still applies once it loads")
+    func observationBeforeLoad() async {
+        let source = StubDiffSource(.success(diff()))
+        let store = DiffStore(repo: "acme/widget", number: 7, source: source, viewedWriter: source,
+                              preferences: MemoryPreferences())
+        store.observe(liveHead: "H2", isReady: true)
+        await store.load()
+        #expect(store.phase == .headMoved)
+    }
+
+    @Test(
+        "merge is offered only on a loaded, current, complete diff of a ready pull request",
+        arguments: [
+            ("H1", true, false, true),
+            ("H1", false, false, false),
+            ("H2", true, false, false),
+            ("H1", true, true, false),
+        ]
+    )
+    func mergeTargetGate(liveHead: String, isReady: Bool, truncated: Bool, offered: Bool) async {
+        let (store, _) = await loadedStore(diff(truncated: truncated))
+        store.observe(liveHead: liveHead, isReady: isReady)
+        #expect((store.mergeTarget != nil) == offered)
+    }
+
+    @Test("nothing is offered before the diff has loaded")
+    func noTargetWhileLoading() {
+        let source = StubDiffSource(.success(diff()))
+        let store = DiffStore(repo: "acme/widget", number: 7, source: source, viewedWriter: source,
+                              preferences: MemoryPreferences())
+        store.observe(liveHead: "H1", isReady: true)
+        #expect(store.mergeTarget == nil)
+    }
+
+    /// The whole point of the window: what gets merged is what was read.
+    @Test("the merge target is the reviewed commit, not whatever the row says now")
+    func targetIsReviewedCommit() async {
+        let (store, _) = await loadedStore(diff(head: "REVIEWED"))
+        store.observe(liveHead: "REVIEWED", isReady: true)
+        #expect(store.mergeTarget == MergeTarget(id: "PR_1", oid: "REVIEWED"))
+    }
+
+    @Test("switching layout rebuilds the rows and remembers the choice")
+    func layoutPersists() async {
+        let preferences = MemoryPreferences()
+        let (store, _) = await loadedStore(preferences: preferences)
+        let unified = store.rows
+        store.layout = .split
+        #expect(preferences.diffLayout() == .split)
+        #expect(store.rows != unified)
+    }
+
+    @Test("a new store opens in the layout chosen last time")
+    func layoutReadAtLaunch() {
+        let preferences = MemoryPreferences()
+        preferences.setDiffLayout(.split)
+        let store = DiffStore(repo: "acme/widget", number: 7, source: nil, viewedWriter: nil, preferences: preferences)
+        #expect(store.layout == .split)
+    }
+
+    @Test("an absent or unrecognised stored layout reads as unified")
+    func layoutDefault() {
+        let name = "DiffStoreTests.layoutDefault"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        #expect(UserDefaultsPreferences(defaults: defaults).diffLayout() == .unified)
+        defaults.set("sideways", forKey: "diffLayout")
+        #expect(UserDefaultsPreferences(defaults: defaults).diffLayout() == .unified)
+    }
+
+    @Test("a stored layout survives a round trip", arguments: DiffLayout.allCases)
+    func layoutRoundTrip(layout: DiffLayout) {
+        let name = "DiffStoreTests.roundTrip.\(layout.rawValue)"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        let preferences = UserDefaultsPreferences(defaults: defaults)
+        preferences.setDiffLayout(layout)
+        #expect(preferences.diffLayout() == layout)
+    }
+}

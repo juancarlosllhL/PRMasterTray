@@ -125,6 +125,8 @@ public protocol PreferenceStoring: Sendable {
     /// Whether an approval posts a remark with it — see `ApprovalQuip`.
     func approvalQuipsEnabled() -> Bool
     func setApprovalQuipsEnabled(_ value: Bool)
+    func diffLayout() -> DiffLayout
+    func setDiffLayout(_ value: DiffLayout)
     /// The teams discovered last time. Stored so a failed discovery falls back to
     /// the last good list instead of emptying the section, and so the settings
     /// window has something to show before the first fetch lands.
@@ -722,6 +724,7 @@ public struct UserDefaultsPreferences: PreferenceStoring {
     private let disabledTeamsKey = "disabledTeams"
     private let knownTeamsKey = "knownTeams"
     private let approvalQuipsKey = "approvalQuips"
+    private let diffLayoutKey = "diffLayout"
     // UserDefaults is documented as thread-safe but predates Sendable.
     nonisolated(unsafe) private let defaults: UserDefaults
 
@@ -865,6 +868,14 @@ public struct UserDefaultsPreferences: PreferenceStoring {
 
     public func setJiraWindow(_ value: JiraWindow) {
         defaults.set(value.rawValue, forKey: jiraWindowKey)
+    }
+
+    public func diffLayout() -> DiffLayout {
+        defaults.string(forKey: diffLayoutKey).flatMap(DiffLayout.init(rawValue:)) ?? .default
+    }
+
+    public func setDiffLayout(_ value: DiffLayout) {
+        defaults.set(value.rawValue, forKey: diffLayoutKey)
     }
 
     public func jiraLayout() -> JiraLayout {

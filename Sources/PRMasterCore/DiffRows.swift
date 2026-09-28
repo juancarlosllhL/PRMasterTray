@@ -2,6 +2,8 @@ import Foundation
 
 public enum DiffLayout: String, Sendable, CaseIterable {
     case unified, split
+
+    public static let `default`: DiffLayout = .unified
 }
 
 /// One row of the diff table. The table draws these and nothing else.
@@ -69,6 +71,32 @@ public enum DiffRows {
         }
         flush()
         return rows
+    }
+
+    public static func index(ofFile path: String, in rows: [DiffRow]) -> Int? {
+        rows.firstIndex(of: .fileHeader(path: path))
+    }
+
+    /// Unified lines keep their marker so the copy still reads as a diff; a
+    /// split row copies its new side, or its old side where the new is blank.
+    public static func copyText(_ rows: [DiffRow]) -> String {
+        rows.compactMap { row -> String? in
+            switch row {
+            case .fileHeader(let path): return path
+            case .hunkHeader(let header): return header
+            case .omitted: return nil
+            case .line(let line): return marker(line.kind) + line.text
+            case .pair(let left, let right): return (right ?? left)?.text
+            }
+        }.joined(separator: "\n")
+    }
+
+    private static func marker(_ kind: DiffLine.Kind) -> String {
+        switch kind {
+        case .context: return " "
+        case .added: return "+"
+        case .removed: return "-"
+        }
     }
 
     static func header(_ hunk: Hunk) -> String {
