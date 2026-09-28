@@ -4,6 +4,13 @@ What each release changed, newest first. The app shows the entries you missed
 the first time it runs after an update, so keep the lines short and written for
 whoever has to read them in a small window.
 
+## 0.14.0 — 2026-09-28
+
+- Review replaces Merge and Approve on the rows. It opens a window with the pull request's whole diff, a file list down the side.
+- Switch between unified and split, and tick Viewed on a file the way you would on GitHub. Viewed files fold away.
+- Code is coloured for Swift, Go, TypeScript and JavaScript, C#, Python, JSON, YAML and shell.
+- Merge and Approve now live at the bottom of that window, and act on exactly the commit you read. If someone pushes meanwhile, the window says so and offers a reload.
+
 ## 0.13.0 — 2026-09-28
 
 - Issues under review get their own Reviewing section and board column, between In progress and Testing.

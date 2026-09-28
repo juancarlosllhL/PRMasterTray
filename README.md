@@ -14,8 +14,20 @@ GitHub would merge right now.
   conflicts, behind base branch, or draft.
 - A notification the moment a pull request becomes mergeable, with **Open PR**
   and **Merge** actions.
-- Squash and merge straight from the list or the notification, after a
-  confirmation.
+- **Review** on any row opens a window with the pull request's whole diff: a
+  file list down the side, unified or split, coloured by language, with
+  GitHub's own **Viewed** checkbox. Squash and merge happens from there, or
+  from the notification, after a confirmation.
+
+  The window is pinned to the commit it loaded. If anybody pushes while it is
+  open it says so and offers a reload, and Merge stays off until you have seen
+  the new commits: GitHub is always asked to merge exactly what you read. A
+  pull request merged or closed elsewhere says so too. Binary files, files
+  GitHub judges too large and pull requests over 3000 files are named rather
+  than shown blank.
+
+<img src="docs/screenshots/review-window.png" width="800" alt="The review window: seven files down the side, the diff of Changelog.swift with added lines in green and removed in red, and Merge at the bottom">
+
 - Pull requests you opened a long time ago and forgot are marked with their age,
   and can be closed from the list after a confirmation. Measured from when the
   pull request was opened rather than from its last activity, so keeping a branch
@@ -42,8 +54,9 @@ GitHub would merge right now.
   belong to has been asked to review — not yours, and not ones you have already
   reviewed. Each row says who opened it, which of your teams was asked, how long
   it has been open, and whether its checks passed, so a red or already-rejected
-  pull request is visible before you click. Clicking opens it; **Approve** posts
-  a real, public review under your own name, after a confirmation naming the
+  pull request is visible before you click. Clicking opens it on GitHub;
+  **Review** opens its diff, and **Approve** there posts a real, public review
+  under your own name for the commit you read, after a confirmation naming the
   author.
 
   One you approved comes back if the author pushes and GitHub throws your
