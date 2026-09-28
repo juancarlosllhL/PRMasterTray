@@ -1,0 +1,26 @@
+{
+  "status": "ahead",
+  "ahead_by": 1,
+  "behind_by": 0,
+  "files": [
+    {
+      "additions": 2,
+      "changes": 4,
+      "deletions": 2,
+      "filename": "src/vs/workbench/contrib/chat/browser/chatDebug/chatCustomizationDiscoveryRenderer.ts",
+      "patch": "@@ -22,7 +22,7 @@ import { ILabelService } from '../../../../../platform/label/common/label.js';\n import { IOpenerService } from '../../../../../platform/opener/common/opener.js';\n import { IChatDebugEventFileListContent } from '../../common/chatDebugService.js';\n import { InlineAnchorWidget } from '../widget/chatContentParts/chatInlineAnchorWidget.js';\n-import { setupCollapsibleToggle } from './chatDebugMessageContentRenderer.js';\n+import { setupCollapsibleToggle } from './chatDebugCollapsible.js';\n \n const $ = DOM.$;\n \n@@ -153,7 +153,7 @@ function appendLocationBadge(row: HTMLElement, file: { extensionId?: string }, b\n /**\n  * Render a file list resolved content as a rich HTML element.\n  */\n-export function renderFileListContent(content: IChatDebugEventFileListContent, openerService: IOpenerService, modelService: IModelService, languageService: ILanguageService, hoverService: IHoverService, labelService: ILabelService): { element: HTMLElement; disposables: DisposableStore } {\n+export function renderCustomizationDiscoveryContent(content: IChatDebugEventFileListContent, openerService: IOpenerService, modelService: IModelService, languageService: ILanguageService, hoverService: IHoverService, labelService: ILabelService): { element: HTMLElement; disposables: DisposableStore } {\n \tconst disposables = new DisposableStore();\n \tconst container = $('div.chat-debug-file-list');\n \tcontainer.tabIndex = 0;",
+      "previous_filename": "src/vs/workbench/contrib/chat/browser/chatDebug/chatDebugFileListRenderer.ts",
+      "sha": "6d4c0f40740ad5936fbc1dd0dd4bb689bbeb3ce6",
+      "status": "renamed"
+    },
+    {
+      "additions": 0,
+      "changes": 0,
+      "deletions": 0,
+      "filename": "src/vs/workbench/contrib/chat/browser/chatImageUtils.ts",
+      "previous_filename": "src/vs/workbench/contrib/chat/browser/imageUtils.ts",
+      "sha": "89f1ecb122528d364bc8ec4b61fb3c6e1679b593",
+      "status": "renamed"
+    }
+  ]
+}

@@ -42,3 +42,53 @@ public struct Hunk: Sendable, Equatable {
         self.lines = lines
     }
 }
+
+public enum OmissionReason: Sendable, Equatable {
+    /// No patch but counted changes: GitHub left it out for size.
+    case tooLarge
+    /// No patch and nothing counted: binary, empty, mode-only or a pure rename.
+    case noTextChanges
+    case unparseable
+}
+
+public enum DiffContent: Sendable, Equatable {
+    case hunks([Hunk])
+    case omitted(OmissionReason)
+}
+
+/// GitHub's `FileViewedState`.
+public enum ViewedState: String, Sendable, Equatable {
+    case viewed = "VIEWED"
+    case unviewed = "UNVIEWED"
+    /// Viewed, then changed by a later push.
+    case dismissed = "DISMISSED"
+}
+
+public struct DiffFile: Sendable, Equatable, Identifiable {
+    /// The REST `status` values.
+    public enum Change: String, Sendable, Equatable {
+        case added, removed, modified, renamed, copied, changed, unchanged
+    }
+
+    public var id: String { path }
+    public let path: String
+    public let previousPath: String?
+    public let change: Change
+    public let additions: Int
+    public let deletions: Int
+    public let content: DiffContent
+    public var viewed: ViewedState
+
+    public init(
+        path: String, previousPath: String?, change: Change,
+        additions: Int, deletions: Int, content: DiffContent, viewed: ViewedState = .unviewed
+    ) {
+        self.path = path
+        self.previousPath = previousPath
+        self.change = change
+        self.additions = additions
+        self.deletions = deletions
+        self.content = content
+        self.viewed = viewed
+    }
+}
