@@ -698,7 +698,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// rather than fired on a single click.
     func confirmApprove(_ request: ReviewRequest) {
         Task { @MainActor in
-            let outcome = await reviews.approve(request) { quip in
+            let outcome = await reviews.approve(request, commitOID: request.headRefOid) { quip in
                 self.askToApprove(
                     title: request.displayTitle, author: request.author, quip: quip
                 )

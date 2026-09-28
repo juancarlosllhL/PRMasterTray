@@ -233,6 +233,7 @@ public final class ReviewStore {
     /// not having worked.
     public func approve(
         _ request: ReviewRequest,
+        commitOID: String,
         confirm: @MainActor (String?) async -> Bool
     ) async -> ApproveOutcome {
         guard let approver else { return .refusedDebugOverride }
@@ -245,7 +246,7 @@ public final class ReviewStore {
             // The commit the user was looking at, not whatever is current. It
             // records what was approved rather than guarding it — see
             // `Queries.approvePullRequest`.
-            commitOID: request.headRefOid,
+            commitOID: commitOID,
             body: quip(for: request),
             confirm: confirm
         )

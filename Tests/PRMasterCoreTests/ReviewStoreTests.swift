@@ -432,6 +432,27 @@ struct ReviewStoreTests {
 
     // MARK: - Approving
 
+    /// The review window approves what it showed, which can be older than the
+    /// row once the popover has polled again.
+    @Test("an approval names the commit it is given, not the one on the row")
+    func approvalUsesGivenCommit() async {
+        let approver = SpyApprover()
+        let client = StubReviewClient(
+            teams: [.success([cortex])],
+            searches: [.success(ReviewSnapshot(requests: [request("PR_1")], pendingCounts: [:]))]
+        )
+        let store = makeStore(
+            client: client,
+            approver: ApproveCoordinator(client: approver, approvingAllowed: true)
+        )
+        await store.refresh()
+
+        let outcome = await store.approve(store.requests[0], commitOID: "REVIEWED") { _ in true }
+
+        #expect(outcome == .approved)
+        #expect(approver.calls.map(\.oid) == ["REVIEWED"])
+    }
+
     @Test("a confirmed approval drops the row without waiting for a poll")
     func approvalRemovesTheRow() async {
         let approver = SpyApprover()
@@ -447,7 +468,7 @@ struct ReviewStoreTests {
         )
         await store.refresh()
 
-        let outcome = await store.approve(store.requests[0]) { _ in true }
+        let outcome = await store.approve(store.requests[0], commitOID: store.requests[0].headRefOid) { _ in true }
 
         #expect(outcome == .approved)
         #expect(store.requests.map(\.id) == ["PR_2"])
@@ -472,7 +493,7 @@ struct ReviewStoreTests {
         )
         await store.refresh()
 
-        let outcome = await store.approve(store.requests[0]) { _ in true }
+        let outcome = await store.approve(store.requests[0], commitOID: store.requests[0].headRefOid) { _ in true }
 
         #expect(outcome == .failed("Can not approve your own pull request"))
         #expect(store.requests.map(\.id) == ["PR_1"])
@@ -492,7 +513,7 @@ struct ReviewStoreTests {
         )
         await store.refresh()
 
-        #expect(await store.approve(store.requests[0]) { _ in false } == .cancelled)
+        #expect(await store.approve(store.requests[0], commitOID: store.requests[0].headRefOid) { _ in false } == .cancelled)
         #expect(store.requests.map(\.id) == ["PR_1"])
         #expect(approver.calls.isEmpty)
         #expect(store.approvingIDs.isEmpty)
@@ -509,7 +530,7 @@ struct ReviewStoreTests {
         let store = makeStore(client: client, approver: nil)
         await store.refresh()
 
-        #expect(await store.approve(store.requests[0]) { _ in true } == .refusedDebugOverride)
+        #expect(await store.approve(store.requests[0], commitOID: store.requests[0].headRefOid) { _ in true } == .refusedDebugOverride)
         #expect(store.requests.map(\.id) == ["PR_1"])
     }
 
@@ -532,7 +553,7 @@ struct ReviewStoreTests {
         await store.refresh()
 
         var shown: String?
-        _ = await store.approve(store.requests[0]) { body in
+        _ = await store.approve(store.requests[0], commitOID: store.requests[0].headRefOid) { body in
             shown = body
             return true
         }
@@ -559,7 +580,7 @@ struct ReviewStoreTests {
         )
         await store.refresh()
 
-        _ = await store.approve(store.requests[0]) { _ in true }
+        _ = await store.approve(store.requests[0], commitOID: store.requests[0].headRefOid) { _ in true }
 
         #expect(store.approvalQuipsEnabled == false)
         #expect(approver.calls.first?.body == nil)
