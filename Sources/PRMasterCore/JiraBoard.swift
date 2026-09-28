@@ -51,14 +51,15 @@ public enum JiraBoard {
 }
 
 public struct JiraColumn: Sendable, Equatable, Identifiable {
-    public let title: String
+    public let lane: JiraLane
     public let issues: [JiraIssue]
     public let showsPriority: Bool
 
+    public var title: String { lane.title }
     public var id: String { title }
 
-    public init(title: String, issues: [JiraIssue], showsPriority: Bool) {
-        self.title = title
+    public init(lane: JiraLane, issues: [JiraIssue], showsPriority: Bool) {
+        self.lane = lane
         self.issues = issues
         self.showsPriority = showsPriority
     }
@@ -71,12 +72,13 @@ extension JiraGroups {
     /// the exception, dropped when its window is off because it can never fill.
     public func boardColumns(includesDone: Bool) -> [JiraColumn] {
         var columns = [
-            JiraColumn(title: "To do", issues: toDo, showsPriority: true),
-            JiraColumn(title: "In progress", issues: inProgress, showsPriority: true),
-            JiraColumn(title: "Testing", issues: testing, showsPriority: true),
+            JiraColumn(lane: .toDo, issues: toDo, showsPriority: true),
+            JiraColumn(lane: .inProgress, issues: inProgress, showsPriority: true),
+            JiraColumn(lane: .reviewing, issues: reviewing, showsPriority: true),
+            JiraColumn(lane: .testing, issues: testing, showsPriority: true),
         ]
         if includesDone {
-            columns.append(JiraColumn(title: "Done", issues: done, showsPriority: false))
+            columns.append(JiraColumn(lane: .done, issues: done, showsPriority: false))
         }
         return columns
     }

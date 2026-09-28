@@ -331,14 +331,28 @@ struct JiraTestingStatusTests {
         #expect(grouped(status).inProgress.isEmpty)
     }
 
-    /// Matched on whole words: "Latest" contains the letters and means nothing
-    /// of the sort, and reviewing is somebody reading the code, not running it.
+    /// Matched on whole words: "Latest" and "Preview" contain the letters and
+    /// mean nothing of the sort.
     @Test("everything else in flight stays in progress", arguments: [
-        "In Progress", "Reviewing", "Code Review", "Latest", "Contested",
+        "In Progress", "Latest", "Contested", "Preview Build",
     ])
     func othersStayInProgress(status: String) {
         #expect(grouped(status).inProgress.map(\.key) == ["ACME-1"])
         #expect(grouped(status).testing.isEmpty)
+        #expect(grouped(status).reviewing.isEmpty)
+    }
+
+    @Test("a status about review gets its own list", arguments: [
+        "Reviewing", "Code Review", "In Review", "Ready for review", "  REVIEWING ",
+    ])
+    func reviewIsSplitOut(status: String) {
+        #expect(grouped(status).reviewing.map(\.key) == ["ACME-1"])
+        #expect(grouped(status).inProgress.isEmpty)
+    }
+
+    @Test("a status about both review and testing counts as testing")
+    func testingWinsOverReview() {
+        #expect(grouped("Review Testing").testing.map(\.key) == ["ACME-1"])
     }
 
     /// The category is what places an issue; the name only splits what is
@@ -376,9 +390,10 @@ struct JiraTestingStatusTests {
             issue("A-2", category: .inProgress, status: "In Progress"),
             issue("A-3", category: .inProgress, status: "Testing"),
             issue("A-4", category: .done, doneDaysAgo: 2),
+            issue("A-5", category: .inProgress, status: "Reviewing"),
         ]
         let groups = JiraGrouping.group(input, window: .twoWeeks, now: now)
-        let landed = groups.toDo + groups.inProgress + groups.testing + groups.done
+        let landed = groups.toDo + groups.inProgress + groups.reviewing + groups.testing + groups.done
 
         #expect(Set(landed.map(\.key)) == Set(input.map(\.key)))
         #expect(groups.count == input.count)

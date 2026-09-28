@@ -10,6 +10,7 @@ struct JiraIssueRowView: View {
     let linkState: IssueLinkState
     let isExpanded: Bool
     var showsPriority = false
+    var isMoving = false
     let onToggle: () -> Void
     let onOpenIssue: () -> Void
     let onOpenLink: (LinkedPullRequest) -> Void
@@ -71,6 +72,13 @@ struct JiraIssueRowView: View {
                             .accessibilityLabel("\(issue.priority.name) priority")
                     }
                     chip(issue.typeLabel, tint: issue.typeTint)
+                    if isMoving {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .scaleEffect(0.7)
+                            .frame(width: 10, height: 10)
+                            .accessibilityLabel("Moving")
+                    }
                     Text(verbatim: issue.statusName)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
@@ -200,6 +208,7 @@ struct LinkedPullRequestRowView: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onOpen)
         .onHover { isHovering = $0 }
+        .copyMenu(link: pull.url, repo: pull.repo, number: pull.number)
     }
 
     private var symbol: String {

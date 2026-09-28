@@ -16,6 +16,8 @@ enum JiraQueries {
     /// The old `/rest/api/3/search` answers HTTP 410 with a migration notice.
     static let searchPath = "/rest/api/3/search/jql"
     static let myselfPath = "/rest/api/3/myself"
+
+    static func issuePath(_ key: String) -> String { "/rest/api/3/issue/\(key)" }
 }
 
 public actor JiraClient {
@@ -81,12 +83,64 @@ public actor JiraClient {
         return try JiraDecoder.decodeSearch(try await get(components.url!))
     }
 
+    public func transitions(for key: String) async throws -> (JiraStatus, [JiraTransition]) {
+        var components = URLComponents(
+            url: credentials.baseURL.appendingPathComponent(JiraQueries.issuePath(try Self.checked(key))),
+            resolvingAgainstBaseURL: false
+        )!
+        components.queryItems = [
+            URLQueryItem(name: "fields", value: "status"),
+            URLQueryItem(name: "expand", value: "transitions.fields"),
+        ]
+        let data = try await send(request(for: components.url!), refusing: true)
+        do {
+            return try JSONDecoder().decode(TransitionsPage.self, from: data).domain()
+        } catch {
+            throw PRMasterError.decoding(String(describing: error))
+        }
+    }
+
+    public func perform(
+        _ transition: JiraTransition, on key: String, values: [String: String]
+    ) async throws {
+        let url = credentials.baseURL
+            .appendingPathComponent(JiraQueries.issuePath(try Self.checked(key)) + "/transitions")
+        var request = request(for: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        var body: [String: Any] = ["transition": ["id": transition.id]]
+        let fields = transition.fields.reduce(into: [String: Any]()) { fields, field in
+            if let value = values[field.id] { fields[field.id] = JiraField.encode(value, as: field.kind) }
+        }
+        if !fields.isEmpty { body["fields"] = fields }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        _ = try await send(request, refusing: true)
+    }
+
+    /// The key lands in a URL path, and a dropped string can come from any app.
+    static func checked(_ key: String) throws -> String {
+        guard key.wholeMatch(of: /[A-Z][A-Z0-9_]*-[0-9]+/) != nil else {
+            throw PRMasterError.jiraMoveRefused("“\(key)” is not a Jira issue key.")
+        }
+        return key
+    }
+
     private func get(_ url: URL) async throws -> Data {
+        try await send(request(for: url))
+    }
+
+    private func request(for url: URL) -> URLRequest {
         var request = URLRequest(url: url)
         request.setValue(credentials.basicAuthHeader, forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("PRMaster", forHTTPHeaderField: "User-Agent")
+        return request
+    }
 
+    /// `refusing` is for moves: there a 403 means no permission to transition,
+    /// not a bad token, and Jira explains every 4xx in the body.
+    private func send(_ request: URLRequest, refusing: Bool = false) async throws -> Data {
         let (data, response): (Data, URLResponse)
         do {
             (data, response) = try await session.data(for: request)
@@ -98,8 +152,12 @@ public actor JiraClient {
             throw PRMasterError.decoding("response was not HTTP")
         }
 
+        if refusing, [400, 403, 404, 409].contains(http.statusCode) {
+            throw PRMasterError.jiraMoveRefused(JiraDecoder.refusal(data, status: http.statusCode))
+        }
+
         switch http.statusCode {
-        case 200:
+        case 200, 204:
             return data
         case 401, 403:
             throw PRMasterError.jiraUnauthorized
@@ -164,7 +222,79 @@ struct IssueNode: Decodable {
     }
 }
 
+struct TransitionsPage: Decodable {
+    let fields: Fields
+    let transitions: [Node]
+
+    struct Fields: Decodable { let status: IssueNode.Fields.Status? }
+
+    struct Node: Decodable {
+        let id: String
+        let isGlobal: Bool?
+        let to: IssueNode.Fields.Status
+        let fields: [String: Field]?
+
+        struct Field: Decodable {
+            let required: Bool?
+            let name: String?
+            let schema: Schema?
+            let allowedValues: [Allowed]?
+
+            struct Schema: Decodable { let custom: String? }
+            struct Allowed: Decodable { let value: String?; let name: String? }
+
+            var kind: JiraField.Kind? {
+                switch schema?.custom?.split(separator: ":").last {
+                case "select", "radiobuttons":
+                    return .option((allowedValues ?? []).compactMap { $0.value ?? $0.name })
+                case "textarea":  return .richText
+                case "textfield": return .text
+                default:          return nil
+                }
+            }
+        }
+    }
+
+    func domain() throws -> (JiraStatus, [JiraTransition]) {
+        guard let status = fields.status, status.name?.isEmpty == false else {
+            throw PRMasterError.decoding("transitions response carried no status")
+        }
+        let transitions = transitions.map { node in
+            let screen = (node.fields ?? [:]).sorted { $0.key < $1.key }
+            return JiraTransition(
+                id: node.id,
+                to: Self.status(node.to),
+                isGlobal: node.isGlobal ?? false,
+                needsInput: screen.contains { $0.value.required == true && $0.value.kind == nil },
+                fields: screen.compactMap { id, field in
+                    field.kind.map { JiraField(id: id, name: field.name ?? id, kind: $0) }
+                }
+            )
+        }
+        return (Self.status(status), transitions)
+    }
+
+    private static func status(_ raw: IssueNode.Fields.Status) -> JiraStatus {
+        JiraStatus(
+            name: raw.name ?? "",
+            category: raw.statusCategory?.key.flatMap(JiraStatusCategory.init(rawValue:)) ?? .unknown
+        )
+    }
+}
+
 public enum JiraDecoder {
+
+    /// Jira puts general reasons in `errorMessages` and per-field ones in `errors`.
+    static func refusal(_ data: Data, status: Int) -> String {
+        struct Body: Decodable {
+            let errorMessages: [String]?
+            let errors: [String: String]?
+        }
+        let body = try? JSONDecoder().decode(Body.self, from: data)
+        let reasons = (body?.errorMessages ?? [])
+            + (body?.errors ?? [:]).sorted { $0.key < $1.key }.map(\.value)
+        return reasons.isEmpty ? "Jira answered HTTP \(status)." : reasons.joined(separator: " ")
+    }
 
     static func decodeSearch(_ data: Data) throws -> SearchPage {
         do {

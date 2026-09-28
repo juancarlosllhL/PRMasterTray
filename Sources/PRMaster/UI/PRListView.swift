@@ -51,6 +51,7 @@ struct PRListView: View {
     let selection: TabSelectionStore
     let jira: JiraStore
     let onOpenIssue: (JiraIssue) -> Void
+    let jiraIssueLink: (JiraIssue) -> URL?
     let onOpenLinkedPullRequest: (LinkedPullRequest) -> Void
 
     var visibleTabs: [PopoverTab] { PopoverTab.allCases }
@@ -296,6 +297,7 @@ struct PRListView: View {
                     jira: jira,
                     filter: store.filter,
                     onOpenIssue: onOpenIssue,
+                    issueLink: jiraIssueLink,
                     onOpenLink: onOpenLinkedPullRequest,
                     onOpenSettings: onOpenSettings
                 )

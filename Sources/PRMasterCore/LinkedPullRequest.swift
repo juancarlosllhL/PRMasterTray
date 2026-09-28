@@ -57,3 +57,8 @@ public struct LinkedPullRequest: Sendable, Equatable, Identifiable, FilterableRe
         self.state = state
     }
 }
+
+public enum PullRequestReference {
+    /// `owner/repo#123` rather than a bare number, which is ambiguous across repositories.
+    public static func id(repo: String, number: Int) -> String { "\(repo)#\(number)" }
+}

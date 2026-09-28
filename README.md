@@ -96,7 +96,9 @@ GitHub would merge right now.
   Statuses are grouped by Jira's status category rather than its name. A site
   can rename or localise a status freely — this one has **Awaiting Customer**,
   **On Hold**, **New** and **Testing** — and only the category underneath is
-  stable.
+  stable. Inside In progress, a status whose name has the word *review* or
+  *reviewing* gets a **Reviewing** section of its own, between In progress and
+  Testing.
 
   Finding the pull requests costs one request no matter how many issues you
   have, and the key match is exact: `ACME-6023` never pulls in `ACME-60236`.
@@ -110,6 +112,20 @@ GitHub would merge right now.
   and has nothing in it. Done is the exception: with its window off that column
   can never fill, so it goes rather than sit there permanently empty. The filter
   field and the ordering inside each column are the same ones the list uses.
+- **Moving an issue** is a drag from one board column to another, or a
+  right-click on any issue in either layout. Jira's workflow rarely links two
+  columns directly, so the app reads the transitions the issue offers right now
+  and walks the steps in between, To Do to In Progress to Reviewing for
+  example. It never takes a step that cancels or parks the issue. When a step
+  opens a screen in Jira, such as a bug going from Reviewing to Testing, a form
+  at the top of the pane asks for its fields first. Every field is required,
+  because Jira's validators demand fields its API calls optional. A Remark gets
+  "PM: " in front if you leave it out. A card lands in its new column at once; if Jira refuses, it
+  goes back and a banner names the status it stopped at.
+- **Copy Link** and **Copy ID** are on the right-click menu of every pull
+  request and every Jira issue, in both tabs and both layouts. An issue's ID is
+  its key, `ACME-64471`. A pull request's is `owner/repo#675`, which GitHub
+  turns into a link wherever you paste it.
 - **Jira** in Settings is where you sign in: your site, your email, and an API
   token from [id.atlassian.com](https://id.atlassian.com) under Security.
   Nothing is stored until it has been tested, so a typo is refused where you

@@ -73,3 +73,9 @@ public struct JiraIssue: Sendable, Equatable, Identifiable {
         self.categoryChangedAt = categoryChangedAt
     }
 }
+
+extension JiraIssue {
+    public func browseURL(on base: URL) -> URL {
+        base.appendingPathComponent("browse/\(key)")
+    }
+}

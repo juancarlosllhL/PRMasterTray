@@ -8,7 +8,11 @@ struct JiraBoardView: View {
     let jira: JiraStore
     let filter: PRFilter
     let onOpenIssue: (JiraIssue) -> Void
+    let issueLink: (JiraIssue) -> URL?
     let onOpenLink: (LinkedPullRequest) -> Void
+
+    @State private var targetedLane: JiraLane?
+    @Environment(\.palette) private var palette
 
     private static let columnWidth = CGFloat(JiraBoard.columnWidth)
     private static let columnHeight = CGFloat(JiraBoard.columnHeight)
@@ -19,11 +23,14 @@ struct JiraBoardView: View {
                 self.column(column)
             }
         }
+        .fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal, CGFloat(JiraBoard.outerPadding))
         .padding(.bottom, CGFloat(JiraBoard.outerPadding))
     }
 
     private static let cardsBeforeScrolling = 5
+    /// An empty column is only a header tall, too small to aim a drop at.
+    private static let minimumDropHeight: CGFloat = 160
 
     /// Only the long columns get a scroller and a fixed height. A short one
     /// sized to the tallest would leave the popover mostly empty space.
@@ -41,6 +48,19 @@ struct JiraBoardView: View {
             }
         }
         .frame(width: Self.columnWidth)
+        .frame(minHeight: Self.minimumDropHeight, maxHeight: .infinity, alignment: .top)
+        .contentShape(Rectangle())
+        .background {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(palette.wash(.blue))
+                .opacity(targetedLane == column.lane ? 1 : 0)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(palette.color(.blue).opacity(0.6), lineWidth: 1.5)
+                .opacity(targetedLane == column.lane ? 1 : 0)
+        }
+        .modifier(DropTarget(lane: column.lane, jira: jira, targetedLane: $targetedLane))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(column.title), \(column.issues.count) issues")
     }
@@ -64,10 +84,13 @@ struct JiraBoardView: View {
                     linkState: jira.linkState(for: issue.key),
                     isExpanded: jira.expandedKeys.contains(issue.key),
                     showsPriority: column.showsPriority,
+                    isMoving: jira.isMoving(issue.key),
                     onToggle: { jira.toggle(issue.key) },
                     onOpenIssue: { onOpenIssue(issue) },
                     onOpenLink: onOpenLink
                 )
+                .modifier(DragSource(key: issue.key, isEnabled: jira.canMove && !jira.isMoving(issue.key)))
+                .jiraIssueMenu(issue, jira: jira, link: issueLink(issue))
             }
         }
         .padding(.horizontal, 2)

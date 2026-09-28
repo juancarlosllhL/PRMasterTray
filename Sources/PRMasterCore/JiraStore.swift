@@ -12,6 +12,13 @@ public protocol IssueLinkFetching: Sendable {
 extension GitHubClient: IssueLinkFetching {}
 extension JiraClient: JiraIssueFetching {}
 
+/// `settledAfter` is the refresh generation current when Jira confirmed the
+/// move. Only a fetch started later is new enough to replace the override.
+public struct PendingMove: Sendable, Equatable {
+    public let lane: JiraLane
+    public var settledAfter: Int?
+}
+
 /// All four look like an issue with nothing under it unless kept apart: still
 /// being looked up, looked up and failed, looked up and genuinely none, found.
 public enum IssueLinkState: Sendable, Equatable, CaseIterable {
@@ -35,6 +42,11 @@ public final class JiraStore {
     public private(set) var isRefreshing = false
     public private(set) var expandedKeys: Set<String> = []
     public private(set) var pendingLinkKeys: Set<String> = []
+    public private(set) var moves: [String: PendingMove] = [:]
+    public private(set) var lastMoveFailure: String?
+    /// A hop waiting for the user to fill its screen. One at a time.
+    public private(set) var fieldRequest: JiraFieldRequest?
+    private var fieldAnswer: CheckedContinuation<[String: String]?, Never>?
 
     /// Widening asks for issues the last search never requested, so this
     /// persists and then refetches rather than re-deriving what is in hand.
@@ -60,7 +72,9 @@ public final class JiraStore {
     public var searchQuery = ""
 
     public var groups: JiraGroups {
-        JiraGrouping.group(issues, window: window, now: now())
+        JiraGrouping.group(
+            issues, window: window, now: now(), overrides: moves.mapValues(\.lane)
+        )
     }
 
     public var visibleGroups: JiraGroups { groups.matching(searchQuery) }
@@ -79,6 +93,11 @@ public final class JiraStore {
 
     /// `nil` until the user signs in, which is not a failure.
     private var issueClient: JiraIssueFetching?
+    /// `nil` for fixtures and debug overrides, so fake rows can never write to Jira.
+    private var mover: JiraIssueMoving?
+    private var refreshGeneration = 0
+    /// Bumped on every sign-in and sign-out, so a move from an older session lands nowhere.
+    private var session = 0
     private let linkClient: IssueLinkFetching?
     private let preferences: PreferenceStoring
     private let sleep: @Sendable (Duration) async throws -> Void
@@ -87,10 +106,12 @@ public final class JiraStore {
     private var pollTask: Task<Void, Never>?
 
     public var isConfigured: Bool { issueClient != nil }
+    public var canMove: Bool { mover != nil }
 
     public init(
         issues issueClient: JiraIssueFetching?,
         links linkClient: IssueLinkFetching?,
+        mover: JiraIssueMoving? = nil,
         preferences: PreferenceStoring = UserDefaultsPreferences(),
         now: @escaping @Sendable () -> Date = { Date() },
         sleep: @escaping @Sendable (Duration) async throws -> Void = {
@@ -99,6 +120,7 @@ public final class JiraStore {
     ) {
         self.issueClient = issueClient
         self.linkClient = linkClient
+        self.mover = mover
         self.preferences = preferences
         self.now = now
         self.sleep = sleep
@@ -130,6 +152,93 @@ public final class JiraStore {
         }
     }
 
+    public func isMoving(_ key: String) -> Bool {
+        moves[key].map { $0.settledAfter == nil } ?? false
+    }
+
+    public func lane(of issue: JiraIssue) -> JiraLane? {
+        moves[issue.key]?.lane ?? JiraGrouping.lane(for: issue)
+    }
+
+    // MARK: - Moving
+
+    public func move(_ key: String, to lane: JiraLane) async {
+        guard let mover, !isMoving(key),
+              let issue = issues.first(where: { $0.key == key }),
+              self.lane(of: issue) != lane
+        else { return }
+
+        lastMoveFailure = nil
+        moves[key] = PendingMove(lane: lane, settledAfter: nil)
+
+        let move = JiraMove(client: mover) { [weak self] request in
+            await self?.ask(request)
+        }
+        let startedIn = session
+        let outcome = await move.run(key, to: lane)
+        guard session == startedIn else { return }
+        switch outcome {
+        case .moved(let status):
+            patch(key, to: status)
+            moves[key]?.settledAfter = refreshGeneration
+        case .stopped(let status, let target):
+            moves[key] = nil
+            lastMoveFailure = "\(key) stopped at \(status.name). "
+                + "Jira offers no way on from there to \(target.title)."
+        case .cancelled(let leftAt):
+            moves[key] = nil
+            if let leftAt {
+                lastMoveFailure = "\(key) was left at \(leftAt.name). The form was closed before it went further."
+            }
+        case .failed(let reason, let leftAt):
+            moves[key] = nil
+            lastMoveFailure = leftAt.map { "Couldn't move \(key) past \($0.name) — \(reason)" }
+                ?? "Couldn't move \(key) — \(reason)"
+        }
+        await refresh()
+    }
+
+    public func submitFields(_ values: [String: String]) {
+        guard let request = fieldRequest, request.problems(in: values).isEmpty else { return }
+        answerForm(request.normalized(values))
+    }
+
+    public func cancelFields() {
+        answerForm(nil)
+    }
+
+    private func ask(_ request: JiraFieldRequest) async -> [String: String]? {
+        if let open = fieldRequest {
+            lastMoveFailure = "Finish moving \(open.key) first. Its form is still open."
+            return nil
+        }
+        fieldRequest = request
+        return await withCheckedContinuation { fieldAnswer = $0 }
+    }
+
+    private func answerForm(_ values: [String: String]?) {
+        let waiting = fieldAnswer
+        fieldAnswer = nil
+        fieldRequest = nil
+        waiting?.resume(returning: values)
+    }
+
+    public func dismissMoveFailure() {
+        lastMoveFailure = nil
+    }
+
+    private func patch(_ key: String, to status: JiraStatus) {
+        guard let index = issues.firstIndex(where: { $0.key == key }) else { return }
+        let old = issues[index]
+        issues[index] = JiraIssue(
+            key: old.key, summary: old.summary,
+            statusName: status.name, statusCategory: status.category,
+            issueType: old.issueType, priority: old.priority,
+            updatedAt: now(), createdAt: old.createdAt,
+            categoryChangedAt: status.category == old.statusCategory ? old.categoryChangedAt : now()
+        )
+    }
+
     // MARK: - Refresh
 
     public func refresh() async {
@@ -138,6 +247,8 @@ public final class JiraStore {
 
         isRefreshing = true
         defer { isRefreshing = false }
+        refreshGeneration += 1
+        let generation = refreshGeneration
 
         let fetched: [JiraIssue]
         do {
@@ -150,6 +261,7 @@ public final class JiraStore {
 
         let listed = fetched.filter { !$0.isEpic }
         issues = listed
+        moves = moves.filter { $0.value.settledAfter.map { $0 >= generation } ?? true }
         lastError = nil
         lastSuccessfulFetch = now()
         consecutiveFailures = 0
@@ -222,11 +334,16 @@ public final class JiraStore {
     }
 
     /// Signing in and out, which the app used to read only at launch.
-    public func connect(_ client: JiraIssueFetching?) {
+    public func connect(_ client: JiraIssueFetching?, mover: JiraIssueMoving? = nil) {
         stop()
         issueClient = client
+        self.mover = mover
+        session += 1
+        answerForm(nil)
+        moves = [:]
         lastError = nil
         lastLinkFailure = nil
+        lastMoveFailure = nil
         consecutiveFailures = 0
 
         guard client != nil else {

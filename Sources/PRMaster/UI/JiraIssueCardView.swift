@@ -9,6 +9,7 @@ struct JiraIssueCardView: View {
     let linkState: IssueLinkState
     let isExpanded: Bool
     var showsPriority = false
+    var isMoving = false
     let onToggle: () -> Void
     let onOpenIssue: () -> Void
     let onOpenLink: (LinkedPullRequest) -> Void
@@ -81,6 +82,10 @@ struct JiraIssueCardView: View {
                     .accessibilityLabel("\(issue.priority.name) priority")
             }
             chip(issue.typeLabel, tint: issue.typeTint)
+            if isMoving {
+                ProgressView().controlSize(.mini).scaleEffect(0.6)
+                    .accessibilityLabel("Moving")
+            }
             Text(verbatim: issue.statusName)
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)

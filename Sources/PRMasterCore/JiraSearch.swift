@@ -25,6 +25,7 @@ extension JiraGroups {
         JiraGroups(
             toDo: toDo.filter { JiraSearch.matches($0, query: query) },
             inProgress: inProgress.filter { JiraSearch.matches($0, query: query) },
+            reviewing: reviewing.filter { JiraSearch.matches($0, query: query) },
             testing: testing.filter { JiraSearch.matches($0, query: query) },
             done: done.filter { JiraSearch.matches($0, query: query) }
         )

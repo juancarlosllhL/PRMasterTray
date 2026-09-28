@@ -29,6 +29,7 @@ private let populated = JiraGrouping.group(
         boardIssue("ACME-2", category: .inProgress, status: "In Progress"),
         boardIssue("ACME-3", category: .inProgress, status: "Testing"),
         boardIssue("ACME-4", category: .done, status: "Done", doneDaysAgo: 1),
+        boardIssue("ACME-5", category: .inProgress, status: "Reviewing"),
     ],
     window: .twoWeeks,
     now: boardNow
@@ -41,7 +42,7 @@ struct JiraColumnTests {
     func workflowOrder() {
         #expect(
             populated.boardColumns(includesDone: true).map(\.title)
-                == ["To do", "In progress", "Testing", "Done"]
+                == ["To do", "In progress", "Reviewing", "Testing", "Done"]
         )
     }
 
@@ -49,7 +50,7 @@ struct JiraColumnTests {
     func issuesPerColumn() {
         let columns = populated.boardColumns(includesDone: true)
         #expect(columns.map { $0.issues.map(\.key) }
-            == [["ACME-1"], ["ACME-2"], ["ACME-3"], ["ACME-4"]])
+            == [["ACME-1"], ["ACME-2"], ["ACME-5"], ["ACME-3"], ["ACME-4"]])
     }
 
     /// The list drops an empty section. A board must not: an empty column is
@@ -59,15 +60,15 @@ struct JiraColumnTests {
         let onlyToDo = JiraGrouping.group([boardIssue("ACME-1")], window: .twoWeeks, now: boardNow)
         let columns = onlyToDo.boardColumns(includesDone: true)
 
-        #expect(columns.count == 4)
-        #expect(columns.map(\.issues.isEmpty) == [false, true, true, true])
+        #expect(columns.count == 5)
+        #expect(columns.map(\.issues.isEmpty) == [false, true, true, true, true])
     }
 
     @Test("no issues at all still gives every column")
     func emptyBoardKeepsColumns() {
         let none = JiraGrouping.group([], window: .twoWeeks, now: boardNow)
-        #expect(none.boardColumns(includesDone: true).count == 4)
-        #expect(none.boardColumns(includesDone: false).count == 3)
+        #expect(none.boardColumns(includesDone: true).count == 5)
+        #expect(none.boardColumns(includesDone: false).count == 4)
     }
 
     /// A column that can never fill would read as a bug rather than as a window
@@ -75,13 +76,13 @@ struct JiraColumnTests {
     @Test("Done is dropped when its window is off")
     func doneDroppedWhenOff() {
         let columns = populated.boardColumns(includesDone: false)
-        #expect(columns.map(\.title) == ["To do", "In progress", "Testing"])
+        #expect(columns.map(\.title) == ["To do", "In progress", "Reviewing", "Testing"])
     }
 
     @Test("Done is the only column without priority")
     func priorityShownExceptOnDone() {
         let columns = populated.boardColumns(includesDone: true)
-        #expect(columns.map(\.showsPriority) == [true, true, true, false])
+        #expect(columns.map(\.showsPriority) == [true, true, true, true, false])
     }
 
     @Test("a column is identified by its title")
@@ -230,7 +231,7 @@ struct JiraStoreBoardTests {
         preferences.setJiraWindow(.off)
         let store = JiraStore(issues: nil, links: nil, preferences: preferences)
 
-        #expect(store.boardColumns.map(\.title) == ["To do", "In progress", "Testing"])
+        #expect(store.boardColumns.map(\.title) == ["To do", "In progress", "Reviewing", "Testing"])
     }
 
     @Test("the board is off while the layout is the list")

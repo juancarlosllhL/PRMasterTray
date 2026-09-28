@@ -5,6 +5,7 @@ struct JiraPaneView: View {
     let jira: JiraStore
     let filter: PRFilter
     let onOpenIssue: (JiraIssue) -> Void
+    let issueLink: (JiraIssue) -> URL?
     let onOpenLink: (LinkedPullRequest) -> Void
     let onOpenSettings: () -> Void
 
@@ -29,6 +30,23 @@ struct JiraPaneView: View {
                     icon: "arrow.triangle.pull",
                     text: "Couldn't check for pull requests — \(failure)"
                 )
+            }
+            if let failure = jira.lastMoveFailure {
+                BannerRowView(
+                    icon: "arrow.left.arrow.right",
+                    text: failure,
+                    actionTitle: "Dismiss",
+                    action: { jira.dismissMoveFailure() }
+                )
+            }
+            if let request = jira.fieldRequest {
+                JiraMoveFormView(
+                    request: request,
+                    onSubmit: { jira.submitFields($0) },
+                    onCancel: { jira.cancelFields() }
+                )
+                .id("\(request.key) \(request.to.name)")
+                Divider()
             }
             content
         }
@@ -138,6 +156,10 @@ struct JiraPaneView: View {
                 cap: 5, height: 260, showsPriority: true
             ),
             Section(
+                title: "Reviewing", issues: groups.reviewing,
+                cap: 4, height: 180, showsPriority: true
+            ),
+            Section(
                 title: "Testing", issues: groups.testing,
                 cap: 4, height: 180, showsPriority: true
             ),
@@ -155,6 +177,7 @@ struct JiraPaneView: View {
             jira: jira,
             filter: filter,
             onOpenIssue: onOpenIssue,
+            issueLink: issueLink,
             onOpenLink: onOpenLink
         )
     }
@@ -190,10 +213,12 @@ struct JiraPaneView: View {
                     linkState: jira.linkState(for: issue.key),
                     isExpanded: jira.expandedKeys.contains(issue.key),
                     showsPriority: showsPriority,
+                    isMoving: jira.isMoving(issue.key),
                     onToggle: { jira.toggle(issue.key) },
                     onOpenIssue: { onOpenIssue(issue) },
                     onOpenLink: onOpenLink
                 )
+                .jiraIssueMenu(issue, jira: jira, link: issueLink(issue))
             }
         }
         .padding(.horizontal, 4)

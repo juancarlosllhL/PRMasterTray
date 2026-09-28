@@ -57,6 +57,8 @@ public enum PRMasterError: Error, LocalizedError {
     case jiraInvalidCredentials(detail: String)
     case jiraKeychainFailure(status: Int)
     case jiraUnauthorized
+    /// Jira's own reason for refusing a transition, verbatim.
+    case jiraMoveRefused(String)
 
     public var errorDescription: String? {
         switch self {
@@ -64,6 +66,8 @@ public enum PRMasterError: Error, LocalizedError {
             return detail
         case .jiraKeychainFailure(let status):
             return "Couldn't reach your Keychain (code \(status))."
+        case .jiraMoveRefused(let reason):
+            return reason
         case .jiraUnauthorized:
             return "Jira didn't accept that email and API token together. "
                 + "Check both, and create a token at id.atlassian.com under Security."
@@ -148,7 +152,8 @@ extension PRMasterError: Equatable {
         case (.mergeRejected(let l), .mergeRejected(let r)),
              (.updateRejected(let l), .updateRejected(let r)),
              (.closeRejected(let l), .closeRejected(let r)),
-             (.approveRejected(let l), .approveRejected(let r)):
+             (.approveRejected(let l), .approveRejected(let r)),
+             (.jiraMoveRefused(let l), .jiraMoveRefused(let r)):
             return l == r
         case (.decoding(let l), .decoding(let r)),
              (.releaseCheckFailed(let l), .releaseCheckFailed(let r)),

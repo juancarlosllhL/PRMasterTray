@@ -147,6 +147,7 @@ struct PullRequestsPaneView: View {
                     onMerge: { onMerge(pr) },
                     onClose: { onClose(pr) }
                 )
+                .copyMenu(link: pr.url, repo: pr.repo, number: pr.number)
             }
         }
         .padding(.vertical, 4)
@@ -182,6 +183,7 @@ struct PullRequestsPaneView: View {
                     shipment: shipment,
                     isLoadingEnvironments: store.isLoadingDeployments
                 ) { onOpenShipment(shipment) }
+                .copyMenu(link: shipment.pr.url, repo: shipment.pr.repo, number: shipment.pr.number)
             }
         }
         .padding(.horizontal, 4)
@@ -222,6 +224,7 @@ struct PullRequestsPaneView: View {
                     onOpen: { onOpenReviewRequest(request) },
                     onApprove: { onApproveReviewRequest(request) }
                 )
+                .copyMenu(link: request.url, repo: request.repo, number: request.number)
             }
         }
         .padding(.horizontal, 4)

@@ -6,6 +6,7 @@ enum StubOutcome {
 }
 
 struct RecordedRequest {
+    let method: String?
     let url: URL?
     let headers: [String: String]
     let body: Data?
@@ -87,6 +88,7 @@ final class StubURLProtocol: URLProtocol, @unchecked Sendable {
 
         let outcome: StubOutcome? = Self.lock.withLock {
             Self.recorded[sessionID, default: []].append(RecordedRequest(
+                method: request.httpMethod,
                 url: request.url,
                 headers: request.allHTTPHeaderFields ?? [:],
                 body: Self.body(of: request)

@@ -101,15 +101,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the same reason as the rest: a fixture's issue keys would spend real
         // search calls looking for pull requests that do not exist.
         var issueClient: (any JiraIssueFetching)?
+        var mover: (any JiraIssueMoving)?
         var linkClient: (any IssueLinkFetching)? = Debug.overridesActive ? nil : client
         if let fixture = Debug.jiraFixturePath {
             let served = JiraFixtureClient(path: fixture)
             issueClient = served
             linkClient = served
         } else if !Debug.overridesActive, let credentials = jiraAccount.current {
-            issueClient = JiraClient(credentials: credentials)
+            let jiraClient = JiraClient(credentials: credentials)
+            issueClient = jiraClient
+            mover = jiraClient
         }
-        jira = JiraStore(issues: issueClient, links: linkClient)
+        jira = JiraStore(issues: issueClient, links: linkClient, mover: mover)
 
         updates = AppUpdateStore(
             checker: ReleaseClient(),
@@ -377,9 +380,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self, Debug.jiraFixturePath == nil else { return }
-                self.jira.connect(
-                    self.jiraAccount.current.map { JiraClient(credentials: $0) }
-                )
+                let client = Debug.overridesActive
+                    ? nil : self.jiraAccount.current.map { JiraClient(credentials: $0) }
+                self.jira.connect(client, mover: client)
                 self.observeJiraAccount()
             }
         }
@@ -462,8 +465,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 jira: jira,
                 onOpenIssue: { [weak self] issue in
                     guard let self, let base = jiraAccount.current?.baseURL else { return }
-                    open(base.appendingPathComponent("browse/\(issue.key)"))
+                    open(issue.browseURL(on: base))
                     popover.performClose(nil)
+                },
+                jiraIssueLink: { [weak self] issue in
+                    self?.jiraAccount.current.map { issue.browseURL(on: $0.baseURL) }
                 },
                 onOpenLinkedPullRequest: { [weak self] pull in
                     self?.open(pull.url)
