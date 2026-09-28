@@ -63,6 +63,7 @@ struct DiffWindowView: View {
     let appearance: AppearanceStore
     let onAct: (MergeTarget) -> Void
     let onOpenOnGitHub: () -> Void
+    var initialFile: String?
 
     var paletteInputs = PaletteInputs()
     @State private var scrollTarget: String?
@@ -89,7 +90,10 @@ struct DiffWindowView: View {
         }
         .frame(minWidth: 760, minHeight: 420)
         .environment(\.palette, palette)
-        .task { await store.load() }
+        .task {
+            await store.load()
+            selectedFile = initialFile
+        }
         .onChange(of: liveState, initial: true) { _, state in
             store.observe(liveHead: state.head, isReady: state.isReady)
         }

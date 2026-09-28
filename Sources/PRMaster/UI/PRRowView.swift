@@ -3,7 +3,6 @@ import PRMasterCore
 
 struct PRRowView: View {
     let pr: PullRequest
-    let canMerge: Bool
     /// True while the app is merging the base branch into this PR.
     let isUpdating: Bool
     /// Whether this pull request has been open longer than the user's threshold.
@@ -12,11 +11,10 @@ struct PRRowView: View {
     /// How old, in words. Passed in rather than computed here so the row reads
     /// one clock per redraw instead of one per row.
     let staleAge: String
-    /// False while a debug override is active. Unlike `canMerge` there is no
-    /// demo exception to this — see `CloseCoordinator`.
+    /// False while a debug override is active — see `CloseCoordinator`.
     let canClose: Bool
     let onOpen: () -> Void
-    let onMerge: () -> Void
+    let onReview: () -> Void
     let onClose: () -> Void
 
     @State private var isHovering = false
@@ -94,20 +92,16 @@ struct PRRowView: View {
 
             Spacer(minLength: 4)
 
-            // Same rule as the merge button below: only offered where the action
-            // applies. Plain against Merge's prominent style and to its left, so
-            // that on a row which is both stale and ready the better outcome is
-            // the one that looks like it.
+            // Plain against Review's prominent style and to its left, so the
+            // better outcome is the one that looks like it.
             if isStale, isHovering, canClose {
                 Button("Close", action: onClose)
                     .buttonStyle(.bordered)
                     .controlSize(.small)
             }
 
-            // Merging is irreversible, so the affordance only appears for PRs
-            // that can actually be merged.
-            if pr.readiness == .ready, isHovering, canMerge {
-                Button("Merge", action: onMerge)
+            if isHovering {
+                Button("Review", action: onReview)
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
             }

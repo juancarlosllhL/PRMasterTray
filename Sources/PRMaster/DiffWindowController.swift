@@ -45,7 +45,8 @@ final class DiffWindowController: NSObject, NSWindowDelegate {
             live: live,
             appearance: appearance,
             onAct: { target in onAct(target) { weakPanel?.close() } },
-            onOpenOnGitHub: { onOpen(subject.url) }
+            onOpenOnGitHub: { onOpen(subject.url) },
+            initialFile: Debug.openFile
         ))
         hosting.sizingOptions = []
 
@@ -62,6 +63,13 @@ final class DiffWindowController: NSObject, NSWindowDelegate {
         panel.identifier = NSUserInterfaceItemIdentifier(subject.id)
         panel.delegate = self
         return panel
+    }
+
+    func snapshotFrontWindow(to url: URL) {
+        guard let view = NSApp.windows.first(where: { $0.delegate === self && $0.isVisible })?.contentView,
+              let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        try? rep.representation(using: .png, properties: [:])?.write(to: url)
     }
 
     func windowWillClose(_ notification: Notification) {

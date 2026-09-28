@@ -1,0 +1,70 @@
+{
+  "status": "ahead",
+  "ahead_by": 3,
+  "behind_by": 0,
+  "files": [
+    {
+      "additions": 3,
+      "changes": 4,
+      "deletions": 1,
+      "filename": "internal/attachments/client.go",
+      "patch": "@@ -68,11 +68,13 @@ func checkHost(host string) error {\n \treturn nil\n }\n \n-// uploadTokenTypes lists the credentials that can attach a file.\n+// uploadTokenTypes lists the credentials that can attach a file. Some GitHub\n+// App user-to-server tokens are supported, so the endpoint decides which.\n var uploadTokenTypes = []gh.TokenType{\n \tgh.TokenTypeOAuth,\n \tgh.TokenTypePersonalAccess,\n \tgh.TokenTypeFineGrainedPAT,\n+\tgh.TokenTypeUserToServer,\n }\n \n // checkUploadTokenType rejects a credential that cannot upload. It is an",
+      "sha": "1d42f4abb3abe6adbf9c5ea6fa837bc0f9cdff6d",
+      "status": "modified"
+    },
+    {
+      "additions": 7,
+      "changes": 15,
+      "deletions": 8,
+      "filename": "internal/attachments/client_test.go",
+      "patch": "@@ -409,6 +409,13 @@ func TestNewUploader(t *testing.T) {\n \t\t\ttargetRepository: 42,\n \t\t\tviewerPermission: \"WRITE\",\n \t\t},\n+\t\t{\n+\t\t\tname:             \"App user-to-server token\",\n+\t\t\ttokenType:        gh.TokenTypeUserToServer,\n+\t\t\thost:             \"github.com\",\n+\t\t\ttargetRepository: 42,\n+\t\t\tviewerPermission: \"WRITE\",\n+\t\t},\n \t\t{\n \t\t\tname:             \"rejects an enterprise server host\",\n \t\t\ttokenType:        gh.TokenTypeOAuth,\n@@ -428,14 +435,6 @@ func TestNewUploader(t *testing.T) {\n \t\t\tviewerPermission: \"WRITE\",\n \t\t\twantErr:          \"attaching files is not supported on GitHub Enterprise Server\",\n \t\t},\n-\t\t{\n-\t\t\tname:             \"rejects an App user-to-server token\",\n-\t\t\ttokenType:        gh.TokenTypeUserToServer,\n-\t\t\thost:             \"github.com\",\n-\t\t\ttargetRepository: 42,\n-\t\t\tviewerPermission: \"WRITE\",\n-\t\t\twantErr:          badTokenErr,\n-\t\t},\n \t\t{\n \t\t\tname:             \"rejects an App server-to-server token\",\n \t\t\ttokenType:        gh.TokenTypeServerToServer,",
+      "sha": "1874bbd053b0e0a2fcae6512142c24af243735c7",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "changes": 3,
+      "deletions": 1,
+      "filename": "skills/gh/SKILL.md",
+      "patch": "@@ -126,7 +126,8 @@ blocked-by/blocking relationships.\n   of `--body`, `--body-file`, or `--editor`.\n - Uploads require GitHub.com or a GHE.com tenant, an OAuth token, classic PAT,\n   or fine-grained PAT, and `WRITE`, `MAINTAIN`, or `ADMIN` repository\n-  permission. GitHub Enterprise Server and GitHub App tokens are unsupported.\n+  permission. GitHub Enterprise Server and most GitHub App tokens are\n+  unsupported.\n - Uploads stop at the first failure. If earlier files uploaded, `gh` still\n   writes those attachments and exits non-zero. Create and edit commands also\n   print the issue or pull request URL.",
+      "sha": "a4c127eb9c74cfaa1ec5370dd89a52e79a590dfc",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "changes": 0,
+      "deletions": 0,
+      "filename": "Resources/WhatsNew/whats-new-0.12.0.png",
+      "sha": "1a9744786b4a1f1347176fce0fedd3ceaeda3128",
+      "status": "added"
+    },
+    {
+      "additions": 23,
+      "changes": 25,
+      "deletions": 2,
+      "filename": "Sources/PRMasterCore/Changelog.swift",
+      "patch": "@@ -4,12 +4,15 @@ import Foundation\n public struct ChangelogEntry: Sendable, Equatable, Identifiable {\n     public let version: String\n     public let lines: [String]\n+    /// A bare file name inside the bundle, never a path. See `Changelog.image`.\n+    public let image: String?\n \n     public var id: String { version }\n \n-    public init(version: String, lines: [String]) {\n+    public init(version: String, lines: [String], image: String? = nil) {\n         self.version = version\n         self.lines = lines\n+        self.image = image\n     }\n }\n \n@@ -23,10 +26,14 @@ public enum Changelog {\n         var entries: [ChangelogEntry] = []\n         var version: String?\n         var lines: [String] = []\n+        var image: String?\n \n         func close() {\n-            if let version { entries.append(ChangelogEntry(version: version, lines: lines)) }\n+            if let version {\n+                entries.append(ChangelogEntry(version: version, lines: lines, image: image))\n+            }\n             lines = []\n+            image = nil\n         }\n \n         for raw in markdown.split(separator: \"\\n\", omittingEmptySubsequences: false) {\n@@ -36,12 +43,26 @@ public enum Changelog {\n                 version = self.version(in: line.dropFirst(3))\n             } else if line.hasPrefix(\"- \"), version != nil {\n                 lines.append(String(line.dropFirst(2)))\n+            } else if line.hasPrefix(\"![\"), version != nil, image == nil {\n+                image = self.image(in: line)\n             }\n         }\n         close()\n         return entries\n     }\n \n+    /// A bare file name only. Anything with a path separator is refused rather\n+    /// than resolved, so a changelog cannot point the window at a file on disk.\n+    static func image(in line: String) -> String? {\n+        guard let open = line.firstIndex(of: \"(\"),\n+              let close = line.lastIndex(of: \")\"), open < close\n+        else { return nil }\n+        let name = line[line.index(after: open)..<close]\n+            .trimmingCharacters(in: .whitespaces)\n+        guard !name.isEmpty, !name.contains(\"/\"), name != \".\", name != \"..\" else { return nil }\n+        return name\n+    }\n+\n     private static func version(in heading: Substring) -> String? {\n         guard let first = heading.split(whereSeparator: \\.isWhitespace).first else { return nil }\n         return ReleaseVersion.strip(String(first))",
+      "sha": "6e2fce372003b0f19e47d99f8cf79fe675973795",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "changes": 4,
+      "deletions": 2,
+      "filename": "src/vs/workbench/contrib/chat/browser/chatDebug/chatCustomizationDiscoveryRenderer.ts",
+      "patch": "@@ -22,7 +22,7 @@ import { ILabelService } from '../../../../../platform/label/common/label.js';\n import { IOpenerService } from '../../../../../platform/opener/common/opener.js';\n import { IChatDebugEventFileListContent } from '../../common/chatDebugService.js';\n import { InlineAnchorWidget } from '../widget/chatContentParts/chatInlineAnchorWidget.js';\n-import { setupCollapsibleToggle } from './chatDebugMessageContentRenderer.js';\n+import { setupCollapsibleToggle } from './chatDebugCollapsible.js';\n \n const $ = DOM.$;\n \n@@ -153,7 +153,7 @@ function appendLocationBadge(row: HTMLElement, file: { extensionId?: string }, b\n /**\n  * Render a file list resolved content as a rich HTML element.\n  */\n-export function renderFileListContent(content: IChatDebugEventFileListContent, openerService: IOpenerService, modelService: IModelService, languageService: ILanguageService, hoverService: IHoverService, labelService: ILabelService): { element: HTMLElement; disposables: DisposableStore } {\n+export function renderCustomizationDiscoveryContent(content: IChatDebugEventFileListContent, openerService: IOpenerService, modelService: IModelService, languageService: ILanguageService, hoverService: IHoverService, labelService: ILabelService): { element: HTMLElement; disposables: DisposableStore } {\n \tconst disposables = new DisposableStore();\n \tconst container = $('div.chat-debug-file-list');\n \tcontainer.tabIndex = 0;",
+      "previous_filename": "src/vs/workbench/contrib/chat/browser/chatDebug/chatDebugFileListRenderer.ts",
+      "sha": "6d4c0f40740ad5936fbc1dd0dd4bb689bbeb3ce6",
+      "status": "renamed"
+    },
+    {
+      "additions": 0,
+      "changes": 0,
+      "deletions": 0,
+      "filename": "src/vs/workbench/contrib/chat/browser/chatImageUtils.ts",
+      "previous_filename": "src/vs/workbench/contrib/chat/browser/imageUtils.ts",
+      "sha": "89f1ecb122528d364bc8ec4b61fb3c6e1679b593",
+      "status": "renamed"
+    }
+  ]
+}

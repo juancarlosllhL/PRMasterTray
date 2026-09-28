@@ -8,28 +8,22 @@ struct PRListView: View {
     /// people's pull requests cannot raise the stale banner over the user's own.
     let reviews: ReviewStore
     let onOpen: (PullRequest) -> Void
-    let onMerge: (PullRequest) -> Void
+    let onReview: (PullRequest) -> Void
     let onClose: (PullRequest) -> Void
     /// Opens whatever the row is about: the pipeline while it runs, the release
     /// once there is one.
     let onOpenShipment: (Shipment) -> Void
     let onOpenReviewRequest: (ReviewRequest) -> Void
-    let onApprove: (ReviewRequest) -> Void
+    let onReviewRequest: (ReviewRequest) -> Void
     let onOpenSettings: () -> Void
     let onQuit: () -> Void
-    /// False while a debug override is active, so the app never offers an
-    /// action it is going to refuse.
-    let canMerge: Bool
-    /// Also false under a debug override, and with no demo exception: closing
+    /// False under a debug override, with no demo exception: closing
     /// takes no expectedHeadOid, so this flag is the only thing between a
     /// fixture row and the real pull request it names.
     let canClose: Bool
     /// Also false under a debug override, where the store has no updater at
     /// all — offering a switch for a feature that cannot run would be a lie.
     let canAutoUpdate: Bool
-    /// Also false under a debug override, and with no demo exception for the same
-    /// reason closing has none — see `ApproveCoordinator`.
-    let canApprove: Bool
     @Bindable var notifications: NotificationStatus
     /// App-update state. Nothing to bind to — every property is read-only — so a
     /// plain `let` is enough; `@Observable` tracks the reads either way.
@@ -285,11 +279,11 @@ struct PRListView: View {
             case .pullRequests:
                 PullRequestsPaneView(
                     store: store, reviews: reviews,
-                    canMerge: canMerge, canClose: canClose, canApprove: canApprove,
-                    onOpen: onOpen, onMerge: onMerge, onClose: onClose,
+                    canClose: canClose,
+                    onOpen: onOpen, onReview: onReview, onClose: onClose,
                     onOpenShipment: onOpenShipment,
                     onOpenReviewRequest: onOpenReviewRequest,
-                    onApproveReviewRequest: onApprove,
+                    onReviewRequest: onReviewRequest,
                     onOpenSettings: onOpenSettings
                 )
             case .jira:

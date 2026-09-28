@@ -6,15 +6,13 @@ import PRMasterCore
 struct PullRequestsPaneView: View {
     @Bindable var store: PRStore
     let reviews: ReviewStore
-    let canMerge: Bool
     let canClose: Bool
-    let canApprove: Bool
     let onOpen: (PullRequest) -> Void
-    let onMerge: (PullRequest) -> Void
+    let onReview: (PullRequest) -> Void
     let onClose: (PullRequest) -> Void
     let onOpenShipment: (Shipment) -> Void
     let onOpenReviewRequest: (ReviewRequest) -> Void
-    let onApproveReviewRequest: (ReviewRequest) -> Void
+    let onReviewRequest: (ReviewRequest) -> Void
     let onOpenSettings: () -> Void
 
     private static let rowsBeforeScrolling = 8
@@ -138,13 +136,12 @@ struct PullRequestsPaneView: View {
             ForEach(store.prs) { pr in
                 PRRowView(
                     pr: pr,
-                    canMerge: canMerge,
                     isUpdating: store.updatingIDs.contains(pr.id),
                     isStale: threshold.isStale(createdAt: pr.createdAt, now: now),
                     staleAge: StaleAge.label(createdAt: pr.createdAt, now: now),
                     canClose: canClose,
                     onOpen: { onOpen(pr) },
-                    onMerge: { onMerge(pr) },
+                    onReview: { onReview(pr) },
                     onClose: { onClose(pr) }
                 )
                 .copyMenu(link: pr.url, repo: pr.repo, number: pr.number)
@@ -218,11 +215,10 @@ struct PullRequestsPaneView: View {
             ForEach(reviewRequests) { request in
                 ReviewRequestRowView(
                     request: request,
-                    canApprove: canApprove,
                     isApproving: reviews.approvingIDs.contains(request.id),
                     age: StaleAge.recentLabel(createdAt: request.createdAt, now: now),
                     onOpen: { onOpenReviewRequest(request) },
-                    onApprove: { onApproveReviewRequest(request) }
+                    onReview: { onReviewRequest(request) }
                 )
                 .copyMenu(link: request.url, repo: request.repo, number: request.number)
             }

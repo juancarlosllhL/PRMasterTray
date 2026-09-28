@@ -3,16 +3,13 @@ import PRMasterCore
 
 struct ReviewRequestRowView: View {
     let request: ReviewRequest
-    /// False while a debug override is active. No demo exception, unlike the
-    /// merge — see `ApproveCoordinator`.
-    let canApprove: Bool
     /// True while an approval is in flight for this row.
     let isApproving: Bool
     /// How long it has been open, in words. Passed in rather than computed here so
     /// the list reads one clock per redraw instead of one per row.
     let age: String
     let onOpen: () -> Void
-    let onApprove: () -> Void
+    let onReview: () -> Void
 
     @State private var isHovering = false
     @Environment(\.palette) private var palette
@@ -74,11 +71,8 @@ struct ReviewRequestRowView: View {
 
             if isApproving {
                 ProgressView().controlSize(.small)
-            } else if isHovering, canApprove {
-                // Only on hover, the same rule the Merge and Close buttons
-                // follow: this posts a real review under the user's name, so it
-                // is not something to leave sitting under a stray click.
-                Button("Approve", action: onApprove)
+            } else if isHovering {
+                Button("Review", action: onReview)
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
             }

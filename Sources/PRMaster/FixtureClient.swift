@@ -101,7 +101,7 @@ enum Debug {
     /// head oid — merging from one would merge a real pull request, and
     /// expectedHeadOid would not stop it because the oid is real too.
     static var overridesActive: Bool {
-        fixturePath != nil || fakeError != nil || failAfter != nil || demoMerge != nil
+        fixturePath != nil || fakeError != nil || failAfter != nil || demoMerge != nil || diffFixturePath != nil
     }
 
     /// `PRMASTER_AUTO_OPEN=1` opens the popover at launch, so the real-data
@@ -143,6 +143,31 @@ enum Debug {
     static var jiraFixturePath: String? {
         ProcessInfo.processInfo.environment["PRMASTER_JIRA_FIXTURE"]
             .flatMap { FileManager.default.isReadableFile(atPath: $0) ? $0 : nil }
+    }
+
+    /// `PRMASTER_DIFF_FIXTURE=<path>` serves a compare response to every review
+    /// window, so the diff can be inspected without a network.
+    static var diffFixturePath: String? {
+        ProcessInfo.processInfo.environment["PRMASTER_DIFF_FIXTURE"]
+            .flatMap { FileManager.default.isReadableFile(atPath: $0) ? $0 : nil }
+    }
+
+    /// `PRMASTER_OPEN_DIFF=<number>` opens that pull request's review window at
+    /// launch. Fakes no data, so it is not an override.
+    static var openDiff: Int? {
+        ProcessInfo.processInfo.environment["PRMASTER_OPEN_DIFF"].flatMap(Int.init)
+    }
+
+    /// `PRMASTER_OPEN_FILE=<path>` selects that file in the review window's
+    /// sidebar once it loads, the same as a click.
+    static var openFile: String? {
+        ProcessInfo.processInfo.environment["PRMASTER_OPEN_FILE"]
+    }
+
+    /// `PRMASTER_SNAPSHOT=<path.png>` writes the review window opened by
+    /// `PRMASTER_OPEN_DIFF` to disk, for screenshots without screen recording.
+    static var snapshotPath: String? {
+        ProcessInfo.processInfo.environment["PRMASTER_SNAPSHOT"]
     }
 
     /// `PRMASTER_DEMO_MERGE=confirm|fail` drives the merge dialogs directly,

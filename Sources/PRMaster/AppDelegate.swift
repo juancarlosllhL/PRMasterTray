@@ -20,6 +20,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var jira: JiraStore!
     private let settingsWindow = SettingsWindowController()
     private let whatsNewWindow = WhatsNewWindowController()
+    private let diffWindows = DiffWindowController()
+    private var diffSource: PullRequestDiffing?
+    private var diffViewedWriter: PullRequestDiffing?
     private var whatsNew: WhatsNewStore!
 
     /// Read from the bundle, not from `PRMasterCore.version`, which is a second
@@ -96,6 +99,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 : ApproveCoordinator(client: client, approvingAllowed: true),
             preferences: UserDefaultsPreferences()
         )
+
+        // Reads under a fixture come from the diff fixture or not at all: a
+        // fixture row's repository and number can name a real, unrelated PR.
+        diffViewedWriter = Debug.overridesActive ? nil : client
+        if let path = Debug.diffFixturePath {
+            diffSource = DiffFixtureClient(path: path) { [weak self] repo, number in
+                self?.liveRow(repo: repo, number: number)
+            }
+        } else {
+            diffSource = Debug.overridesActive ? nil : client
+        }
 
         // Absent until the user signs in, and never under a debug override for
         // the same reason as the rest: a fixture's issue keys would spend real
@@ -190,6 +204,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 NSApp.activate(ignoringOtherApps: true)
                 try? await Task.sleep(for: .seconds(1))
                 self.togglePopover()
+
+                if let number = Debug.openDiff { await self.openReviewWhenListed(number: number) }
 
                 switch Debug.demoMerge {
                 case "confirm":
@@ -422,11 +438,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self?.open(pr.url)
                     self?.popover.performClose(nil)
                 },
-                onMerge: { [weak self] pr in
-                    self?.confirmMerge(
-                        id: pr.id, oid: pr.headRefOid, title: pr.displayTitle, url: pr.url
-                    )
-                },
+                onReview: { [weak self] pr in self?.review(.mine(pr)) },
                 onClose: { [weak self] pr in
                     self?.confirmClose(id: pr.id, title: pr.displayTitle, url: pr.url)
                 },
@@ -438,9 +450,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self?.open(request.url)
                     self?.popover.performClose(nil)
                 },
-                onApprove: { [weak self] request in
-                    self?.confirmApprove(request)
-                },
+                onReviewRequest: { [weak self] request in self?.review(.team(request)) },
                 onOpenSettings: { [weak self] in
                     guard let self else { return }
                     // Closed explicitly rather than left to `.transient`: the
@@ -453,10 +463,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
                 },
                 onQuit: { NSApp.terminate(nil) },
-                canMerge: Debug.mergingOffered,
                 canClose: !Debug.overridesActive,
                 canAutoUpdate: !Debug.overridesActive,
-                canApprove: !Debug.overridesActive,
                 notifications: NotificationStatus.shared,
                 updates: updates,
                 appearance: appearanceStore,
@@ -602,9 +610,81 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.open(url)
     }
 
+    // MARK: - Review
+
+    private func review(_ subject: DiffSubject) {
+        popover.performClose(nil)
+        diffWindows.show(
+            subject,
+            source: diffSource,
+            viewedWriter: diffViewedWriter,
+            appearance: appearanceStore,
+            live: { [weak self] in
+                self?.liveState(for: subject) ?? DiffLiveState(head: nil, isReady: false, blocker: nil)
+            },
+            onAct: { [weak self] target, close in
+                switch subject {
+                case .mine(let pr):
+                    self?.confirmMerge(id: target.id, oid: target.oid, title: pr.displayTitle, url: pr.url, onMerged: close)
+                case .team(let request):
+                    self?.confirmApprove(request, commitOID: target.oid, onApproved: close)
+                }
+            },
+            onOpen: { [weak self] url in self?.open(url) }
+        )
+    }
+
+    /// Read inside the window's body, so the popover's poll re-renders it.
+    private func liveState(for subject: DiffSubject) -> DiffLiveState {
+        switch subject {
+        case .mine(let pr):
+            guard let live = store.prs.first(where: { $0.id == pr.id }) else {
+                return DiffLiveState(head: nil, isReady: false, blocker: nil)
+            }
+            let ready = live.readiness == .ready
+            let blocker = !ready ? live.readiness.label
+                : Debug.mergingOffered ? nil : "Merging is off while the app shows debug data."
+            return DiffLiveState(head: live.headRefOid, isReady: ready && Debug.mergingOffered, blocker: blocker)
+        case .team(let request):
+            guard let live = reviews.requests.first(where: { $0.id == request.id }) else {
+                return DiffLiveState(head: nil, isReady: false, blocker: nil)
+            }
+            let blocker = Debug.overridesActive ? "Approving is off while the app shows debug data." : nil
+            return DiffLiveState(head: live.headRefOid, isReady: !Debug.overridesActive, blocker: blocker)
+        }
+    }
+
+    private func liveRow(repo: String, number: Int) -> (id: String, head: String)? {
+        if let pr = store.prs.first(where: { $0.repo == repo && $0.number == number }) {
+            return (pr.id, pr.headRefOid)
+        }
+        return reviews.requests.first { $0.repo == repo && $0.number == number }.map { ($0.id, $0.headRefOid) }
+    }
+
+    private func snapshotIfAsked() async {
+        guard let path = Debug.snapshotPath else { return }
+        try? await Task.sleep(for: .seconds(2))
+        diffWindows.snapshotFrontWindow(to: URL(fileURLWithPath: path))
+    }
+
+    /// Waits for the first fetch, then opens the review for that number.
+    private func openReviewWhenListed(number: Int) async {
+        for _ in 0..<20 {
+            if let pr = store.prs.first(where: { $0.number == number }) {
+                review(.mine(pr))
+                return await snapshotIfAsked()
+            }
+            if let request = reviews.requests.first(where: { $0.number == number }) {
+                review(.team(request))
+                return await snapshotIfAsked()
+            }
+            try? await Task.sleep(for: .milliseconds(250))
+        }
+    }
+
     /// Merging is irreversible and can be triggered from a notification, so it
     /// always goes through an explicit confirmation.
-    func confirmMerge(id: String, oid: String, title: String, url: URL) {
+    func confirmMerge(id: String, oid: String, title: String, url: URL, onMerged: (() -> Void)? = nil) {
         Task { @MainActor in
             let outcome = await merger.attempt(id: id, expectedHeadOid: oid) {
                 self.askToMerge(title: title)
@@ -612,6 +692,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             switch outcome {
             case .merged:
+                onMerged?()
                 await store.refresh()
             case .cancelled:
                 break
@@ -696,9 +777,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Approving posts a real review under the user's name, and colleagues merge
     /// on the strength of it, so it is confirmed like the merge and the close
     /// rather than fired on a single click.
-    func confirmApprove(_ request: ReviewRequest) {
+    func confirmApprove(_ request: ReviewRequest, commitOID: String, onApproved: (() -> Void)? = nil) {
         Task { @MainActor in
-            let outcome = await reviews.approve(request, commitOID: request.headRefOid) { quip in
+            let outcome = await reviews.approve(request, commitOID: commitOID) { quip in
                 self.askToApprove(
                     title: request.displayTitle, author: request.author, quip: quip
                 )
@@ -706,7 +787,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             switch outcome {
             case .approved:
-                break  // The store drops the row itself.
+                onApproved?()  // The store drops the row itself.
             case .cancelled:
                 break
             case .refusedDebugOverride:
