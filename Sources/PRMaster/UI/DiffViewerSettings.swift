@@ -15,13 +15,19 @@ struct DiffViewerSettings: View {
                         Text(verbatim: family).tag(String?.some(family))
                     }
                 }
-                Text(verbatim: "func greet(_ name: String) -> String { \"Hello, \\(name)\" }")
+                Picker("Size", selection: $appearance.diffFontSize) {
+                    ForEach(Array(DiffFont.sizes), id: \.self) { size in
+                        Text(verbatim: "\(size) pt").tag(size)
+                    }
+                }
+                Toggle("Ligatures", isOn: $appearance.diffLigatures)
+                Text(verbatim: "func greet(_ name: String) -> String { \"Hello, \\(name)\" } // != <= =>")
                     .font(previewFont)
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .foregroundStyle(.secondary)
             } footer: {
-                Text("Only monospaced fonts installed on this Mac are listed.")
+                Text("Only monospaced fonts installed on this Mac are listed. Ligatures join characters such as -> into one symbol; turn them off to see exactly what is in the file.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -32,10 +38,10 @@ struct DiffViewerSettings: View {
         .onAppear { families = MonospaceFonts.installed() }
     }
 
+    /// The very font the diff draws with, so what the preview shows is what the window shows.
     private var previewFont: Font {
-        guard let family = DiffFont.resolve(stored: appearance.diffFontFamily, installed: families) else {
-            return .system(size: 12, design: .monospaced)
-        }
-        return .custom(family, size: 12)
+        let family = DiffFont.resolve(stored: appearance.diffFontFamily, installed: families)
+        let metrics = DiffMetrics.forFont(family: family, size: appearance.diffFontSize, ligatures: appearance.diffLigatures)
+        return Font(metrics.font as CTFont)
     }
 }

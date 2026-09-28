@@ -164,6 +164,8 @@ struct DiffWindowView: View {
             DiffTableView(
                 rows: store.rows, layout: store.layout, palette: palette,
                 fontFamily: appearance.diffFontFamily,
+                fontSize: appearance.diffFontSize,
+                ligatures: appearance.diffLigatures,
                 scrollTarget: $scrollTarget, onToggleFile: store.toggleCollapsed
             )
         }

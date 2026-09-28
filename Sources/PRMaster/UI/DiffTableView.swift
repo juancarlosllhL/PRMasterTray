@@ -1,4 +1,5 @@
 import AppKit
+import CoreText
 import SwiftUI
 import PRMasterCore
 
@@ -13,15 +14,21 @@ struct DiffTableView: NSViewRepresentable {
     let layout: DiffLayout
     let palette: ResolvedPalette
     let fontFamily: String?
+    let fontSize: Int
+    let ligatures: Bool
     @Binding var scrollTarget: String?
     let onToggleFile: (String) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
+    private var metrics: DiffMetrics {
+        .forFont(family: fontFamily, size: fontSize, ligatures: ligatures)
+    }
+
     func makeNSView(context: Context) -> NSScrollView {
         let table = CopyingTableView()
         table.headerView = nil
-        table.rowHeight = DiffMetrics.forFamily(fontFamily).lineHeight + DiffMetrics.verticalPadding * 2
+        table.rowHeight = metrics.lineHeight + DiffMetrics.verticalPadding * 2
         table.intercellSpacing = .zero
         table.gridStyleMask = []
         table.style = .plain
@@ -55,7 +62,7 @@ struct DiffTableView: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         let coordinator = context.coordinator
         coordinator.onToggleFile = onToggleFile
-        coordinator.update(rows: rows, layout: layout, palette: palette, metrics: .forFamily(fontFamily))
+        coordinator.update(rows: rows, layout: layout, palette: palette, metrics: metrics)
         guard let target = scrollTarget else { return }
         coordinator.scroll(toFile: target)
         DispatchQueue.main.async { scrollTarget = nil }
@@ -68,7 +75,7 @@ struct DiffTableView: NSViewRepresentable {
         private(set) var rows: [DiffRow] = []
         private var layout: DiffLayout?
         private var palette: ResolvedPalette?
-        private var metrics = DiffMetrics.forFamily(nil)
+        private var metrics = DiffMetrics.forFont(family: nil, size: DiffFont.defaultSize, ligatures: true)
         private var wraps: [RowWrap] = []
         private var capacities: [Int] = []
         private var isRewrapping = false
@@ -101,9 +108,25 @@ struct DiffTableView: NSViewRepresentable {
         @objc func tableResized() {
             guard let table, !isRewrapping, !(table.inLiveResize && rows.count > 5000) else { return }
             let before = capacities
+            let top = topVisibleRow(table)
             rewrap(table, force: false)
             guard capacities != before else { return }
             table.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 0..<rows.count))
+            scroll(table, toRow: top)
+        }
+
+        /// Rewrapping changes every height above the fold, so the row at the top
+        /// is put back where it was rather than letting the content slide.
+        private func topVisibleRow(_ table: NSTableView) -> Int? {
+            guard let clip = table.enclosingScrollView?.contentView else { return nil }
+            let row = table.row(at: NSPoint(x: 0, y: clip.bounds.minY))
+            return row >= 0 ? row : nil
+        }
+
+        private func scroll(_ table: NSTableView, toRow row: Int?) {
+            guard let row, row < table.numberOfRows, let clip = table.enclosingScrollView?.contentView else { return }
+            clip.scroll(to: NSPoint(x: clip.bounds.minX, y: table.rect(ofRow: row).minY))
+            table.enclosingScrollView?.reflectScrolledClipView(clip)
         }
 
         private func rewrap(_ table: NSTableView, force: Bool) {
@@ -137,10 +160,8 @@ struct DiffTableView: NSViewRepresentable {
         }
 
         func scroll(toFile path: String) {
-            guard let table, let row = DiffRows.index(ofFile: path, in: rows),
-                  let clip = table.enclosingScrollView?.contentView else { return }
-            clip.scroll(to: NSPoint(x: clip.bounds.minX, y: table.rect(ofRow: row).minY))
-            table.enclosingScrollView?.reflectScrolledClipView(clip)
+            guard let table else { return }
+            scroll(table, toRow: DiffRows.index(ofFile: path, in: rows))
         }
 
         @objc func clicked(_ sender: NSTableView) {
@@ -238,10 +259,10 @@ final class DiffMetrics {
 
     private static var cache: [String: DiffMetrics] = [:]
 
-    static func forFamily(_ family: String?) -> DiffMetrics {
-        let key = family ?? ""
+    static func forFont(family: String?, size: Int, ligatures: Bool) -> DiffMetrics {
+        let key = "\(family ?? "")|\(size)|\(ligatures)"
         if let known = cache[key] { return known }
-        let metrics = DiffMetrics(family: family)
+        let metrics = DiffMetrics(family: family, size: CGFloat(DiffFont.clampedSize(size)), ligatures: ligatures)
         cache[key] = metrics
         return metrics
     }
@@ -251,14 +272,15 @@ final class DiffMetrics {
     let advance: CGFloat
     let lineHeight: CGFloat
     let paragraph: NSParagraphStyle
+    let ligatures: Bool
     private var measuredColumns: [UInt32: Double] = [:]
 
-    private init(family: String?) {
-        let size: CGFloat = 12
-        font = family.flatMap { MonospaceFonts.font(family: $0, size: size) }
-            ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
-        boldFont = family.flatMap { MonospaceFonts.font(family: $0, size: size, bold: true) }
-            ?? NSFont.monospacedSystemFont(ofSize: size, weight: .semibold)
+    private init(family: String?, size: CGFloat, ligatures: Bool) {
+        self.ligatures = ligatures
+        font = Self.withLigatures(ligatures, family.flatMap { MonospaceFonts.font(family: $0, size: size) }
+            ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular))
+        boldFont = Self.withLigatures(ligatures, family.flatMap { MonospaceFonts.font(family: $0, size: size, bold: true) }
+            ?? NSFont.monospacedSystemFont(ofSize: size, weight: .semibold))
         advance = ("0" as NSString).size(withAttributes: [.font: font]).width
         lineHeight = ceil(font.ascender - font.descender + font.leading)
         let style = NSMutableParagraphStyle()
@@ -266,6 +288,18 @@ final class DiffMetrics {
         style.defaultTabInterval = CGFloat(Self.tabWidth) * advance
         style.lineBreakMode = .byClipping
         paragraph = style
+    }
+
+    /// Coding fonts such as JetBrains Mono build ligatures from contextual
+    /// alternates, so turning them off takes both features, not just one.
+    private static func withLigatures(_ on: Bool, _ font: NSFont) -> NSFont {
+        guard !on else { return font }
+        let features: [[NSFontDescriptor.FeatureKey: Int]] = [
+            [.typeIdentifier: kLigaturesType, .selectorIdentifier: kCommonLigaturesOffSelector],
+            [.typeIdentifier: kContextualAlternatesType, .selectorIdentifier: kContextualAlternatesOffSelector],
+        ]
+        let descriptor = font.fontDescriptor.addingAttributes([.featureSettings: features])
+        return NSFont(descriptor: descriptor, size: font.pointSize) ?? font
     }
 
     /// Fallback fonts draw non-ASCII at their own widths: gqlgen's Ogham
@@ -297,7 +331,7 @@ final class DiffCellView: NSTableCellView {
 
     private var content: Content = .blank
     private var segments: [Range<Int>] = [0..<0]
-    private var metrics = DiffMetrics.forFamily(nil)
+    private var metrics = DiffMetrics.forFont(family: nil, size: DiffFont.defaultSize, ligatures: true)
     private var palette = ResolvedPalette(appearance: .light, contrast: .standard)
 
     override var backgroundStyle: NSView.BackgroundStyle {
@@ -362,6 +396,7 @@ final class DiffCellView: NSTableCellView {
     private func attributedText(colour: NSColor) -> NSAttributedString {
         let base: [NSAttributedString.Key: Any] = [
             .font: metrics.font, .foregroundColor: colour, .paragraphStyle: metrics.paragraph,
+            .ligature: metrics.ligatures ? 1 : 0,
         ]
         switch content {
         case .blank:

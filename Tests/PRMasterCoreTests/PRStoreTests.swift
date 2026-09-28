@@ -174,6 +174,14 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
     func diffFontFamily() -> String? { lock.withLock { storedDiffFontFamily } }
     func setDiffFontFamily(_ value: String?) { lock.withLock { storedDiffFontFamily = value } }
 
+    private var storedDiffFontSize = DiffFont.defaultSize
+    func diffFontSize() -> Int { lock.withLock { storedDiffFontSize } }
+    func setDiffFontSize(_ value: Int) { lock.withLock { storedDiffFontSize = value } }
+
+    private var storedDiffLigatures = true
+    func diffLigatures() -> Bool { lock.withLock { storedDiffLigatures } }
+    func setDiffLigatures(_ value: Bool) { lock.withLock { storedDiffLigatures = value } }
+
     private var storedAppLocations: [String: [AppLocation]] = [:]
     var appLocationWrites = 0
     func appLocations() -> [String: [AppLocation]] { lock.withLock { storedAppLocations } }

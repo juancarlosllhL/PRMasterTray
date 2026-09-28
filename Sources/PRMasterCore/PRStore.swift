@@ -129,6 +129,10 @@ public protocol PreferenceStoring: Sendable {
     func setDiffLayout(_ value: DiffLayout)
     func diffFontFamily() -> String?
     func setDiffFontFamily(_ value: String?)
+    func diffFontSize() -> Int
+    func setDiffFontSize(_ value: Int)
+    func diffLigatures() -> Bool
+    func setDiffLigatures(_ value: Bool)
     /// The teams discovered last time. Stored so a failed discovery falls back to
     /// the last good list instead of emptying the section, and so the settings
     /// window has something to show before the first fetch lands.
@@ -728,6 +732,8 @@ public struct UserDefaultsPreferences: PreferenceStoring {
     private let approvalQuipsKey = "approvalQuips"
     private let diffLayoutKey = "diffLayout"
     private let diffFontFamilyKey = "diffFontFamily"
+    private let diffFontSizeKey = "diffFontSize"
+    private let diffLigaturesKey = "diffLigatures"
     // UserDefaults is documented as thread-safe but predates Sendable.
     nonisolated(unsafe) private let defaults: UserDefaults
 
@@ -883,6 +889,22 @@ public struct UserDefaultsPreferences: PreferenceStoring {
 
     public func diffFontFamily() -> String? {
         defaults.string(forKey: diffFontFamilyKey)
+    }
+
+    public func diffFontSize() -> Int {
+        (defaults.object(forKey: diffFontSizeKey) as? Int).map(DiffFont.clampedSize) ?? DiffFont.defaultSize
+    }
+
+    public func setDiffFontSize(_ value: Int) {
+        defaults.set(value, forKey: diffFontSizeKey)
+    }
+
+    public func diffLigatures() -> Bool {
+        defaults.object(forKey: diffLigaturesKey) as? Bool ?? true
+    }
+
+    public func setDiffLigatures(_ value: Bool) {
+        defaults.set(value, forKey: diffLigaturesKey)
     }
 
     public func setDiffFontFamily(_ value: String?) {

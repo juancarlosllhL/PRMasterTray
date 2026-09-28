@@ -75,6 +75,16 @@ public final class AppearanceStore {
         didSet { preferences.setDiffFontFamily(diffFontFamily) }
     }
 
+    public var diffFontSize: Int {
+        didSet { preferences.setDiffFontSize(diffFontSize) }
+    }
+
+    /// On by default, the way the viewer always drew. Off shows the characters
+    /// a ligature would hide, such as the two in `->`.
+    public var diffLigatures: Bool {
+        didSet { preferences.setDiffLigatures(diffLigatures) }
+    }
+
     private let preferences: PreferenceStoring
 
     public init(preferences: PreferenceStoring = UserDefaultsPreferences()) {
@@ -86,6 +96,8 @@ public final class AppearanceStore {
         self.popoverBackground = preferences.popoverBackground()
         self.hidesEmoji = preferences.hidesEmoji()
         self.diffFontFamily = preferences.diffFontFamily()
+        self.diffFontSize = preferences.diffFontSize()
+        self.diffLigatures = preferences.diffLigatures()
     }
 
     /// What the palette should actually use, given this switch and what macOS
