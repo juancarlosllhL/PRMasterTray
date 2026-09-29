@@ -447,6 +447,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self?.popover.performClose(nil)
                 },
                 onReview: { [weak self] pr in self?.review(.mine(pr)) },
+                onMerge: { [weak self] pr in
+                    self?.confirmMerge(id: pr.id, oid: pr.headRefOid, title: pr.displayTitle, url: pr.url)
+                },
                 onClose: { [weak self] pr in
                     self?.confirmClose(id: pr.id, title: pr.displayTitle, url: pr.url)
                 },
@@ -471,6 +474,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
                 },
                 onQuit: { NSApp.terminate(nil) },
+                canMerge: Debug.mergingOffered,
                 canClose: !Debug.overridesActive,
                 canAutoUpdate: !Debug.overridesActive,
                 notifications: NotificationStatus.shared,
@@ -631,12 +635,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.liveState(for: subject) ?? DiffLiveState(head: nil, isReady: false, blocker: nil)
             },
             onAct: { [weak self] target, close in
-                switch subject {
-                case .mine(let pr):
-                    self?.confirmMerge(id: target.id, oid: target.oid, title: pr.displayTitle, url: pr.url, onMerged: close)
-                case .team(let request):
-                    self?.confirmApprove(request, commitOID: target.oid, onApproved: close)
-                }
+                guard case .team(let request) = subject else { return }
+                self?.confirmApprove(request, commitOID: target.oid, onApproved: close)
             },
             onOpen: { [weak self] url in self?.open(url) }
         )
@@ -649,10 +649,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let live = store.prs.first(where: { $0.id == pr.id }) else {
                 return DiffLiveState(head: nil, isReady: false, blocker: nil)
             }
-            let ready = live.readiness == .ready
-            let blocker = !ready ? live.readiness.label
-                : Debug.mergingOffered ? nil : "Merging is off while the app shows debug data."
-            return DiffLiveState(head: live.headRefOid, isReady: ready && Debug.mergingOffered, blocker: blocker)
+            return DiffLiveState(head: live.headRefOid, isReady: false, blocker: nil)
         case .team(let request):
             guard let live = reviews.requests.first(where: { $0.id == request.id }) else {
                 return DiffLiveState(head: nil, isReady: false, blocker: nil)
@@ -692,7 +689,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Merging is irreversible and can be triggered from a notification, so it
     /// always goes through an explicit confirmation.
-    func confirmMerge(id: String, oid: String, title: String, url: URL, onMerged: (() -> Void)? = nil) {
+    func confirmMerge(id: String, oid: String, title: String, url: URL) {
         Task { @MainActor in
             let outcome = await merger.attempt(id: id, expectedHeadOid: oid) {
                 self.askToMerge(title: title)
@@ -700,7 +697,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             switch outcome {
             case .merged:
-                onMerged?()
                 await store.refresh()
             case .cancelled:
                 break

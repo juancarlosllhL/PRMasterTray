@@ -18,8 +18,9 @@ GitHub would merge right now.
   file list down the side, unified or split, coloured with GitHub's own themes
   and Shiki's grammars for 25 languages, with
   GitHub's own **Viewed** checkbox, in any monospaced font you have installed, at
-  the size you want and with or without ligatures (Settings, Diff Viewer). Squash and merge happens from there, or
-  from the notification, after a confirmation.
+  the size you want and with or without ligatures (Settings, Diff Viewer). Once
+  your own pull request is ready, **Merge** takes Review's place on its row, and
+  squash-merges after a confirmation, as the notification does.
 
   The window is pinned to the commit it loaded. If anybody pushes while it is
   open it says so and offers a reload, and Merge stays off until you have seen

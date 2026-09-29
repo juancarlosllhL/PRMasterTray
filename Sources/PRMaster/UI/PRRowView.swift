@@ -3,6 +3,8 @@ import PRMasterCore
 
 struct PRRowView: View {
     let pr: PullRequest
+    /// False while a debug override is active, so the row never offers a merge it would refuse.
+    let canMerge: Bool
     /// True while the app is merging the base branch into this PR.
     let isUpdating: Bool
     /// Whether this pull request has been open longer than the user's threshold.
@@ -15,6 +17,7 @@ struct PRRowView: View {
     let canClose: Bool
     let onOpen: () -> Void
     let onReview: () -> Void
+    let onMerge: () -> Void
     let onClose: () -> Void
 
     @State private var isHovering = false
@@ -92,7 +95,7 @@ struct PRRowView: View {
 
             Spacer(minLength: 4)
 
-            // Plain against Review's prominent style and to its left, so the
+            // Plain against the prominent button and to its left, so the
             // better outcome is the one that looks like it.
             if isStale, isHovering, canClose {
                 Button("Close", action: onClose)
@@ -100,7 +103,12 @@ struct PRRowView: View {
                     .controlSize(.small)
             }
 
-            if isHovering {
+            // Merging is irreversible, so it is only offered once the pull request can be merged.
+            if isHovering, pr.readiness == .ready, canMerge {
+                Button("Merge", action: onMerge)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+            } else if isHovering {
                 Button("Review", action: onReview)
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)

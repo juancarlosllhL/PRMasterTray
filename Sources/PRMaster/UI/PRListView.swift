@@ -9,6 +9,7 @@ struct PRListView: View {
     let reviews: ReviewStore
     let onOpen: (PullRequest) -> Void
     let onReview: (PullRequest) -> Void
+    let onMerge: (PullRequest) -> Void
     let onClose: (PullRequest) -> Void
     /// Opens whatever the row is about: the pipeline while it runs, the release
     /// once there is one.
@@ -17,6 +18,8 @@ struct PRListView: View {
     let onReviewRequest: (ReviewRequest) -> Void
     let onOpenSettings: () -> Void
     let onQuit: () -> Void
+    /// False while a debug override is active, except in the merge demo.
+    let canMerge: Bool
     /// False under a debug override, with no demo exception: closing
     /// takes no expectedHeadOid, so this flag is the only thing between a
     /// fixture row and the real pull request it names.
@@ -279,8 +282,8 @@ struct PRListView: View {
             case .pullRequests:
                 PullRequestsPaneView(
                     store: store, reviews: reviews,
-                    canClose: canClose,
-                    onOpen: onOpen, onReview: onReview, onClose: onClose,
+                    canMerge: canMerge, canClose: canClose,
+                    onOpen: onOpen, onReview: onReview, onMerge: onMerge, onClose: onClose,
                     onOpenShipment: onOpenShipment,
                     onOpenReviewRequest: onOpenReviewRequest,
                     onReviewRequest: onReviewRequest,

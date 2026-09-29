@@ -5,7 +5,7 @@ import PRMasterCore
 struct DiffLiveState: Equatable {
     let head: String?
     let isReady: Bool
-    /// Why Merge is unavailable, in the row's own words.
+    /// Why Approve is unavailable.
     let blocker: String?
 }
 
@@ -48,11 +48,10 @@ enum DiffSubject {
         }
     }
 
-    var actionTitle: String {
-        switch self {
-        case .mine: return "Merge"
-        case .team: return "Approve"
-        }
+    /// Only someone else's pull request can be approved; your own is merged from its row.
+    var canBeApproved: Bool {
+        if case .team = self { return true }
+        return false
     }
 }
 
@@ -290,11 +289,13 @@ struct DiffWindowView: View {
             }
             Spacer()
             Button("Open on GitHub", action: onOpenOnGitHub)
-            Button(subject.actionTitle) {
-                if let target = store.mergeTarget { onAct(target) }
+            if subject.canBeApproved {
+                Button("Approve") {
+                    if let target = store.mergeTarget { onAct(target) }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(store.mergeTarget == nil)
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(store.mergeTarget == nil)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)

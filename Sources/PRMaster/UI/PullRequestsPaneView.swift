@@ -6,9 +6,11 @@ import PRMasterCore
 struct PullRequestsPaneView: View {
     @Bindable var store: PRStore
     let reviews: ReviewStore
+    let canMerge: Bool
     let canClose: Bool
     let onOpen: (PullRequest) -> Void
     let onReview: (PullRequest) -> Void
+    let onMerge: (PullRequest) -> Void
     let onClose: (PullRequest) -> Void
     let onOpenShipment: (Shipment) -> Void
     let onOpenReviewRequest: (ReviewRequest) -> Void
@@ -136,12 +138,14 @@ struct PullRequestsPaneView: View {
             ForEach(store.prs) { pr in
                 PRRowView(
                     pr: pr,
+                    canMerge: canMerge,
                     isUpdating: store.updatingIDs.contains(pr.id),
                     isStale: threshold.isStale(createdAt: pr.createdAt, now: now),
                     staleAge: StaleAge.label(createdAt: pr.createdAt, now: now),
                     canClose: canClose,
                     onOpen: { onOpen(pr) },
                     onReview: { onReview(pr) },
+                    onMerge: { onMerge(pr) },
                     onClose: { onClose(pr) }
                 )
                 .copyMenu(link: pr.url, repo: pr.repo, number: pr.number)
