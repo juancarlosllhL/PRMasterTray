@@ -214,6 +214,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.togglePopover()
 
                 if let number = Debug.openDiff { await self.openReviewWhenListed(number: number) }
+                if Debug.openDiff == nil, !Debug.openSettings, let path = Debug.snapshotPath {
+                    try? await Task.sleep(for: .seconds(2))
+                    if let view = self.popover.contentViewController?.view {
+                        Debug.snapshot(view: view, to: URL(fileURLWithPath: path), background: .windowBackgroundColor)
+                    }
+                }
 
                 switch Debug.demoMerge {
                 case "confirm":

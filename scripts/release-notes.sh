@@ -8,6 +8,9 @@ version="${TAG#v}"
 [ -n "$version" ] || { echo "TAG is not set" >&2; exit 1; }
 [ -f "$file" ] || { echo "no changelog at $file" >&2; exit 1; }
 
+images=""
+[ -n "${GITHUB_REPOSITORY:-}" ] && images="https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$TAG/Resources/WhatsNew"
+
 awk -v want="$version" '
   /^## / {
     heading = $2
@@ -16,4 +19,8 @@ awk -v want="$version" '
     next
   }
   inside { print }
-' "$file" | awk 'NF { seen = 1 } seen'
+' "$file" | awk 'NF { seen = 1 } seen' | awk -v base="$images" '
+  # The app bundles a bare file name; GitHub needs it as a URL to show it.
+  base != "" && /^!\[[^]]*\]\([^\/)]+\)$/ { sub(/\(/, "(" base "/") }
+  { print }
+'

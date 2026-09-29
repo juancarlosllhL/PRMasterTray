@@ -227,8 +227,21 @@ enum Debug {
 
     @MainActor
     static func snapshot(_ window: NSWindow, to url: URL) {
-        guard let view = window.contentView?.superview,
-              let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+        guard let frame = window.contentView?.superview else { return }
+        snapshot(view: frame, to: url)
+    }
+
+    /// `background` fills in behind a view whose own backdrop `cacheDisplay` cannot draw, such as a popover's.
+    @MainActor
+    static func snapshot(view: NSView, to url: URL, background: NSColor? = nil) {
+        guard let rep = NSBitmapImageRep(
+                  bitmapDataPlanes: nil,
+                  pixelsWide: Int(view.bounds.width * 2), pixelsHigh: Int(view.bounds.height * 2),
+                  bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                  colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+              ) else { return }
+        // Always Retina, whichever display the window happened to open on.
+        rep.size = view.bounds.size
         view.cacheDisplay(in: view.bounds, to: rep)
         // `cacheDisplay` cannot see into a web view, so each one is painted over its own frame.
         let webViews = descendants(of: view).compactMap { $0 as? WKWebView }
@@ -242,8 +255,22 @@ enum Debug {
                 image.draw(in: frame)
                 NSGraphicsContext.restoreGraphicsState()
             }
-            try? rep.representation(using: .png, properties: [:])?.write(to: url)
+            try? onto(background, rep, in: view)?.representation(using: .png, properties: [:])?.write(to: url)
         }
+    }
+
+    private static func onto(_ background: NSColor?, _ rep: NSBitmapImageRep, in view: NSView) -> NSBitmapImageRep? {
+        guard let background, let copy = rep.copy() as? NSBitmapImageRep,
+              let context = NSGraphicsContext(bitmapImageRep: copy) else { return rep }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        view.effectiveAppearance.performAsCurrentDrawingAppearance {
+            background.setFill()
+            NSRect(origin: .zero, size: rep.size).fill()
+        }
+        rep.draw(in: NSRect(origin: .zero, size: rep.size))
+        NSGraphicsContext.restoreGraphicsState()
+        return copy
     }
 
     private static func descendants(of view: NSView) -> [NSView] {
