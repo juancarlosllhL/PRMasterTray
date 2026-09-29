@@ -133,6 +133,12 @@ public protocol PreferenceStoring: Sendable {
     func setDiffFontSize(_ value: Int)
     func diffLigatures() -> Bool
     func setDiffLigatures(_ value: Bool)
+    /// The user's lines for a set-aside section, or its defaults while never edited.
+    func fileScopePatterns(_ section: FileSection) -> [String]
+    /// Nil forgets the edit, so the section follows the app's defaults again.
+    func setFileScopePatterns(_ lines: [String]?, for section: FileSection)
+    func honoursGitAttributes() -> Bool
+    func setHonoursGitAttributes(_ value: Bool)
     /// The teams discovered last time. Stored so a failed discovery falls back to
     /// the last good list instead of emptying the section, and so the settings
     /// window has something to show before the first fetch lands.
@@ -734,6 +740,7 @@ public struct UserDefaultsPreferences: PreferenceStoring {
     private let diffFontFamilyKey = "diffFontFamily"
     private let diffFontSizeKey = "diffFontSize"
     private let diffLigaturesKey = "diffLigatures"
+    private let honoursGitAttributesKey = "honourGitAttributes"
     // UserDefaults is documented as thread-safe but predates Sendable.
     nonisolated(unsafe) private let defaults: UserDefaults
 
@@ -909,6 +916,24 @@ public struct UserDefaultsPreferences: PreferenceStoring {
 
     public func setDiffFontFamily(_ value: String?) {
         if let value { defaults.set(value, forKey: diffFontFamilyKey) } else { defaults.removeObject(forKey: diffFontFamilyKey) }
+    }
+
+    public func fileScopePatterns(_ section: FileSection) -> [String] {
+        defaults.stringArray(forKey: fileScopeKey(section)) ?? FileScope.defaultPatterns[section] ?? []
+    }
+
+    public func setFileScopePatterns(_ lines: [String]?, for section: FileSection) {
+        if let lines { defaults.set(lines, forKey: fileScopeKey(section)) } else { defaults.removeObject(forKey: fileScopeKey(section)) }
+    }
+
+    private func fileScopeKey(_ section: FileSection) -> String { "fileScopePatterns.\(section.rawValue)" }
+
+    public func honoursGitAttributes() -> Bool {
+        defaults.object(forKey: honoursGitAttributesKey) as? Bool ?? true
+    }
+
+    public func setHonoursGitAttributes(_ value: Bool) {
+        defaults.set(value, forKey: honoursGitAttributesKey)
     }
 
     public func jiraLayout() -> JiraLayout {

@@ -182,6 +182,23 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
     func diffLigatures() -> Bool { lock.withLock { storedDiffLigatures } }
     func setDiffLigatures(_ value: Bool) { lock.withLock { storedDiffLigatures = value } }
 
+    private var storedFileScope: [FileSection: [String]] = [:]
+    var fileScopeWrites = 0
+    func storedFileScopePatterns(_ section: FileSection) -> [String]? { lock.withLock { storedFileScope[section] } }
+    func fileScopePatterns(_ section: FileSection) -> [String] {
+        lock.withLock { storedFileScope[section] ?? FileScope.defaultPatterns[section] ?? [] }
+    }
+    func setFileScopePatterns(_ lines: [String]?, for section: FileSection) {
+        lock.withLock {
+            storedFileScope[section] = lines
+            fileScopeWrites += 1
+        }
+    }
+
+    private var storedHonoursGitAttributes = true
+    func honoursGitAttributes() -> Bool { lock.withLock { storedHonoursGitAttributes } }
+    func setHonoursGitAttributes(_ value: Bool) { lock.withLock { storedHonoursGitAttributes = value } }
+
     private var storedAppLocations: [String: [AppLocation]] = [:]
     var appLocationWrites = 0
     func appLocations() -> [String: [AppLocation]] { lock.withLock { storedAppLocations } }

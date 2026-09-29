@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import PRMasterCore
 
@@ -189,6 +190,57 @@ struct AppearanceStoreTests {
         #expect(store.resolvedContrast(
             systemDifferentiateWithoutColor: false, systemIncreasedContrast: false
         ) == .monochrome)
+    }
+
+    @Test("review file lists start at the defaults, and launching writes nothing")
+    func scopeDefaults() {
+        let preferences = MemoryPreferences()
+        let store = AppearanceStore(preferences: preferences)
+        #expect(store.scopePatterns == FileScope.defaultPatterns)
+        #expect(store.honoursGitAttributes)
+        #expect(preferences.fileScopeWrites == 0)
+    }
+
+    /// A list the user never touched must keep following the app's defaults, so
+    /// a list edited back to them is stored as absent rather than as a copy.
+    @Test("an edited list is stored; one edited back to the defaults is removed")
+    func scopeWritesThrough() {
+        let preferences = MemoryPreferences()
+        let store = AppearanceStore(preferences: preferences)
+        store.scopePatterns[.tests] = ["spec/"]
+        #expect(preferences.storedFileScopePatterns(.tests) == ["spec/"])
+        #expect(preferences.storedFileScopePatterns(.generated) == nil)
+        store.scopePatterns[.tests] = FileScope.defaultPatterns[.tests]
+        #expect(preferences.storedFileScopePatterns(.tests) == nil)
+        #expect(AppearanceStore(preferences: preferences).scopePatterns == FileScope.defaultPatterns)
+    }
+
+    @Test("the scope a window uses follows the lists and the attributes switch")
+    func scopeForWindow() {
+        let store = AppearanceStore(preferences: MemoryPreferences())
+        let attributes = "vendor/** linguist-generated"
+        #expect(store.fileScope(gitAttributes: attributes).section(of: "vendor/lib.go") == .generated)
+        store.honoursGitAttributes = false
+        #expect(store.fileScope(gitAttributes: attributes).section(of: "vendor/lib.go") == .review)
+        store.scopePatterns[.other] = ["vendor/"]
+        #expect(store.fileScope(gitAttributes: attributes).section(of: "vendor/lib.go") == .other)
+    }
+
+    @Test("lists and the switch survive UserDefaults, comments and blank lines included")
+    func scopeUserDefaults() {
+        let name = "AppearanceStoreTests.scope"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        let preferences = UserDefaultsPreferences(defaults: defaults)
+        #expect(preferences.fileScopePatterns(.other) == FileScope.defaultPatterns[.other])
+        #expect(preferences.honoursGitAttributes())
+        preferences.setFileScopePatterns(["# fixtures", "", "fixtures/"], for: .other)
+        preferences.setHonoursGitAttributes(false)
+        let reread = UserDefaultsPreferences(defaults: defaults)
+        #expect(reread.fileScopePatterns(.other) == ["# fixtures", "", "fixtures/"])
+        #expect(!reread.honoursGitAttributes())
+        preferences.setFileScopePatterns(nil, for: .other)
+        #expect(defaults.object(forKey: "fileScopePatterns.other") == nil)
     }
 }
 

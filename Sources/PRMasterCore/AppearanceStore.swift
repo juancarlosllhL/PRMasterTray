@@ -85,6 +85,25 @@ public final class AppearanceStore {
         didSet { preferences.setDiffLigatures(diffLigatures) }
     }
 
+    /// The set-aside sections' pattern lines, as the user typed them.
+    public var scopePatterns: [FileSection: [String]] {
+        didSet {
+            for section in FileSection.secondary where scopePatterns[section] != oldValue[section] {
+                let lines = scopePatterns[section]
+                preferences.setFileScopePatterns(lines == FileScope.defaultPatterns[section] ? nil : lines, for: section)
+            }
+        }
+    }
+
+    /// A pull request's author can mark its own code generated; off lets the patterns alone decide.
+    public var honoursGitAttributes: Bool {
+        didSet { preferences.setHonoursGitAttributes(honoursGitAttributes) }
+    }
+
+    public func fileScope(gitAttributes: String?) -> FileScope {
+        FileScope(patterns: scopePatterns, gitAttributes: honoursGitAttributes ? gitAttributes : nil)
+    }
+
     private let preferences: PreferenceStoring
 
     public init(preferences: PreferenceStoring = UserDefaultsPreferences()) {
@@ -98,6 +117,8 @@ public final class AppearanceStore {
         self.diffFontFamily = preferences.diffFontFamily()
         self.diffFontSize = preferences.diffFontSize()
         self.diffLigatures = preferences.diffLigatures()
+        self.scopePatterns = Dictionary(uniqueKeysWithValues: FileSection.secondary.map { ($0, preferences.fileScopePatterns($0)) })
+        self.honoursGitAttributes = preferences.honoursGitAttributes()
     }
 
     /// What the palette should actually use, given this switch and what macOS
