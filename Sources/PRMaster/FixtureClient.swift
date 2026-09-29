@@ -197,6 +197,13 @@ enum Debug {
         }
     }
 
+    /// `PRMASTER_SELECT=<x1>,<y1>,<x2>,<y2>` selects text between two points in visible-table coordinates.
+    static var selectDrag: (NSPoint, NSPoint)? {
+        let values = (ProcessInfo.processInfo.environment["PRMASTER_SELECT"] ?? "").split(separator: ",").compactMap { Double($0) }
+        guard values.count == 4 else { return nil }
+        return (NSPoint(x: values[0], y: values[1]), NSPoint(x: values[2], y: values[3]))
+    }
+
     /// `PRMASTER_SCROLL=<points>` scrolls that far past the file opened by
     /// `PRMASTER_OPEN_FILE`, to snapshot the middle of a file.
     static var scrollOffset: CGFloat? {

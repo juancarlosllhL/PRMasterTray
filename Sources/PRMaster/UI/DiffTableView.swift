@@ -85,6 +85,9 @@ struct DiffTableView: NSViewRepresentable {
         if let offset = Debug.scrollOffset {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { coordinator.scroll(by: offset) }
         }
+        if let (from, to) = Debug.selectDrag {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { coordinator.selectForSnapshot(from: from, to: to) }
+        }
         DispatchQueue.main.async { scrollTarget = nil }
     }
 
@@ -106,6 +109,7 @@ struct DiffTableView: NSViewRepresentable {
         private var matches: [DiffMatch] = []
         private var matchesByRow: [Int: [DiffMatch]] = [:]
         private var currentMatch: DiffMatch?
+        private(set) var textSelection: DiffTextSelection?
 
         /// Each column's wrapped segments for one row, and the height they need.
         private struct RowWrap {
@@ -124,6 +128,7 @@ struct DiffTableView: NSViewRepresentable {
             let contentChanged = rowsChanged || wrapsChanged || palette != self.palette
             let currentMoved = currentMatch != self.currentMatch
             guard contentChanged || currentMoved || matches != self.matches else { return }
+            if wrapsChanged { textSelection = nil }
             if contentChanged {
                 self.metrics = metrics
                 table.rowHeight = metrics.lineHeight + DiffMetrics.verticalPadding * 2
@@ -175,6 +180,7 @@ struct DiffTableView: NSViewRepresentable {
             let top = clip.bounds.minY
             let topRow = table.row(at: NSPoint(x: 0, y: top))
             reportTopFile(owning: topRow)
+            table.window?.invalidateCursorRects(for: table)
             guard topRow >= 0, let header = DiffRows.fileHeaderIndex(owning: topRow, in: rows),
                   table.rect(ofRow: header).minY < top, wraps.indices.contains(header),
                   case .fileHeader(let path) = rows[header]
@@ -339,11 +345,102 @@ struct DiffTableView: NSViewRepresentable {
             let highlights = (matchesByRow[row] ?? [])
                 .filter { $0.column == columnIndex }
                 .map { (range: $0.range, isCurrent: $0 == currentMatch) }
+            let selected = textSelection.flatMap { $0.column == columnIndex ? $0.range(inRow: row, in: rows) : nil }
             cell.configure(
                 content(for: rows[row], column: tableColumn),
                 palette: palette ?? .init(appearance: .light, contrast: .standard),
-                segments: segments, metrics: metrics, highlights: highlights
+                segments: segments, metrics: metrics, highlights: highlights, selection: selected
             )
+        }
+
+        func setTextSelection(_ selection: DiffTextSelection?) {
+            guard selection != textSelection, let table else { return }
+            textSelection = selection
+            refreshAvailableCells(table)
+        }
+
+        func selectForSnapshot(from: NSPoint, to: NSPoint) {
+            guard let table else { return }
+            let top = table.visibleRect.origin
+            let start = NSPoint(x: top.x + from.x, y: top.y + from.y), end = NSPoint(x: top.x + to.x, y: top.y + to.y)
+            guard let hit = textPosition(at: start) else { return NSLog("PRMASTER_SELECT: start is not in code") }
+            var selection = self.selection(for: hit, clickCount: 1, extending: false)
+            if let moved = textPosition(at: end, column: selection.column) { selection.focus = moved.position }
+            setTextSelection(selection)
+            NSLog("PRMASTER_SELECT copied: %@", selectedText() ?? "")
+        }
+
+        func selectedText() -> String? {
+            textSelection.map { $0.text(in: rows) }
+        }
+
+        /// A new selection for a click: a word on a double-click, the line on a triple-click.
+        func selection(
+            for hit: (column: Int, position: DiffTextPosition), clickCount: Int, extending: Bool
+        ) -> DiffTextSelection {
+            let row = hit.position.row
+            let text = DiffRows.text(of: rows[row], column: hit.column) ?? ""
+            func span(_ range: Range<Int>) -> DiffTextSelection {
+                DiffTextSelection(column: hit.column, anchor: DiffTextPosition(row: row, offset: range.lowerBound),
+                                  focus: DiffTextPosition(row: row, offset: range.upperBound))
+            }
+            switch clickCount {
+            case 2: return span(DiffTextSelection.word(at: hit.position.offset, in: text))
+            case 3...: return span(0..<text.utf16.count)
+            default:
+                if extending, var current = textSelection, current.column == hit.column {
+                    current.focus = hit.position
+                    return current
+                }
+                return DiffTextSelection(column: hit.column, anchor: hit.position, focus: hit.position)
+            }
+        }
+
+        /// Where a point falls in the code. Nil over a gutter, a header or no row, unless
+        /// `column` is given for a drag, which clamps to the table instead.
+        func textPosition(at point: NSPoint, column fixed: Int? = nil) -> (column: Int, position: DiffTextPosition)? {
+            guard let table, !rows.isEmpty else { return nil }
+            var row = table.row(at: point)
+            if row < 0 {
+                guard fixed != nil else { return nil }
+                row = point.y < 0 ? 0 : rows.count - 1
+            }
+            let column = fixed ?? max(table.column(at: point), 0)
+            guard let text = DiffRows.text(of: rows[row], column: column), wraps.indices.contains(row) else {
+                return fixed == nil ? nil : (column, DiffTextPosition(row: row, offset: 0))
+            }
+            let cell = table.frameOfCell(atColumn: min(column, table.numberOfColumns - 1), row: row)
+            let codeX = cell.minX + codeInset
+            guard fixed != nil || point.x >= codeX else { return nil }
+            let segments = wraps[row].segments[min(column, wraps[row].segments.count - 1)]
+            let line = Int((point.y - cell.minY - DiffMetrics.verticalPadding) / metrics.lineHeight)
+            let offset = LineWrap.offset(
+                atColumn: Double((point.x - codeX) / metrics.advance), in: text,
+                segment: segments[min(max(line, 0), segments.count - 1)],
+                tabWidth: DiffMetrics.tabWidth, columns: metrics.columns
+            )
+            return (column, DiffTextPosition(row: row, offset: offset))
+        }
+
+        /// The code part of each visible line cell, for the I-beam.
+        func codeRects(in visible: NSRect) -> [NSRect] {
+            guard let table else { return [] }
+            let range = table.rows(in: visible)
+            return (range.location..<range.location + range.length).flatMap { row -> [NSRect] in
+                guard rows.indices.contains(row) else { return [] }
+                return (0..<table.numberOfColumns).compactMap { column in
+                    guard DiffRows.text(of: rows[row], column: column) != nil else { return nil }
+                    var rect = table.frameOfCell(atColumn: column, row: row)
+                    rect.origin.x += codeInset
+                    rect.size.width -= codeInset
+                    return rect.intersection(visible)
+                }
+            }
+        }
+
+        private var codeInset: CGFloat {
+            let gutter = layout == .split ? DiffMetrics.splitGutter : DiffMetrics.unifiedGutter
+            return DiffMetrics.padding + CGFloat(gutter) * metrics.advance
         }
 
         private func content(for row: DiffRow, column: NSTableColumn?) -> DiffCellView.Content {
@@ -373,8 +470,35 @@ final class CopyingTableView: NSTableView {
         coordinator?.tableResized()
     }
 
+    override func mouseDown(with event: NSEvent) {
+        guard let coordinator, let hit = coordinator.textPosition(at: convert(event.locationInWindow, from: nil)) else {
+            coordinator?.setTextSelection(nil)
+            super.mouseDown(with: event)
+            return
+        }
+        window?.makeFirstResponder(self)
+        deselectAll(nil)
+        var selection = coordinator.selection(
+            for: hit, clickCount: event.clickCount, extending: event.modifierFlags.contains(.shift)
+        )
+        coordinator.setTextSelection(selection)
+        while let next = window?.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]), next.type == .leftMouseDragged {
+            autoscroll(with: next)
+            let point = convert(next.locationInWindow, from: nil)
+            guard let moved = coordinator.textPosition(at: point, column: selection.column) else { continue }
+            selection.focus = moved.position
+            coordinator.setTextSelection(selection)
+        }
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        for rect in coordinator?.codeRects(in: visibleRect) ?? [] { addCursorRect(rect, cursor: .iBeam) }
+    }
+
     @objc func copy(_ sender: Any?) {
-        guard let text = coordinator?.copyText(of: selectedRowIndexes), !text.isEmpty else { return }
+        let selected = coordinator?.selectedText().flatMap { $0.isEmpty ? nil : $0 }
+        guard let text = selected ?? coordinator?.copyText(of: selectedRowIndexes), !text.isEmpty else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
     }
@@ -550,6 +674,7 @@ final class DiffCellView: NSTableCellView {
     private var content: Content = .blank
     private var segments: [Range<Int>] = [0..<0]
     private var highlights: [(range: Range<Int>, isCurrent: Bool)] = []
+    private var selection: Range<Int>?
     private var metrics = DiffMetrics.forFont(family: nil, size: DiffFont.defaultSize, ligatures: true)
     private var palette = ResolvedPalette(appearance: .light, contrast: .standard)
 
@@ -561,10 +686,11 @@ final class DiffCellView: NSTableCellView {
 
     func configure(
         _ content: Content, palette: ResolvedPalette, segments: [Range<Int>], metrics: DiffMetrics,
-        highlights: [(range: Range<Int>, isCurrent: Bool)] = []
+        highlights: [(range: Range<Int>, isCurrent: Bool)] = [], selection: Range<Int>? = nil
     ) {
         self.metrics = metrics
         self.highlights = highlights
+        self.selection = selection
         self.content = content
         self.palette = palette
         self.segments = segments
@@ -653,6 +779,10 @@ final class DiffCellView: NSTableCellView {
                     .backgroundColor: highlight.isCurrent ? SearchHighlight.current : SearchHighlight.match,
                     .foregroundColor: SearchHighlight.text,
                 ], range: range)
+            }
+            if let selection, selection.upperBound <= text.length {
+                text.addAttribute(.backgroundColor, value: NSColor.selectedTextBackgroundColor,
+                                  range: NSRange(location: selection.lowerBound, length: selection.count))
             }
             return text
         }

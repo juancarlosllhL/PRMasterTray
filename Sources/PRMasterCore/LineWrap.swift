@@ -61,6 +61,25 @@ public enum LineWrap {
         return segments
     }
 
+    /// The UTF-16 offset nearest `target` columns into `segment`, counted as the segment is drawn.
+    public static func offset(
+        atColumn target: Double, in text: String, segment: Range<Int>, tabWidth: Int = 4,
+        columns: (Unicode.Scalar) -> Double = { _ in 1 }
+    ) -> Int {
+        var offset = 0, column = 0.0
+        let tab = Double(tabWidth)
+        for scalar in text.unicodeScalars {
+            let width = scalar.utf16.count
+            defer { offset += width }
+            guard offset >= segment.lowerBound else { continue }
+            guard offset < segment.upperBound else { break }
+            let advance = scalar == "\t" ? tab - column.truncatingRemainder(dividingBy: tab) : columns(scalar)
+            if target < column + advance / 2 { return offset }
+            column += advance
+        }
+        return segment.upperBound
+    }
+
     private static func utf16End(_ index: Int, _ scalars: [(offset: Int, scalar: Unicode.Scalar)], _ total: Int) -> Int {
         index + 1 < scalars.count ? scalars[index + 1].offset : total
     }

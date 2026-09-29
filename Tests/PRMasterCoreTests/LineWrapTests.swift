@@ -88,4 +88,42 @@ struct LineWrapTests {
             #expect(width <= 20)
         }
     }
+
+    @Test("a click lands before the character whose left half it hits, after it on the right half")
+    func offsetRoundsToNearestBoundary() {
+        let text = "let a"
+        #expect(LineWrap.offset(atColumn: 0.4, in: text, segment: 0..<5) == 0)
+        #expect(LineWrap.offset(atColumn: 0.6, in: text, segment: 0..<5) == 1)
+        #expect(LineWrap.offset(atColumn: 2.9, in: text, segment: 0..<5) == 3)
+    }
+
+    @Test("a click left of the code or past the end of a segment clamps to its ends")
+    func offsetClamps() {
+        #expect(LineWrap.offset(atColumn: -3, in: "let a", segment: 0..<5) == 0)
+        #expect(LineWrap.offset(atColumn: 40, in: "let a", segment: 0..<5) == 5)
+    }
+
+    @Test("a continuation segment counts columns from its own start, as it is drawn")
+    func offsetInLaterSegment() {
+        let text = "alpha beta gamma"
+        let segments = LineWrap.segments(text, width: 6)
+        #expect(segments.count > 1)
+        let second = segments[1]
+        #expect(LineWrap.offset(atColumn: 0, in: text, segment: second) == second.lowerBound)
+        #expect(LineWrap.offset(atColumn: 2.2, in: text, segment: second) == second.lowerBound + 2)
+    }
+
+    @Test("a tab spans to the next stop, and wide characters take their measured width")
+    func offsetTabsAndWideCharacters() {
+        #expect(LineWrap.offset(atColumn: 3.9, in: "\tx", segment: 0..<2) == 1)
+        #expect(LineWrap.offset(atColumn: 1.9, in: "\tx", segment: 0..<2) == 0)
+        let wide: (Unicode.Scalar) -> Double = { $0.isASCII ? 1 : 2 }
+        #expect(LineWrap.offset(atColumn: 1.5, in: "界a", segment: 0..<2, columns: wide) == 1)
+        #expect(LineWrap.offset(atColumn: 0.9, in: "界a", segment: 0..<2, columns: wide) == 0)
+    }
+
+    @Test("an emoji is one character but two UTF-16 units")
+    func offsetCountsUTF16() {
+        #expect(LineWrap.offset(atColumn: 1.4, in: "🙂a", segment: 0..<3) == 2)
+    }
 }
