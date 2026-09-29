@@ -24,25 +24,6 @@ struct DiffPaletteTests {
         }
     }
 
-    @Test(
-        "every token colour clears the opaque floor on every line background",
-        arguments: TokenKind.allCases, ContrastMode.allCases
-    )
-    func tokenOnBackground(kind: TokenKind, contrast: ContrastMode) {
-        for appearance in AppearanceMode.allCases {
-            for tint in DiffLineTint.allCases {
-                let ratio = PaletteTests.contrastRatio(
-                    Palette.token(kind, appearance: appearance, contrast: contrast),
-                    Palette.diffBackground(tint, appearance: appearance, contrast: contrast)
-                )
-                #expect(
-                    ratio >= PaletteTests.minimumRatio(contrast, .opaque),
-                    "\(kind) on \(tint) in \(appearance)/\(contrast) is \(ratio)"
-                )
-            }
-        }
-    }
-
     @Test("monochrome backgrounds carry no hue", arguments: DiffLineTint.allCases)
     func monochromeIsGrey(tint: DiffLineTint) {
         for appearance in AppearanceMode.allCases {

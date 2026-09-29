@@ -76,21 +76,6 @@ struct DiffStoreTests {
         #expect(!store.rows.isEmpty)
     }
 
-    @Test("a loaded diff arrives already highlighted")
-    func loadHighlights() async {
-        let (store, _) = await loadedStore()
-        let tokens = store.rows.compactMap { row -> [TokenRange]? in
-            guard case .line(let line) = row else { return nil }
-            return line.tokens
-        }
-        #expect(tokens.contains { !$0.isEmpty } == false)
-        let (swift, _) = await loadedStore(diff(files: [file("a.swift", text: "let a")]))
-        #expect(swift.rows.contains {
-            guard case .line(let line) = $0 else { return false }
-            return line.tokens.first?.kind == .keyword
-        })
-    }
-
     @Test("a failed load shows GitHub's own words")
     func failureKeepsGitHubsMessage() async {
         let source = StubDiffSource(.failure(PRMasterError.graphQL(["Could not resolve to a PullRequest"])))

@@ -104,10 +104,7 @@ public final class DiffStore {
         }
         phase = .loading
         do {
-            var loaded = try await source.loadDiff(repo: repo, number: number)
-            let files = loaded.files
-            // About 200ms for 50,000 lines in release, so it stays off the main actor.
-            loaded.files = await Task.detached { files.map(Tokenizer.highlighted) }.value
+            let loaded = try await source.loadDiff(repo: repo, number: number)
             diff = loaded
             collapsed = Set(loaded.files.filter { $0.viewed == .viewed }.map(\.path))
             viewedFailures = [:]

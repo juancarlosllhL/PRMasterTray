@@ -604,11 +604,8 @@ final class DiffCellView: NSTableCellView {
             if !(isSelected && backgroundStyle == .emphasized) {
                 for token in line.tokens where token.location + token.length <= line.text.utf16.count {
                     let range = NSRange(location: start + token.location, length: token.length)
-                    if palette.isMonochrome {
-                        if token.kind == .keyword { text.addAttribute(.font, value: metrics.boldFont, range: range) }
-                    } else {
-                        let tokenColour = Palette.token(token.kind, appearance: palette.appearance, contrast: palette.contrast)
-                        text.addAttribute(.foregroundColor, value: tokenColour.nsColor, range: range)
+                    if !palette.isMonochrome {
+                        text.addAttribute(.foregroundColor, value: token.colour.nsColor, range: range)
                     }
                 }
             }

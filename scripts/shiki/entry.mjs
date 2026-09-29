@@ -44,6 +44,7 @@ const highlighter = createHighlighterCoreSync({
 
 // Returns JSON: each segment is null when Shiki's lines do not map one to one onto the input.
 function highlight(segments, language, theme) {
+  const foreground = highlighter.getTheme(theme).fg.toUpperCase()
   const colours = []
   const colourIndex = new Map()
   const indexOf = colour => {
@@ -52,6 +53,7 @@ function highlight(segments, language, theme) {
     return colourIndex.get(key)
   }
   const result = segments.map(lines => {
+    if (lines.length === 0) return []
     const code = lines.join('\n')
     const tokens = highlighter.codeToTokensBase(code, { lang: language, theme, tokenizeMaxLineLength: 2000 })
     if (tokens.length !== lines.length) return null
@@ -59,7 +61,9 @@ function highlight(segments, language, theme) {
     return tokens.map((line, index) => {
       const ranges = []
       for (const token of line) {
-        ranges.push(token.offset - lineStart, token.content.length, indexOf(token.color), Math.max(token.fontStyle ?? 0, 0))
+        const style = Math.max(token.fontStyle ?? 0, 0)
+        if (token.content.length === 0 || (style === 0 && (token.color ?? '').toUpperCase() === foreground)) continue
+        ranges.push(token.offset - lineStart, token.content.length, indexOf(token.color), style)
       }
       lineStart += lines[index].length + 1
       return ranges

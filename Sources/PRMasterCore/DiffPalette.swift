@@ -38,27 +38,4 @@ extension Palette {
         case (.dark, true, .header): return .hex(0x262626)
         }
     }
-
-    /// In monochrome every token is the text colour; the app varies weight instead.
-    public static func token(_ kind: TokenKind, appearance: AppearanceMode, contrast: ContrastMode) -> RGB {
-        switch (appearance, contrast, kind) {
-        case (_, .monochrome, _): return diffText(appearance: appearance, contrast: contrast)
-        case (.light, .standard, .keyword): return .hex(0xA0111F)
-        case (.light, .standard, .string): return .hex(0x0A3069)
-        case (.light, .standard, .comment): return .hex(0x57606A)
-        case (.light, .standard, .number): return .hex(0x0550AE)
-        case (.light, .increased, .keyword): return .hex(0x6E0B14)
-        case (.light, .increased, .string): return .hex(0x032563)
-        case (.light, .increased, .comment): return .hex(0x3D444D)
-        case (.light, .increased, .number): return .hex(0x023B95)
-        case (.dark, .standard, .keyword): return .hex(0xFF7B72)
-        case (.dark, .standard, .string): return .hex(0xA5D6FF)
-        case (.dark, .standard, .comment): return .hex(0x9DA5AE)
-        case (.dark, .standard, .number): return .hex(0x79C0FF)
-        case (.dark, .increased, .keyword): return .hex(0xFFB1AB)
-        case (.dark, .increased, .string): return .hex(0xCAE8FF)
-        case (.dark, .increased, .comment): return .hex(0xC9D1D9)
-        case (.dark, .increased, .number): return .hex(0xB6DCFF)
-        }
-    }
 }
