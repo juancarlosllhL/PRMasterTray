@@ -9,6 +9,8 @@ struct PresentationTests {
     @Test("glyph and tint match the design table", arguments: [
         (Readiness.ready, "checkmark.circle.fill", ReadinessTint.green),
         (Readiness.behind, "arrow.down.circle", ReadinessTint.yellow),
+        (Readiness.quillComments, "sparkles", ReadinessTint.orange),
+        (Readiness.unresolvedComments, "bubble.left.and.bubble.right", ReadinessTint.orange),
         (Readiness.blocked, "eye.circle", ReadinessTint.blue),
         (Readiness.checksPending, "clock", ReadinessTint.yellow),
         (Readiness.checksFailing, "xmark.circle.fill", ReadinessTint.red),
@@ -31,6 +33,12 @@ struct PresentationTests {
         for state in Readiness.allCases {
             #expect(!state.label.isEmpty)
         }
+    }
+
+    /// One past "Waiting for review", which was measured not to clip at 380pt.
+    @Test("labels stay short enough for the row", arguments: Readiness.allCases)
+    func labelsFit(state: Readiness) {
+        #expect(state.label.count <= 19)
     }
 
     @Test("only drafts are dimmed")
