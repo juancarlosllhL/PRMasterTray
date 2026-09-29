@@ -27,6 +27,10 @@ public actor ShikiHighlighter: SyntaxHighlighting {
         call("languages", [])?.toArray() as? [String] ?? []
     }
 
+    public func colours(of theme: SyntaxTheme) -> [RGB] {
+        (call("themeColours", [theme.rawValue])?.toArray() as? [String] ?? []).compactMap(RGB.init(css:))
+    }
+
     public func highlight(_ file: DiffFile, theme: SyntaxTheme) -> DiffFile {
         guard case .hunks(let hunks) = file.content, let language = SyntaxLanguage.forPath(file.path) else {
             return file
