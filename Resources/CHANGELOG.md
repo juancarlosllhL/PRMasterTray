@@ -11,7 +11,7 @@ whoever has to read them in a small window.
 - Code is coloured the way GitHub colours it, for 25 languages. A large diff shows at once, and the file you're looking at is coloured first.
 - Drag across the code to select text, double-click for a word, triple-click for a line, and Command-C copies it. Click the line numbers to select whole lines, as before.
 - Long lines wrap inside the window. Pick the diff's font, its size and whether ligatures are drawn: Settings, Diff Viewer.
-- Approve lives at the bottom of that window, for other people's pull requests, and approves exactly the commit you read. If someone pushes meanwhile, the window says so and offers a reload.
+- Approve lives at the top right of that window, beside Open on GitHub, for other people's pull requests, and approves exactly the commit you read. If someone pushes meanwhile, the window says so and offers a reload.
 - Your own pull request shows Merge on its row again once it's ready.
 - The review window shows the pull request's description in a panel beside the diff, the way GitHub renders it. The button at the top right shows or hides it, and links open in your browser.
 - A pull request held up by open conversations no longer says Waiting for review. It says Quill comments while Quill's findings are unresolved, and Unresolved comments when a person's are.

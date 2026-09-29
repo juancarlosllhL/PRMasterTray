@@ -77,7 +77,7 @@ struct DiffWindowView: View {
         let liveState = live()
 
         VStack(spacing: 0) {
-            header
+            header(liveState)
             Divider()
             HSplitView {
                 sidebar(palette)
@@ -91,8 +91,6 @@ struct DiffWindowView: View {
                         Divider()
                         findBar
                     }
-                    Divider()
-                    bottomBar(liveState)
                 }
                 .frame(minWidth: 480, maxWidth: .infinity)
                 .layoutPriority(1)
@@ -222,7 +220,7 @@ struct DiffWindowView: View {
         )
     }
 
-    private var header: some View {
+    private func header(_ liveState: DiffLiveState) -> some View {
         HStack(spacing: 10) {
             Text(verbatim: summary)
                 .font(.system(size: 12))
@@ -247,6 +245,21 @@ struct DiffWindowView: View {
             .buttonStyle(.accessoryBar)
             .help(showsDescription ? "Hide description" : "Show description")
             .accessibilityLabel(showsDescription ? "Hide description" : "Show description")
+            Divider().frame(height: 18)
+            if store.phase == .loaded, let blocker = liveState.blocker {
+                Text(verbatim: blocker)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Button("Open on GitHub", action: onOpenOnGitHub)
+            if subject.canBeApproved {
+                Button("Approve") {
+                    if let target = store.mergeTarget { onAct(target) }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(store.mergeTarget == nil)
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -346,27 +359,6 @@ struct DiffWindowView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(palette.wash(.orange))
-    }
-
-    private func bottomBar(_ liveState: DiffLiveState) -> some View {
-        HStack(spacing: 10) {
-            if store.phase == .loaded, let blocker = liveState.blocker {
-                Text(verbatim: blocker)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button("Open on GitHub", action: onOpenOnGitHub)
-            if subject.canBeApproved {
-                Button("Approve") {
-                    if let target = store.mergeTarget { onAct(target) }
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(store.mergeTarget == nil)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
     }
 }
 
