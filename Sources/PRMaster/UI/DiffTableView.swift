@@ -447,7 +447,7 @@ struct DiffTableView: NSViewRepresentable {
         private func content(for row: DiffRow, column: NSTableColumn?) -> DiffCellView.Content {
             switch row {
             case .fileHeader(let path): return .header(path, isFile: true)
-            case .section(let section, let count): return .header(section.heading(count: count), isFile: false)
+            case .section(let section, let count): return .divider(section.heading(count: count))
             case .hunkHeader(let text): return .header(text, isFile: false)
             case .omitted(let reason): return .notice(reason)
             case .line(let line): return .line(line, side: .unified)
@@ -669,6 +669,7 @@ final class DiffCellView: NSTableCellView {
     enum Content {
         case line(DiffLine, side: Side)
         case header(String, isFile: Bool)
+        case divider(String)
         case notice(OmissionReason)
         case blank
     }
@@ -723,6 +724,10 @@ final class DiffCellView: NSTableCellView {
                 .draw(at: origin)
             origin.x += CGFloat(gutterText.count) * metrics.advance
         }
+        if case .divider = content {
+            NSColor.separatorColor.setFill()
+            NSRect(x: 0, y: 0, width: bounds.width, height: 1).fill()
+        }
         let text = attributedText(colour: textColour)
         for (index, segment) in segments.enumerated() where segment.upperBound <= text.length {
             let range = NSRange(location: segment.lowerBound, length: segment.count)
@@ -739,7 +744,7 @@ final class DiffCellView: NSTableCellView {
             case .added: return .added
             case .removed: return .removed
             }
-        case .header, .notice: return .header
+        case .header, .divider, .notice: return .header
         case .blank: return .context
         }
     }
@@ -756,6 +761,12 @@ final class DiffCellView: NSTableCellView {
             var attributes = base
             if isFile { attributes[.font] = metrics.boldFont }
             return NSAttributedString(string: text, attributes: attributes)
+        case .divider(let text):
+            return NSAttributedString(string: text, attributes: [
+                .font: NSFont.systemFont(ofSize: metrics.font.pointSize, weight: .semibold),
+                .foregroundColor: isSelected && backgroundStyle == .emphasized ? colour : NSColor.secondaryLabelColor,
+                .paragraphStyle: metrics.paragraph,
+            ])
         case .notice(let reason):
             return NSAttributedString(string: Self.explanation(reason), attributes: base)
         case .line(let line, _):
@@ -811,7 +822,7 @@ final class DiffCellView: NSTableCellView {
     private var spokenText: String {
         switch content {
         case .blank: return ""
-        case .header(let text, _): return text
+        case .header(let text, _), .divider(let text): return text
         case .notice(let reason): return Self.explanation(reason)
         case .line(let line, _):
             let kind: String

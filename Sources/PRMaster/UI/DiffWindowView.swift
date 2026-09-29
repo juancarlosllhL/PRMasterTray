@@ -68,6 +68,7 @@ struct DiffWindowView: View {
     @State private var scrollTarget: String?
     @State private var selectedFile: String?
     @State private var fileFilter = Debug.fileFilter ?? ""
+    @State private var expandedSections: Set<FileSection> = []
     @FocusState private var findFocused: Bool
 
     var body: some View {
@@ -110,12 +111,29 @@ struct DiffWindowView: View {
         .onChange(of: SyntaxTheme(appearance: palette.appearance, contrast: palette.contrast), initial: true) { _, theme in
             store.setTheme(theme)
         }
+        .onChange(of: scopeInputs, initial: true) { _, inputs in
+            store.setScope(FileScope(patterns: inputs.patterns, gitAttributes: inputs.gitAttributes))
+        }
         .onChange(of: selectedFile) { _, path in
             guard let path else { return }
             store.prioritise(path)
-            if store.collapsed.contains(path) { store.toggleCollapsed(path) }
+            if store.isCollapsed(path) { store.toggleCollapsed(path) }
+            expandedSections.insert(store.scope.section(of: path))
             scrollTarget = path
         }
+    }
+
+    /// Compared rather than the scope itself, so a re-render does not recompile every pattern.
+    private struct ScopeInputs: Equatable {
+        let patterns: [FileSection: [String]]
+        let gitAttributes: String?
+    }
+
+    private var scopeInputs: ScopeInputs {
+        ScopeInputs(
+            patterns: appearance.scopePatterns,
+            gitAttributes: appearance.honoursGitAttributes ? store.diff?.gitAttributes : nil
+        )
     }
 
     private var files: [DiffFile] { store.diff?.files ?? [] }
@@ -144,28 +162,55 @@ struct DiffWindowView: View {
     }
 
     private func fileList(_ palette: ResolvedPalette) -> some View {
-        let shown = DiffSearch.filter(files, by: fileFilter)
+        let review = store.reviewFiles
+        let shown = DiffSearch.filter(review, by: fileFilter)
+        let setAside = store.groups.filter { $0.section != .review }
         return List(selection: $selectedFile) {
             Section {
-                if shown.isEmpty && !files.isEmpty {
+                if review.isEmpty && !files.isEmpty {
+                    Text("Every changed file is set aside.")
+                        .foregroundStyle(.secondary)
+                } else if DiffSearch.filter(files, by: fileFilter).isEmpty && !files.isEmpty {
                     Text("No files match.")
                         .foregroundStyle(.secondary)
                 }
-                ForEach(shown) { file in
-                    DiffFileRow(
-                        file: file,
-                        highlights: DiffSearch.pathHighlights(of: fileFilter, in: file.path),
-                        canMarkViewed: store.canMarkViewed,
-                        failure: store.viewedFailures[file.path],
-                        onViewed: { viewed in Task { await store.setViewed(file.path, viewed) } }
-                    )
-                    .tag(file.path)
-                }
+                ForEach(shown, content: fileRow)
             } header: {
-                Text(verbatim: "\(files.filter { $0.viewed == .viewed }.count) of \(files.count) viewed")
+                Text(verbatim: "\(store.viewedReviewCount) of \(review.count) viewed")
+            }
+            ForEach(setAside, id: \.section) { group in
+                let matching = DiffSearch.filter(group.files, by: fileFilter)
+                if !matching.isEmpty {
+                    Section(isExpanded: isExpanded(group.section)) {
+                        ForEach(matching, content: fileRow)
+                    } header: {
+                        Text(verbatim: group.section.heading(count: group.files.count))
+                    }
+                }
             }
         }
         .listStyle(.sidebar)
+    }
+
+    private func fileRow(_ file: DiffFile) -> some View {
+        DiffFileRow(
+            file: file,
+            highlights: DiffSearch.pathHighlights(of: fileFilter, in: file.path),
+            canMarkViewed: store.canMarkViewed,
+            failure: store.viewedFailures[file.path],
+            onViewed: { viewed in Task { await store.setViewed(file.path, viewed) } }
+        )
+        .tag(file.path)
+    }
+
+    /// Closed until opened, except while a filter is typed: a match must never be hidden.
+    private func isExpanded(_ section: FileSection) -> Binding<Bool> {
+        Binding(
+            get: { !fileFilter.trimmingCharacters(in: .whitespaces).isEmpty || expandedSections.contains(section) },
+            set: { expanded in
+                if expanded { expandedSections.insert(section) } else { expandedSections.remove(section) }
+            }
+        )
     }
 
     private var header: some View {
@@ -187,10 +232,12 @@ struct DiffWindowView: View {
     }
 
     private var summary: String {
-        let additions = files.reduce(0) { $0 + $1.additions }
-        let deletions = files.reduce(0) { $0 + $1.deletions }
-        let noun = files.count == 1 ? "file" : "files"
-        return "\(files.count) \(noun) changed · +\(additions) −\(deletions)"
+        let review = store.reviewFiles
+        let additions = review.reduce(0) { $0 + $1.additions }
+        let deletions = review.reduce(0) { $0 + $1.deletions }
+        let noun = review.count == 1 ? "file" : "files"
+        let setAside = store.setAsideCount > 0 ? " · \(store.setAsideCount) set aside" : ""
+        return "\(review.count) \(noun) changed · +\(additions) −\(deletions)\(setAside)"
     }
 
     @ViewBuilder

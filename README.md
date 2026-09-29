@@ -29,6 +29,12 @@ GitHub would merge right now.
   GitHub judges too large and pull requests over 3000 files are named rather
   than shown blank.
 
+  Tests, generated code, lockfiles and planning notes are set aside: they sit
+  closed under their own headings below the files to review, one click away,
+  and stay out of the viewed count. Which files go where is a list of
+  `.gitignore`-style patterns per heading (Settings, Review Files), and files the
+  repository marks `linguist-generated` in `.gitattributes` count as generated.
+
 <img src="docs/screenshots/review-window.png" width="800" alt="The review window: seven files down the side, the diff of Changelog.swift with added lines in green and removed in red, and Merge at the bottom">
 
 - Pull requests you opened a long time ago and forgot are marked with their age,

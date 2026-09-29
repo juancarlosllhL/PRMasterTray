@@ -192,7 +192,7 @@ public final class DiffStore {
 
     private func startHighlighting() {
         highlighting?.cancel()
-        guard highlighter != nil, let diff else { return }
+        guard highlighter != nil, diff != nil else { return }
         pendingHighlights = groups.flatMap(\.files).filter { file in
             guard case .hunks = file.content else { return false }
             return SyntaxLanguage.forPath(file.path) != nil
