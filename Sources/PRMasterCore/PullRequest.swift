@@ -37,6 +37,8 @@ public struct PullRequest: Identifiable, Sendable, Equatable {
     /// keeps moving, the app would go on resetting its own staleness signal
     /// forever and nothing would ever be marked. This field only ever moves once.
     public let createdAt: Date
+    /// `nil` when threads were not looked up, which is not the same as none.
+    public let threads: ReviewThreadTally?
 
     public var readiness: Readiness { Readiness.evaluate(self) }
 
@@ -62,7 +64,8 @@ public struct PullRequest: Identifiable, Sendable, Equatable {
         checks: CheckState?,
         approvals: Int,
         updatedAt: Date,
-        createdAt: Date
+        createdAt: Date,
+        threads: ReviewThreadTally? = nil
     ) {
         self.id = id
         self.number = number
@@ -79,6 +82,29 @@ public struct PullRequest: Identifiable, Sendable, Equatable {
         self.approvals = approvals
         self.updatedAt = updatedAt
         self.createdAt = createdAt
+        self.threads = threads
+    }
+
+    public func with(threads: ReviewThreadTally?) -> PullRequest {
+        PullRequest(
+            id: id, number: number, title: title, url: url, repo: repo,
+            isPrivate: isPrivate, isDraft: isDraft, headRefOid: headRefOid,
+            mergeable: mergeable, mergeState: mergeState, reviewDecision: reviewDecision,
+            checks: checks, approvals: approvals, updatedAt: updatedAt, createdAt: createdAt,
+            threads: threads
+        )
+    }
+}
+
+/// Unresolved review threads on a pull request, split by who opened them.
+public struct ReviewThreadTally: Sendable, Equatable {
+    public let unresolved: Int
+    public let unresolvedByQuill: Int
+    public var unresolvedByOthers: Int { unresolved - unresolvedByQuill }
+
+    public init(unresolved: Int, unresolvedByQuill: Int) {
+        self.unresolved = unresolved
+        self.unresolvedByQuill = unresolvedByQuill
     }
 }
 

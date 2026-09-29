@@ -8,7 +8,8 @@ private func makePR(
     mergeable: Mergeable = .mergeable,
     mergeState: MergeStateStatus = .clean,
     reviewDecision: ReviewDecision? = nil,
-    checks: CheckState? = .success
+    checks: CheckState? = .success,
+    threads: ReviewThreadTally? = nil
 ) -> PullRequest {
     PullRequest(
         id: "PR_kwDOtest",
@@ -25,7 +26,8 @@ private func makePR(
         checks: checks,
         approvals: 0,
         updatedAt: Date(timeIntervalSince1970: 0),
-        createdAt: Date(timeIntervalSince1970: 0)
+        createdAt: Date(timeIntervalSince1970: 0),
+        threads: threads
     )
 }
 
@@ -59,7 +61,7 @@ struct ReadinessTests {
     /// Readiness is one axis and stays one axis.
     ///
     /// Guards the decision behind `StaleThreshold`: staleness is a second,
-    /// orthogonal signal precisely so it cannot land here. An eighth case would
+    /// orthogonal signal precisely so it cannot land here. A further case would
     /// silently break three exact-match comparisons — `NotificationDecider`,
     /// `BranchUpdateDecider` and the row's merge button — so a stale-but-ready
     /// pull request would stop notifying and lose its Merge affordance with
@@ -67,7 +69,7 @@ struct ReadinessTests {
     /// contrast floor across every case, and a new one arrives unproven.
     @Test("readiness stays one axis, so staleness cannot be folded into it")
     func readinessIsNotAStalenessAxis() {
-        #expect(Readiness.allCases.count == 7)
+        #expect(Readiness.allCases.count == 9)
         #expect(ReadinessTint.allCases.count == 6)
     }
 
@@ -124,5 +126,32 @@ struct ReadinessTests {
     func happyPath() {
         let pr = makePR(mergeState: .clean, reviewDecision: .approved, checks: .success)
         #expect(pr.readiness == .ready)
+    }
+
+    // MARK: unresolved threads
+
+    @Test("a blocked PR reads by its unresolved threads", arguments: [
+        (ReviewThreadTally?.none, Readiness.blocked),
+        (ReviewThreadTally(unresolved: 0, unresolvedByQuill: 0), Readiness.blocked),
+        (ReviewThreadTally(unresolved: 3, unresolvedByQuill: 2), Readiness.quillComments),
+        (ReviewThreadTally(unresolved: 1, unresolvedByQuill: 0), Readiness.unresolvedComments),
+    ])
+    func blockedByThreads(threads: ReviewThreadTally?, expected: Readiness) {
+        #expect(makePR(mergeState: .blocked, threads: threads).readiness == expected)
+    }
+
+    /// GitHub saying it can merge is the authority: a repository that does not
+    /// require resolved conversations must still notify.
+    @Test("a clean PR is ready whatever its threads")
+    func cleanIgnoresThreads() {
+        let threads = ReviewThreadTally(unresolved: 2, unresolvedByQuill: 1)
+        #expect(makePR(mergeState: .clean, threads: threads).readiness == .ready)
+    }
+
+    @Test("failing checks and drafts outrank unresolved threads")
+    func threadsDoNotOutrankChecksOrDraft() {
+        let threads = ReviewThreadTally(unresolved: 2, unresolvedByQuill: 1)
+        #expect(makePR(mergeState: .blocked, checks: .failure, threads: threads).readiness == .checksFailing)
+        #expect(makePR(isDraft: true, mergeState: .blocked, threads: threads).readiness == .draft)
     }
 }

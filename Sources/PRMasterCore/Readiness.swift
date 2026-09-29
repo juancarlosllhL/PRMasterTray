@@ -13,6 +13,10 @@ public enum Readiness: Sendable, Equatable, CaseIterable {
     case checksPending
     /// Head is behind base; needs updating before it can merge.
     case behind
+    /// Blocked with unresolved threads opened by quill-reviewer.
+    case quillComments
+    /// Blocked with unresolved threads opened by anyone else.
+    case unresolvedComments
     /// Branch protection is withholding the merge, typically pending review.
     case blocked
     /// Mergeable right now.
@@ -49,6 +53,11 @@ public enum Readiness: Sendable, Equatable, CaseIterable {
             // on each one.
             return .checksPending
         case .blocked, .dirty:
+            // Quill first, by the user's choice: its review lands before people look.
+            if let threads = pr.threads {
+                if threads.unresolvedByQuill > 0 { return .quillComments }
+                if threads.unresolvedByOthers > 0 { return .unresolvedComments }
+            }
             return .blocked
         }
     }

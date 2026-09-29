@@ -14,6 +14,8 @@ extension Readiness {
         switch self {
         case .ready:         return "checkmark.circle.fill"
         case .behind:        return "arrow.down.circle"
+        case .quillComments: return "sparkles"
+        case .unresolvedComments: return "bubble.left.and.bubble.right"
         case .blocked:       return "eye.circle"
         case .checksPending: return "clock"
         case .checksFailing: return "xmark.circle.fill"
@@ -26,6 +28,8 @@ extension Readiness {
         switch self {
         case .ready:         return .green
         case .behind:        return .yellow
+        // Orange, as `ReviewState.changesRequested`: the author has to act.
+        case .quillComments, .unresolvedComments: return .orange
         case .blocked:       return .blue
         case .checksPending: return .yellow
         case .checksFailing: return .red
@@ -40,6 +44,8 @@ extension Readiness {
         switch self {
         case .ready:         return "Ready to merge"
         case .behind:        return "Behind base branch"
+        case .quillComments: return "Quill comments"
+        case .unresolvedComments: return "Unresolved comments"
         case .blocked:       return "Waiting for review"
         case .checksPending: return "Checks running"
         case .checksFailing: return "Checks failing"
