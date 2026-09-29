@@ -169,4 +169,61 @@ struct DiffRowsTests {
         #expect(!DiffRows.wrapTheSame(rows, DiffRows.build([file("b.swift", one.content)], layout: .unified, collapsed: [])))
         #expect(!DiffRows.wrapTheSame(rows, DiffRows.build([one], layout: .split, collapsed: [])))
     }
+
+    // MARK: - Sections
+
+    private func sectioned() throws -> [DiffRow] {
+        let content = DiffContent.hunks([try hunk("@@ -1 +1 @@\n-b\n+c")])
+        return DiffRows.build(
+            groups: [
+                DiffFileGroup(section: .other, files: [file("CLAUDE.md", content)]),
+                DiffFileGroup(section: .tests, files: [file("a_test.go", content), file("b_test.go", content)]),
+                DiffFileGroup(section: .generated, files: []),
+                DiffFileGroup(section: .review, files: [file("a.go", content)]),
+            ],
+            layout: .unified, isCollapsed: { $0 != "a.go" }
+        )
+    }
+
+    @Test("review files come first, then each non-empty set-aside group behind its own divider")
+    func sectionOrder() throws {
+        let rows = try sectioned()
+        #expect(rows.count == 9)
+        #expect(rows[0] == .fileHeader(path: "a.go"))
+        #expect(rows[4] == .section(.tests, count: 2))
+        #expect(rows[5] == .fileHeader(path: "a_test.go"))
+        #expect(rows[6] == .fileHeader(path: "b_test.go"))
+        #expect(rows[7] == .section(.other, count: 1))
+        #expect(rows[8] == .fileHeader(path: "CLAUDE.md"))
+        #expect(!rows.contains(.section(.generated, count: 0)))
+    }
+
+    @Test("with no review files the diff opens on the first divider")
+    func noReviewFiles() {
+        let rows = DiffRows.build(
+            groups: [DiffFileGroup(section: .tests, files: [file("a_test.go", .omitted(.tooLarge))])],
+            layout: .unified, isCollapsed: { _ in true }
+        )
+        #expect(rows == [.section(.tests, count: 1), .fileHeader(path: "a_test.go")])
+    }
+
+    /// A divider is not part of the file above it, so the pinned header must not
+    /// name that file over the divider, and the divider pushes it away.
+    @Test("a divider ends the file above it for the pinned header")
+    func dividerEndsFile() throws {
+        let rows = try sectioned()
+        #expect(DiffRows.fileHeaderIndex(owning: 3, in: rows) == 0)
+        #expect(DiffRows.fileHeaderIndex(owning: 4, in: rows) == nil)
+        #expect(DiffRows.fileHeaderIndex(owning: 5, in: rows) == 5)
+        #expect(DiffRows.nextFileHeaderIndex(after: 0, in: rows) == 4)
+        #expect(DiffRows.index(ofFile: "CLAUDE.md", in: rows) == 8)
+    }
+
+    @Test("dividers carry no text to find or copy")
+    func dividerHasNoText() throws {
+        let rows = try sectioned()
+        #expect(DiffRows.text(of: .section(.tests, count: 2), column: 0) == nil)
+        #expect(DiffSearch.matches(of: "tests", in: [.section(.tests, count: 2)]).isEmpty)
+        #expect(DiffRows.copyText(Array(rows[3...5])) == "+c\na_test.go")
+    }
 }

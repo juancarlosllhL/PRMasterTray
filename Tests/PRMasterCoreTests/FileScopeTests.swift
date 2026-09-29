@@ -157,6 +157,11 @@ struct FileScopeTests {
         #expect(FileScope(gitAttributes: "api/*.yaml linguist-generated=true").section(of: "api/crd.yaml") == .generated)
     }
 
+    @Test("a section's heading names it and counts its files")
+    func heading() {
+        #expect(FileSection.secondary.map { $0.heading(count: 3) } == ["Tests · 3", "Generated · 3", "Other · 3"])
+    }
+
     @Test("scopes compare by their rules")
     func equality() {
         #expect(FileScope() == FileScope())

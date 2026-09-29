@@ -61,7 +61,7 @@ public enum DiffSearch {
             switch row {
             case .line(let line): sides = [line]
             case .pair(let left, let right): sides = [left, right]
-            case .fileHeader, .hunkHeader, .omitted: continue
+            case .fileHeader, .section, .hunkHeader, .omitted: continue
             }
             for (column, line) in sides.enumerated() {
                 guard let line else { continue }

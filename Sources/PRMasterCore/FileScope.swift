@@ -10,6 +10,18 @@ public enum FileSection: String, CaseIterable, Sendable {
 
     /// A generated test mock is generated before it is a test.
     static let precedence: [FileSection] = [.generated, .tests, .other]
+
+    public var title: String {
+        switch self {
+        case .review: return "Review"
+        case .tests: return "Tests"
+        case .generated: return "Generated"
+        case .other: return "Other"
+        }
+    }
+
+    /// What the sidebar and the diff's divider both read, e.g. "Tests · 12".
+    public func heading(count: Int) -> String { "\(title) · \(count)" }
 }
 
 public struct FileScope: Sendable, Equatable {

@@ -257,6 +257,7 @@ struct DiffTableView: NSViewRepresentable {
                 let segments: [[Range<Int>]]
                 switch row {
                 case .fileHeader(let path): segments = [wrap(path, full)]
+                case .section(let section, let count): segments = [wrap(section.heading(count: count), full)]
                 case .hunkHeader(let text): segments = [wrap(text, full)]
                 case .omitted(let reason): segments = [wrap(DiffCellView.explanation(reason), full)]
                 case .line(let line): segments = [wrap(line.text, code.first ?? full)]
@@ -308,7 +309,7 @@ struct DiffTableView: NSViewRepresentable {
 
         func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {
             switch rows[row] {
-            case .fileHeader, .hunkHeader, .omitted: return true
+            case .fileHeader, .section, .hunkHeader, .omitted: return true
             case .line, .pair: return false
             }
         }
@@ -446,6 +447,7 @@ struct DiffTableView: NSViewRepresentable {
         private func content(for row: DiffRow, column: NSTableColumn?) -> DiffCellView.Content {
             switch row {
             case .fileHeader(let path): return .header(path, isFile: true)
+            case .section(let section, let count): return .header(section.heading(count: count), isFile: false)
             case .hunkHeader(let text): return .header(text, isFile: false)
             case .omitted(let reason): return .notice(reason)
             case .line(let line): return .line(line, side: .unified)

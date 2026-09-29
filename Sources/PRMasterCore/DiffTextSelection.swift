@@ -76,7 +76,7 @@ extension DiffRows {
         switch row {
         case .line(let line): return column == 0 ? line.text : nil
         case .pair(let left, let right): return (column == 0 ? left : right)?.text
-        case .fileHeader, .hunkHeader, .omitted: return nil
+        case .fileHeader, .section, .hunkHeader, .omitted: return nil
         }
     }
 }

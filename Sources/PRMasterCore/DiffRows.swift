@@ -9,19 +9,47 @@ public enum DiffLayout: String, Sendable, CaseIterable {
 /// One row of the diff table. The table draws these and nothing else.
 public enum DiffRow: Sendable, Equatable {
     case fileHeader(path: String)
+    /// The divider above a set-aside group of files.
+    case section(FileSection, count: Int)
     case hunkHeader(String)
     case omitted(OmissionReason)
     case line(DiffLine)
     case pair(left: DiffLine?, right: DiffLine?)
 }
 
+public struct DiffFileGroup: Sendable, Equatable {
+    public let section: FileSection
+    public let files: [DiffFile]
+
+    public init(section: FileSection, files: [DiffFile]) {
+        self.section = section
+        self.files = files
+    }
+}
+
 public enum DiffRows {
 
     public static func build(_ files: [DiffFile], layout: DiffLayout, collapsed: Set<String>) -> [DiffRow] {
+        build(groups: [DiffFileGroup(section: .review, files: files)], layout: layout, isCollapsed: collapsed.contains)
+    }
+
+    /// Review files first, then each set-aside group that has files, behind a divider.
+    public static func build(groups: [DiffFileGroup], layout: DiffLayout, isCollapsed: (String) -> Bool) -> [DiffRow] {
+        let order = [FileSection.review] + FileSection.secondary
+        var rows: [DiffRow] = []
+        for section in order {
+            let files = groups.filter { $0.section == section }.flatMap(\.files)
+            if section != .review, !files.isEmpty { rows.append(.section(section, count: files.count)) }
+            rows += fileRows(files, layout: layout, isCollapsed: isCollapsed)
+        }
+        return rows
+    }
+
+    private static func fileRows(_ files: [DiffFile], layout: DiffLayout, isCollapsed: (String) -> Bool) -> [DiffRow] {
         var rows: [DiffRow] = []
         for file in files {
             rows.append(.fileHeader(path: file.path))
-            guard !collapsed.contains(file.path) else { continue }
+            guard !isCollapsed(file.path) else { continue }
             switch file.content {
             case .omitted(let reason):
                 rows.append(.omitted(reason))
@@ -89,14 +117,25 @@ public enum DiffRows {
         rows.firstIndex(of: .fileHeader(path: path))
     }
 
+    /// Nil above the first file and on a divider, which belongs to no file.
     public static func fileHeaderIndex(owning row: Int, in rows: [DiffRow]) -> Int? {
-        guard rows.indices.contains(row) else { return nil }
-        return rows[...row].lastIndex { if case .fileHeader = $0 { return true } else { return false } }
+        guard rows.indices.contains(row), let boundary = rows[...row].lastIndex(where: isBoundary),
+              case .fileHeader = rows[boundary]
+        else { return nil }
+        return boundary
     }
 
+    /// The next file header or divider: either pushes the pinned header away.
     public static func nextFileHeaderIndex(after row: Int, in rows: [DiffRow]) -> Int? {
         guard row + 1 < rows.count else { return nil }
-        return rows[(row + 1)...].firstIndex { if case .fileHeader = $0 { return true } else { return false } }
+        return rows[(row + 1)...].firstIndex(where: isBoundary)
+    }
+
+    private static func isBoundary(_ row: DiffRow) -> Bool {
+        switch row {
+        case .fileHeader, .section: return true
+        default: return false
+        }
     }
 
     /// Unified lines keep their marker so the copy still reads as a diff; a
@@ -106,7 +145,7 @@ public enum DiffRows {
             switch row {
             case .fileHeader(let path): return path
             case .hunkHeader(let header): return header
-            case .omitted: return nil
+            case .omitted, .section: return nil
             case .line(let line): return marker(line.kind) + line.text
             case .pair(let left, let right): return (right ?? left)?.text
             }
