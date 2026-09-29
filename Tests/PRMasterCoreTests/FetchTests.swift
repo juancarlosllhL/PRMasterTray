@@ -32,6 +32,14 @@ private func fixtureData(_ name: String) throws -> Data {
     return try Data(contentsOf: url)
 }
 
+/// The one blocked PR in `search-response`, with an open Quill thread.
+private let blockedID = "PR_kwDOAAAAAA72yNKp"
+private let quillThreadsForBlocked = Data(#"""
+{"data":{"nodes":[{"id":"PR_kwDOAAAAAA72yNKp","reviewThreads":{"nodes":[
+  {"isResolved":false,"comments":{"nodes":[{"author":{"login":"quill-reviewer"}}]}}
+]}}]}}
+"""#.utf8)
+
 @Suite
 struct FetchTests {
 
@@ -152,10 +160,11 @@ struct FetchTests {
         let ctx = makeClient([
             .response(status: 401, body: Data("{}".utf8)),
             .response(status: 200, body: try fixtureData("search-response")),
+            .response(status: 200, body: quillThreadsForBlocked),
         ])
         let prs = try await ctx.client.fetchMyPullRequests()
         #expect(prs.open.count == 4)
-        #expect(ctx.stub.requests.count == 2)
+        #expect(ctx.stub.requests.count == 3, "the retried search, then the thread lookup")
         #expect(ctx.tokenReads.count == 2)
     }
 
@@ -163,7 +172,9 @@ struct FetchTests {
     func cachesToken() async throws {
         let ctx = makeClient([
             .response(status: 200, body: try fixtureData("search-response")),
+            .response(status: 200, body: quillThreadsForBlocked),
             .response(status: 200, body: try fixtureData("search-response")),
+            .response(status: 200, body: quillThreadsForBlocked),
         ])
         _ = try await ctx.client.fetchMyPullRequests()
         _ = try await ctx.client.fetchMyPullRequests()
@@ -197,6 +208,38 @@ struct FetchTests {
         #expect(snapshot.merged.first?.repo == "acme/widget-service")
         #expect(snapshot.merged.first?.contexts.isEmpty == false)
         #expect(ctx.stub.requests.count == 1, "both halves ride in one request")
+    }
+
+    // MARK: review threads
+
+    @Test("only the blocked PR's threads are looked up, and they set its readiness")
+    func enrichesBlocked() async throws {
+        let ctx = makeClient([
+            .response(status: 200, body: try fixtureData("search-response")),
+            .response(status: 200, body: quillThreadsForBlocked),
+        ])
+        let snapshot = try await ctx.client.fetchMyPullRequests()
+
+        let lookup = String(decoding: try #require(ctx.stub.requests.last?.body), as: UTF8.self)
+        #expect(ctx.stub.requests.count == 2)
+        #expect(lookup.contains("reviewThreads"))
+        #expect(lookup.contains(blockedID))
+        #expect(!lookup.contains("PR_kwDOAAAAAA71xzWs"), "a clean PR is not worth a lookup")
+        #expect(snapshot.open.first { $0.id == blockedID }?.readiness == .quillComments)
+    }
+
+    /// Losing the threads must not cost the list: the row falls back to what it
+    /// said before this lookup existed.
+    @Test("a failed thread lookup still returns the list, blocked as before")
+    func lookupFailureKeepsList() async throws {
+        let ctx = makeClient([
+            .response(status: 200, body: try fixtureData("search-response")),
+            .response(status: 500, body: Data("{}".utf8)),
+        ])
+        let snapshot = try await ctx.client.fetchMyPullRequests()
+
+        #expect(snapshot.open.count == 4)
+        #expect(snapshot.open.first { $0.id == blockedID }?.readiness == .blocked)
     }
 
     // MARK: releases

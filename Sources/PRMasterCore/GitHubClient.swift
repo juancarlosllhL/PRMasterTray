@@ -33,10 +33,21 @@ public actor GitHubClient {
                 "mergedQuery": .string(Self.mergedSearch(window: mergedWindow, now: Date()))
             ]
         )
+        let open = try PullRequestDecoder.decodeSearch(data)
+        let merged = try PullRequestDecoder.decodeMergedSearch(data)
+        let blockedIDs = open.filter { $0.readiness == .blocked }.map(\.id)
+        // Losing the threads must not cost the list; those rows stay "Waiting for review".
+        let tallies = (try? await fetchThreadTallies(ids: blockedIDs)) ?? [:]
         return PullRequestSnapshot(
-            open: try PullRequestDecoder.decodeSearch(data),
-            merged: try PullRequestDecoder.decodeMergedSearch(data)
+            open: open.map { $0.with(threads: tallies[$0.id]) },
+            merged: merged
         )
+    }
+
+    private func fetchThreadTallies(ids: [String]) async throws -> [String: ReviewThreadTally] {
+        guard !ids.isEmpty else { return [:] }
+        let data = try await perform(query: Queries.reviewThreads, variables: ["ids": .ids(ids)])
+        return try PullRequestDecoder.decodeReviewThreads(data)
     }
 
     static func mergedSearch(window: MergedWindow, now: Date) -> String {
