@@ -10,8 +10,8 @@ GitHub would merge right now.
 - Lives in the menu bar, with a count of how many pull requests are ready to
   merge.
 - One row per open pull request of yours, each showing why it can or cannot be
-  merged: ready, waiting for review, checks running, checks failing, merge
-  conflicts, behind base branch, or draft.
+  merged: ready, waiting for review, Quill comments, unresolved comments,
+  checks running, checks failing, merge conflicts, behind base branch, or draft.
 - A notification the moment a pull request becomes mergeable, with **Open PR**
   and **Merge** actions.
 - **Review** on any row opens a window with the pull request's whole diff: a

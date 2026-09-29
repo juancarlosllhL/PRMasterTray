@@ -15,14 +15,22 @@ struct FixtureClient: PullRequestFetching {
 
     func fetchMyPullRequests(mergedWindow: MergedWindow) async throws -> PullRequestSnapshot {
         let data = try Data(contentsOf: URL(fileURLWithPath: path))
+        let tallies = threadTallies()
         return PullRequestSnapshot(
-            open: try PullRequestDecoder.decodeSearch(data),
+            open: try PullRequestDecoder.decodeSearch(data).map { $0.with(threads: tallies[$0.id]) },
             // Tolerated rather than required: a fixture captured before the
             // merged half existed still drives the open list, and simply shows
             // no merged rows. This is a debug-only path, so the alternative —
             // refusing to render anything — costs more than it protects.
             merged: (try? PullRequestDecoder.decodeMergedSearch(data)) ?? []
         )
+    }
+
+    /// Read from `<fixture>.threads.json` beside the fixture, when there is one.
+    private func threadTallies() -> [String: ReviewThreadTally] {
+        let url = URL(fileURLWithPath: path).deletingPathExtension().appendingPathExtension("threads.json")
+        guard let data = try? Data(contentsOf: url) else { return [:] }
+        return (try? PullRequestDecoder.decodeReviewThreads(data)) ?? [:]
     }
 }
 

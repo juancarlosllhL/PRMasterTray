@@ -1,0 +1,68 @@
+{
+  "data": {
+    "nodes": [
+      {
+        "id": "PR_8",
+        "reviewThreads": {
+          "nodes": [
+            {
+              "isResolved": false,
+              "comments": {
+                "nodes": [
+                  {
+                    "author": {
+                      "login": "quill-reviewer"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "isResolved": false,
+              "comments": {
+                "nodes": [
+                  {
+                    "author": {
+                      "login": "octocat"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "PR_9",
+        "reviewThreads": {
+          "nodes": [
+            {
+              "isResolved": true,
+              "comments": {
+                "nodes": [
+                  {
+                    "author": {
+                      "login": "quill-reviewer"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "isResolved": false,
+              "comments": {
+                "nodes": [
+                  {
+                    "author": {
+                      "login": "octocat"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

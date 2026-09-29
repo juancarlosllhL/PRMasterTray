@@ -218,6 +218,68 @@
           "reviews": {
             "totalCount": 1
           }
+        },
+        {
+          "id": "PR_8",
+          "number": 2208,
+          "title": ":recycle: split the billing module by tenant",
+          "url": "https://github.com/acme/chat-assistant/pull/2208",
+          "isDraft": false,
+          "headRefOid": "pr_8000000000000000000000000000000000000",
+          "updatedAt": "2026-07-27T08:39:21Z",
+          "createdAt": "2026-07-18T11:40:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "BLOCKED",
+          "reviewDecision": null,
+          "repository": {
+            "nameWithOwner": "acme/chat-assistant",
+            "isPrivate": false
+          },
+          "commits": {
+            "nodes": [
+              {
+                "commit": {
+                  "statusCheckRollup": {
+                    "state": "SUCCESS"
+                  }
+                }
+              }
+            ]
+          },
+          "reviews": {
+            "totalCount": 0
+          }
+        },
+        {
+          "id": "PR_9",
+          "number": 2211,
+          "title": ":sparkles: export the audit log as CSV",
+          "url": "https://github.com/acme/chat-assistant/pull/2211",
+          "isDraft": false,
+          "headRefOid": "pr_9000000000000000000000000000000000000",
+          "updatedAt": "2026-07-27T08:39:21Z",
+          "createdAt": "2026-07-18T11:40:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "BLOCKED",
+          "reviewDecision": null,
+          "repository": {
+            "nameWithOwner": "acme/chat-assistant",
+            "isPrivate": false
+          },
+          "commits": {
+            "nodes": [
+              {
+                "commit": {
+                  "statusCheckRollup": {
+                    "state": "SUCCESS"
+                  }
+                }
+              }
+            ]
+          },
+          "reviews": {
+            "totalCount": 0
+          }
         }
       ]
     },
