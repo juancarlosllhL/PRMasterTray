@@ -302,6 +302,102 @@ struct DiffStoreTests {
         preferences.setDiffLayout(layout)
         #expect(preferences.diffLayout() == layout)
     }
+    // MARK: - Scope
+
+    private static let testsScope = FileScope(patterns: [.tests: ["*_test.go"]])
+
+    private func scopedStore() async -> (DiffStore, StubDiffSource) {
+        let (store, source) = await loadedStore(diff(files: [
+            file("a.go"), file("b.go", viewed: .viewed),
+            file("a_test.go", text: "needle"), file("c_test.go", viewed: .viewed),
+        ]))
+        store.setScope(Self.testsScope)
+        return (store, source)
+    }
+
+    @Test("set-aside files open collapsed whatever GitHub says; review files follow viewed")
+    func scopeCollapsesSetAside() async {
+        let (store, _) = await scopedStore()
+        #expect(store.groups == [
+            DiffFileGroup(section: .review, files: Array(store.diff!.files[0...1])),
+            DiffFileGroup(section: .tests, files: Array(store.diff!.files[2...3])),
+        ])
+        #expect(store.collapsed == ["b.go", "a_test.go", "c_test.go"])
+        #expect(store.rows.contains(.section(.tests, count: 2)))
+    }
+
+    @Test("opening one set-aside file leaves the others closed")
+    func scopeToggleOne() async {
+        let (store, _) = await scopedStore()
+        store.toggleCollapsed("a_test.go")
+        #expect(!store.isCollapsed("a_test.go"))
+        #expect(store.isCollapsed("c_test.go"))
+        store.toggleCollapsed("a_test.go")
+        #expect(store.isCollapsed("a_test.go"))
+    }
+
+    /// Settings reclassify open windows on every keystroke, so a pattern typed
+    /// and then deleted must leave every file as the reader had it.
+    @Test("changing the scope and changing it back restores every file's state")
+    func scopeRoundTrip() async {
+        let (store, _) = await scopedStore()
+        store.toggleCollapsed("a_test.go")
+        store.toggleCollapsed("a.go")
+        let before = store.collapsed
+        store.setScope(FileScope(patterns: [:]))
+        #expect(store.groups.map(\.section) == [.review])
+        #expect(!store.rows.contains { if case .section = $0 { return true } else { return false } })
+        store.setScope(FileScope(patterns: [.tests: ["*.go"]]))
+        store.setScope(Self.testsScope)
+        #expect(store.collapsed == before)
+    }
+
+    @Test("marking a set-aside file viewed closes it again")
+    func scopeViewedCollapses() async {
+        let (store, _) = await scopedStore()
+        store.toggleCollapsed("a_test.go")
+        await store.setViewed("a_test.go", true)
+        #expect(store.isCollapsed("a_test.go"))
+    }
+
+    @Test("counts cover only what they name")
+    func scopeCounts() async {
+        let (store, _) = await scopedStore()
+        #expect(store.reviewFiles.map(\.path) == ["a.go", "b.go"])
+        #expect(store.viewedReviewCount == 1)
+        #expect(store.setAsideCount == 2)
+    }
+
+    @Test("find skips set-aside files until one is opened")
+    func scopeFind() async {
+        let (store, _) = await scopedStore()
+        store.findQuery = "needle"
+        #expect(store.findMatches.isEmpty)
+        store.toggleCollapsed("a_test.go")
+        #expect(store.findMatches.count == 1)
+    }
+
+    @Test("an equal scope changes nothing, so re-renders do not rebuild the rows")
+    func scopeIdempotent() async {
+        let (store, _) = await scopedStore()
+        nonisolated(unsafe) var changed = false
+        withObservationTracking { _ = store.rows } onChange: { changed = true }
+        store.setScope(FileScope(patterns: [.tests: ["*_test.go"]]))
+        #expect(!changed)
+    }
+
+    @Test("review files are coloured before set-aside ones")
+    func scopeHighlightOrder() async {
+        let highlighter = GatedHighlighter(open: true)
+        let source = StubDiffSource(.success(diff(files: [file("a_test.go"), file("a.go")])))
+        let store = DiffStore(repo: "acme/widget", number: 7, source: source, viewedWriter: source,
+                              highlighter: highlighter, preferences: MemoryPreferences())
+        store.setScope(Self.testsScope)
+        await store.load()
+        await store.highlightingFinished()
+        #expect(await highlighter.asked == ["a.go", "a_test.go"])
+    }
+
 }
 
 /// The real highlighter behind a gate, recording which files it is asked for and in what order.
@@ -418,4 +514,5 @@ struct DiffStoreHighlightingTests {
         #expect(store.collapsed.contains("a.swift"))
         #expect(!tokens(store, "a.swift").isEmpty)
     }
+
 }

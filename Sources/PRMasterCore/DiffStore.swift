@@ -21,7 +21,8 @@ public final class DiffStore {
     public private(set) var phase: Phase = .loading
     public private(set) var diff: PullRequestDiff?
     public private(set) var rows: [DiffRow] = []
-    public private(set) var collapsed: Set<String> = []
+    public private(set) var groups: [DiffFileGroup] = []
+    public private(set) var scope = FileScope(patterns: [:])
     /// GitHub's message for the last viewed toggle it refused, by path.
     public private(set) var viewedFailures: [String: String] = [:]
 
@@ -71,6 +72,25 @@ public final class DiffStore {
 
     public var canMarkViewed: Bool { viewedWriter != nil }
 
+    public var reviewFiles: [DiffFile] { groups.first { $0.section == .review }?.files ?? [] }
+    public var viewedReviewCount: Int { reviewFiles.filter { $0.viewed == .viewed }.count }
+    public var setAsideCount: Int { (diff?.files.count ?? 0) - reviewFiles.count }
+
+    public var collapsed: Set<String> { Set((diff?.files ?? []).map(\.path).filter(isCollapsed)) }
+
+    /// Review files stay open until viewed; set-aside files stay closed until opened.
+    /// Both sets are kept whatever the scope, so a scope change undoes cleanly.
+    public func isCollapsed(_ path: String) -> Bool {
+        sections[path, default: .review] == .review ? collapsedReview.contains(path) : !expandedSetAside.contains(path)
+    }
+
+    public func setScope(_ scope: FileScope) {
+        guard scope != self.scope else { return }
+        self.scope = scope
+        classify()
+        rebuildRows()
+    }
+
     /// Nil unless what was read is still what GitHub would act on.
     public var mergeTarget: MergeTarget? {
         guard phase == .loaded, isReady, let diff, !diff.isTruncated else { return nil }
@@ -84,6 +104,9 @@ public final class DiffStore {
     private let preferences: PreferenceStoring
     private let highlighter: SyntaxHighlighting?
     private var liveHead: String??
+    private var sections: [String: FileSection] = [:]
+    private var collapsedReview: Set<String> = []
+    private var expandedSetAside: Set<String> = []
     private var isReady = false
 
     @ObservationIgnored private var theme = SyntaxTheme.light
@@ -113,8 +136,10 @@ public final class DiffStore {
         do {
             let loaded = try await source.loadDiff(repo: repo, number: number)
             diff = loaded
-            collapsed = Set(loaded.files.filter { $0.viewed == .viewed }.map(\.path))
+            collapsedReview = Set(loaded.files.filter { $0.viewed == .viewed }.map(\.path))
+            expandedSetAside = []
             viewedFailures = [:]
+            classify()
             rebuildRows()
             phase = .loaded
             evaluateLiveState()
@@ -168,7 +193,7 @@ public final class DiffStore {
     private func startHighlighting() {
         highlighting?.cancel()
         guard highlighter != nil, let diff else { return }
-        pendingHighlights = diff.files.filter { file in
+        pendingHighlights = groups.flatMap(\.files).filter { file in
             guard case .hunks = file.content else { return false }
             return SyntaxLanguage.forPath(file.path) != nil
         }.map(\.path)
@@ -193,14 +218,24 @@ public final class DiffStore {
     }
 
     public func toggleCollapsed(_ path: String) {
-        if collapsed.remove(path) == nil { collapsed.insert(path) }
+        setCollapsed(path, !isCollapsed(path))
         rebuildRows()
+    }
+
+    private func setCollapsed(_ path: String, _ isCollapsed: Bool) {
+        if isCollapsed {
+            collapsedReview.insert(path)
+            expandedSetAside.remove(path)
+        } else {
+            collapsedReview.remove(path)
+            expandedSetAside.insert(path)
+        }
     }
 
     private func apply(_ state: ViewedState, to path: String) {
         guard let index = diff?.files.firstIndex(where: { $0.path == path }) else { return }
         diff?.files[index].viewed = state
-        if state == .viewed { collapsed.insert(path) } else { collapsed.remove(path) }
+        setCollapsed(path, state == .viewed)
         rebuildRows()
     }
 
@@ -213,8 +248,17 @@ public final class DiffStore {
         }
     }
 
+    private func classify() {
+        sections = Dictionary((diff?.files ?? []).map { ($0.path, scope.section(of: $0.path)) }, uniquingKeysWith: { $1 })
+    }
+
     private func rebuildRows() {
-        rows = DiffRows.build(diff?.files ?? [], layout: layout, collapsed: collapsed)
+        let files = diff?.files ?? []
+        groups = FileSection.allCases.compactMap { section in
+            let members = files.filter { sections[$0.path, default: .review] == section }
+            return members.isEmpty ? nil : DiffFileGroup(section: section, files: members)
+        }
+        rows = DiffRows.build(groups: groups, layout: layout, isCollapsed: isCollapsed)
         search(keepingPlace: true)
     }
 
