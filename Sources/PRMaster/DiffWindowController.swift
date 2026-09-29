@@ -49,16 +49,30 @@ final class DiffWindowController: NSObject, NSWindowDelegate {
             subject: subject,
             live: live,
             appearance: appearance,
-            onAct: { target in onAct(target) { weakPanel?.close() } },
             onOpenOnGitHub: { onOpen(subject.url) },
             initialFile: Debug.openFile
         ))
         hosting.sizingOptions = []
+        weak var weakActions: NSView?
+        let actions = NSHostingView(rootView: DiffTitleActions(
+            store: store,
+            subject: subject,
+            live: live,
+            onAct: { target in onAct(target) { weakPanel?.close() } },
+            onOpenOnGitHub: { onOpen(subject.url) },
+            onResize: { weakActions.map { $0.frame.size.width = $0.fittingSize.width } }
+        ))
+        weakActions = actions
+        actions.frame.size = actions.fittingSize
+        let accessory = NSTitlebarAccessoryViewController()
+        accessory.view = actions
+        accessory.layoutAttribute = .trailing
 
         let panel = NSPanel(contentViewController: hosting)
         weakPanel = panel
         panel.title = "\(subject.repo) #\(subject.number) · \(subject.title)"
         panel.styleMask = [.titled, .closable, .resizable, .miniaturizable]
+        panel.addTitlebarAccessoryViewController(accessory)
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
         panel.setContentSize(NSSize(width: 1360, height: 760))

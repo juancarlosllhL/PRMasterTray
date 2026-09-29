@@ -60,7 +60,6 @@ struct DiffWindowView: View {
     let subject: DiffSubject
     let live: () -> DiffLiveState
     let appearance: AppearanceStore
-    let onAct: (MergeTarget) -> Void
     let onOpenOnGitHub: () -> Void
     var initialFile: String?
 
@@ -77,7 +76,7 @@ struct DiffWindowView: View {
         let liveState = live()
 
         VStack(spacing: 0) {
-            header(liveState)
+            header
             Divider()
             HSplitView {
                 sidebar(palette)
@@ -220,7 +219,7 @@ struct DiffWindowView: View {
         )
     }
 
-    private func header(_ liveState: DiffLiveState) -> some View {
+    private var header: some View {
         HStack(spacing: 10) {
             Text(verbatim: summary)
                 .font(.system(size: 12))
@@ -245,21 +244,6 @@ struct DiffWindowView: View {
             .buttonStyle(.accessoryBar)
             .help(showsDescription ? "Hide description" : "Show description")
             .accessibilityLabel(showsDescription ? "Hide description" : "Show description")
-            Divider().frame(height: 18)
-            if store.phase == .loaded, let blocker = liveState.blocker {
-                Text(verbatim: blocker)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Button("Open on GitHub", action: onOpenOnGitHub)
-            if subject.canBeApproved {
-                Button("Approve") {
-                    if let target = store.mergeTarget { onAct(target) }
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(store.mergeTarget == nil)
-            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -359,6 +343,44 @@ struct DiffWindowView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(palette.wash(.orange))
+    }
+}
+
+/// The window's actions, hosted in its title bar so the header keeps only the view controls.
+struct DiffTitleActions: View {
+    let store: DiffStore
+    let subject: DiffSubject
+    let live: () -> DiffLiveState
+    let onAct: (MergeTarget) -> Void
+    let onOpenOnGitHub: () -> Void
+    /// The title bar sizes an accessory by its frame, so a new reason has to ask for room.
+    let onResize: () -> Void
+
+    var body: some View {
+        let blocker = store.phase == .loaded ? live().blocker : nil
+        HStack(spacing: 8) {
+            if let blocker {
+                Text(verbatim: blocker)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Button(action: onOpenOnGitHub) { Image(systemName: "arrow.up.right.square") }
+                .buttonStyle(.accessoryBar)
+                .help("Open on GitHub")
+                .accessibilityLabel("Open on GitHub")
+            if subject.canBeApproved {
+                Button("Approve") {
+                    if let target = store.mergeTarget { onAct(target) }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(store.mergeTarget == nil)
+                .help(blocker ?? "Approve the commit you are reading")
+            }
+        }
+        .padding(.horizontal, 10)
+        .frame(maxHeight: .infinity)
+        .onChange(of: blocker) { DispatchQueue.main.async(execute: onResize) }
     }
 }
 
