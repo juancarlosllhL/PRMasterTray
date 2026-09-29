@@ -98,7 +98,7 @@ struct DiffWindowView: View {
                     DescriptionPanel(
                         html: store.diff?.descriptionHTML, baseURL: subject.url, isLoading: store.phase == .loading
                     )
-                    .frame(minWidth: 260, idealWidth: 340, maxWidth: 560)
+                    .frame(minWidth: 360, maxWidth: 640)
                 }
             }
         }

@@ -61,7 +61,7 @@ final class DiffWindowController: NSObject, NSWindowDelegate {
         panel.styleMask = [.titled, .closable, .resizable, .miniaturizable]
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
-        panel.setContentSize(NSSize(width: 1180, height: 760))
+        panel.setContentSize(NSSize(width: 1360, height: 760))
         panel.contentMinSize = NSSize(width: 760, height: 420)
         panel.center()
 
