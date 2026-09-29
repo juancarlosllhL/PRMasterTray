@@ -77,7 +77,7 @@ struct DiffWindowView: View {
 
         HSplitView {
             sidebar(palette)
-                .frame(minWidth: 220, idealWidth: 290, maxWidth: 440)
+                .frame(minWidth: 240, maxWidth: 440)
             VStack(spacing: 0) {
                 header
                 Divider()
@@ -92,7 +92,8 @@ struct DiffWindowView: View {
                 Divider()
                 bottomBar(liveState)
             }
-            .frame(minWidth: 480)
+            .frame(minWidth: 480, maxWidth: .infinity)
+            .layoutPriority(1)
         }
         .frame(minWidth: 760, minHeight: 420)
         .environment(\.palette, palette)
