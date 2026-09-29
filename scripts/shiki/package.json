@@ -1,0 +1,14 @@
+{
+  "name": "prmaster-shiki",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@shikijs/core": "4.4.3",
+    "@shikijs/engine-javascript": "4.4.3",
+    "@shikijs/langs": "4.4.3",
+    "@shikijs/themes": "4.4.3",
+    "esbuild": "0.28.2",
+    "tm-grammars": "1.32.22",
+    "tm-themes": "1.12.12"
+  }
+}

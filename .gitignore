@@ -25,3 +25,5 @@ FOLLOWUP.md
 .codex/**
 .mdkb/**
 .wiz/
+
+scripts/shiki/node_modules/
