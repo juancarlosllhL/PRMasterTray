@@ -75,25 +75,27 @@ struct DiffWindowView: View {
         let palette = paletteInputs.resolved(monochromeEnabled: appearance.monochromeEnabled)
         let liveState = live()
 
-        HSplitView {
-            sidebar(palette)
-                .frame(minWidth: 240, maxWidth: 440)
-            VStack(spacing: 0) {
-                header
-                Divider()
-                if let banner = DiffBanner.banner(for: store.phase, isTruncated: store.diff?.isTruncated ?? false) {
-                    bannerView(banner, palette)
-                }
-                diffBody(palette)
-                if store.isFinding {
+        VStack(spacing: 0) {
+            header
+            Divider()
+            HSplitView {
+                sidebar(palette)
+                    .frame(minWidth: 240, maxWidth: 440)
+                VStack(spacing: 0) {
+                    if let banner = DiffBanner.banner(for: store.phase, isTruncated: store.diff?.isTruncated ?? false) {
+                        bannerView(banner, palette)
+                    }
+                    diffBody(palette)
+                    if store.isFinding {
+                        Divider()
+                        findBar
+                    }
                     Divider()
-                    findBar
+                    bottomBar(liveState)
                 }
-                Divider()
-                bottomBar(liveState)
+                .frame(minWidth: 480, maxWidth: .infinity)
+                .layoutPriority(1)
             }
-            .frame(minWidth: 480, maxWidth: .infinity)
-            .layoutPriority(1)
         }
         .frame(minWidth: 760, minHeight: 420)
         .environment(\.palette, palette)
@@ -220,8 +222,14 @@ struct DiffWindowView: View {
                 .foregroundStyle(.secondary)
             Spacer()
             Picker("Layout", selection: $store.layout) {
-                Text("Unified").tag(DiffLayout.unified)
-                Text("Split").tag(DiffLayout.split)
+                Label("Unified", systemImage: "rectangle")
+                    .labelStyle(.iconOnly)
+                    .help("Unified")
+                    .tag(DiffLayout.unified)
+                Label("Split", systemImage: "rectangle.split.2x1")
+                    .labelStyle(.iconOnly)
+                    .help("Split")
+                    .tag(DiffLayout.split)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
