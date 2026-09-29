@@ -73,6 +73,18 @@ public enum DiffRows {
         return rows
     }
 
+    /// Wrapping depends on text alone, so colour arriving later does not change it.
+    public static func wrapTheSame(_ first: [DiffRow], _ second: [DiffRow]) -> Bool {
+        first.count == second.count && zip(first, second).allSatisfy { pair in
+            switch pair {
+            case (.line(let a), .line(let b)): return a.text == b.text
+            case (.pair(let leftA, let rightA), .pair(let leftB, let rightB)):
+                return leftA?.text == leftB?.text && rightA?.text == rightB?.text
+            default: return pair.0 == pair.1
+            }
+        }
+    }
+
     public static func index(ofFile path: String, in rows: [DiffRow]) -> Int? {
         rows.firstIndex(of: .fileHeader(path: path))
     }

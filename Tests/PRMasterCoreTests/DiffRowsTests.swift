@@ -141,4 +141,32 @@ struct DiffRowsTests {
         let rows = DiffRows.split(try hunk("@@ -1,2 +1 @@\n-a\n-b\n+x"))
         #expect(DiffRows.copyText(Array(rows.dropFirst())) == "x\nb")
     }
+
+    @Test("colour arriving on the same text wraps the same, so the table need not rewrap", arguments: DiffLayout.allCases)
+    func coloursKeepWrapping(layout: DiffLayout) throws {
+        let plain = file("a.swift", .hunks([try hunk("@@ -1,2 +1,2 @@\n a\n-let b\n+let c")]))
+        var coloured = plain
+        guard case .hunks(var hunks) = plain.content else { return }
+        var lines = hunks[0].lines
+        for index in lines.indices { lines[index].tokens = [TokenRange(location: 0, length: 1, colour: .hex(0xCF222E))] }
+        hunks[0] = Hunk(oldStart: 1, oldCount: 2, newStart: 1, newCount: 2, context: "", lines: lines)
+        coloured = DiffFile(path: plain.path, previousPath: nil, change: .modified, additions: 0, deletions: 0,
+                            content: .hunks(hunks))
+
+        let before = DiffRows.build([plain], layout: layout, collapsed: [])
+        let after = DiffRows.build([coloured], layout: layout, collapsed: [])
+        #expect(before != after)
+        #expect(DiffRows.wrapTheSame(before, after))
+    }
+
+    @Test("changed text, a collapsed file or a different path needs a rewrap")
+    func textChangesNeedRewrap() throws {
+        let one = file("a.swift", .hunks([try hunk("@@ -1 +1 @@\n-let b\n+let c")]))
+        let other = file("a.swift", .hunks([try hunk("@@ -1 +1 @@\n-let b\n+let longer")]))
+        let rows = DiffRows.build([one], layout: .unified, collapsed: [])
+        #expect(!DiffRows.wrapTheSame(rows, DiffRows.build([other], layout: .unified, collapsed: [])))
+        #expect(!DiffRows.wrapTheSame(rows, DiffRows.build([one], layout: .unified, collapsed: ["a.swift"])))
+        #expect(!DiffRows.wrapTheSame(rows, DiffRows.build([file("b.swift", one.content)], layout: .unified, collapsed: [])))
+        #expect(!DiffRows.wrapTheSame(rows, DiffRows.build([one], layout: .split, collapsed: [])))
+    }
 }

@@ -114,8 +114,10 @@ struct DiffTableView: NSViewRepresentable {
             matches: [DiffMatch], currentMatch: DiffMatch?
         ) {
             guard let table else { return }
-            let contentChanged = rows != self.rows || layout != self.layout || palette != self.palette
-                || metrics !== self.metrics
+            let rowsChanged = rows != self.rows
+            let wrapsChanged = layout != self.layout || metrics !== self.metrics
+                || (rowsChanged && !DiffRows.wrapTheSame(rows, self.rows))
+            let contentChanged = rowsChanged || wrapsChanged || palette != self.palette
             let currentMoved = currentMatch != self.currentMatch
             guard contentChanged || currentMoved || matches != self.matches else { return }
             if contentChanged {
@@ -128,7 +130,7 @@ struct DiffTableView: NSViewRepresentable {
                 self.rows = rows
                 self.layout = layout
                 self.palette = palette
-                rewrap(table, force: true)
+                rewrap(table, force: wrapsChanged)
             }
             self.matches = matches
             matchesByRow = Dictionary(grouping: matches, by: \.row)
