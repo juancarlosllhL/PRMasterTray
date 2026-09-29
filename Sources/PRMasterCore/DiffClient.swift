@@ -8,13 +8,19 @@ public struct PullRequestDiff: Sendable, Equatable {
     public var files: [DiffFile]
     /// GitHub lists at most 3000 files; the rest cannot be shown.
     public let isTruncated: Bool
+    /// The root `.gitattributes` at the head, or nil when absent or unreadable.
+    public var gitAttributes: String?
 
-    public init(pullRequestID: String, baseOid: String, headOid: String, files: [DiffFile], isTruncated: Bool) {
+    public init(
+        pullRequestID: String, baseOid: String, headOid: String, files: [DiffFile], isTruncated: Bool,
+        gitAttributes: String? = nil
+    ) {
         self.pullRequestID = pullRequestID
         self.baseOid = baseOid
         self.headOid = headOid
         self.files = files
         self.isTruncated = isTruncated
+        self.gitAttributes = gitAttributes
     }
 }
 
@@ -30,11 +36,22 @@ extension GitHubClient: PullRequestDiffing {
     static let filesPerPage = 100
 
     public func loadDiff(repo: String, number: Int) async throws -> PullRequestDiff {
+        var diff: PullRequestDiff
         do {
-            return try await readDiff(repo: repo, number: number)
+            diff = try await readDiff(repo: repo, number: number)
         } catch PRMasterError.diffHeadMoved {
-            return try await readDiff(repo: repo, number: number)
+            diff = try await readDiff(repo: repo, number: number)
         }
+        // Only sorts files into sections, so losing it must not cost the diff.
+        diff.gitAttributes = try? await gitAttributes(repo: repo, at: diff.headOid)
+        return diff
+    }
+
+    private func gitAttributes(repo: String, at oid: String) async throws -> String? {
+        let variables: [String: GraphQLValue] = [
+            "owner": .string(Self.owner(of: repo)), "name": .string(Self.name(of: repo)), "oid": .string(oid),
+        ]
+        return try DiffDecoder.decodeAttributes(try await perform(query: Queries.diffAttributes, variables: variables))
     }
 
     public func setViewed(pullRequestID: String, path: String, viewed: Bool) async throws {
@@ -130,6 +147,16 @@ extension DiffDecoder {
         )
     }
 
+    /// Lenient on errors: GitHub reports a missing file as NOT_FOUND beside null data.
+    static func decodeAttributes(_ data: Data) throws -> String? {
+        do {
+            return try JSONDecoder().decode(GraphQLResponse<AttributesPayload>.self, from: data)
+                .data?.repository?.object?.file?.object?.text
+        } catch {
+            throw PRMasterError.decoding(String(describing: error))
+        }
+    }
+
     static func decodeHead(_ data: Data) throws -> String {
         try pullRequest(HeadPayload.self, data).headRefOid
     }
@@ -162,6 +189,14 @@ extension DiffDecoder {
             throw PRMasterError.decoding("response contained neither data nor errors")
         }
         return payload
+    }
+
+    private struct AttributesPayload: Decodable {
+        struct Blob: Decodable { let text: String? }
+        struct Entry: Decodable { let object: Blob? }
+        struct Commit: Decodable { let file: Entry? }
+        struct Repo: Decodable { let object: Commit? }
+        let repository: Repo?
     }
 
     private struct Repository<P: Decodable>: Decodable {

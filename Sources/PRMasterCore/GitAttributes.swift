@@ -9,7 +9,9 @@ enum GitAttributes {
         var lines: [String] = []
         for line in text.split(whereSeparator: \.isNewline) {
             let fields = line.split(whereSeparator: \.isWhitespace).map(String.init)
-            guard let pattern = fields.first, !pattern.hasPrefix("#"), !pattern.hasPrefix("!") else { continue }
+            guard let pattern = fields.first, !pattern.hasPrefix("#"), !pattern.hasPrefix("!"), !pattern.hasPrefix("[attr]") else {
+                continue
+            }
             for attribute in fields.dropFirst() {
                 switch attribute {
                 case "linguist-generated", "linguist-generated=true": lines.append(pattern)

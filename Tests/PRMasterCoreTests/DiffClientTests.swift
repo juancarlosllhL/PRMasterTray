@@ -45,6 +45,11 @@ private func page(_ paths: [String]) -> StubOutcome {
     json("[" + paths.map(restFile).joined(separator: ",") + "]")
 }
 
+private func attributes(_ text: String) -> StubOutcome {
+    let encoded = String(decoding: try! JSONEncoder().encode(text), as: UTF8.self)
+    return json(#"{"data":{"repository":{"object":{"file":{"object":{"text":\#(encoded)}}}}}}"#)
+}
+
 private func body(_ request: RecordedRequest) -> String {
     request.body.map { String(decoding: $0, as: UTF8.self) } ?? ""
 }
@@ -59,7 +64,7 @@ struct DiffClientTests {
 
     @Test("the diff is read from a compare pinned to the base and head the metadata named")
     func pinnedCompare() async throws {
-        let (client, stub) = makeClient([meta(total: 2), compare(["a.swift", "b.swift"])])
+        let (client, stub) = makeClient([meta(total: 2), compare(["a.swift", "b.swift"]), attributes("")])
         let diff = try await client.loadDiff(repo: "acme/widget", number: 7)
 
         #expect(diff.pullRequestID == "PR_1")
@@ -67,7 +72,7 @@ struct DiffClientTests {
         #expect(diff.headOid == "H1")
         #expect(diff.files.map(\.path) == ["a.swift", "b.swift"])
         #expect(!diff.isTruncated)
-        #expect(stub.requests.count == 2)
+        #expect(stub.requests.count == 3)
         #expect(stub.requests[1].url?.path == "/repos/acme/widget/compare/B1...H1")
     }
 
@@ -115,12 +120,13 @@ struct DiffClientTests {
     func movedHeadReloadsOnce() async throws {
         let (client, stub) = makeClient([
             meta(head: "H1", total: 301), page(["a"]), head("H2"),
-            meta(head: "H2", total: 301), page(["a", "b"]), head("H2"),
+            meta(head: "H2", total: 301), page(["a", "b"]), head("H2"), attributes(""),
         ])
         let diff = try await client.loadDiff(repo: "acme/widget", number: 7)
         #expect(diff.headOid == "H2")
         #expect(diff.files.map(\.path) == ["a", "b"])
-        #expect(stub.requests.count == 6)
+        #expect(stub.requests.count == 7)
+        #expect(try variables(stub.requests[6])["oid"] == "H2")
     }
 
     @Test("a head that keeps moving gives up rather than looping")
@@ -146,10 +152,47 @@ struct DiffClientTests {
     @Test("paging stops at GitHub's 3000-file ceiling")
     func pagingCeiling() async throws {
         let full = (0..<100).map { "f\($0)" }
-        let (client, stub) = makeClient([meta(total: 5000)] + Array(repeating: page(full), count: 30) + [head("H1")])
+        let (client, stub) = makeClient([meta(total: 5000)] + Array(repeating: page(full), count: 30) + [head("H1"), attributes("")])
         let diff = try await client.loadDiff(repo: "acme/widget", number: 7)
         #expect(diff.files.count == 3000)
-        #expect(stub.requests.count == 32)
+        #expect(stub.requests.count == 33)
+    }
+
+    @Test("the root .gitattributes is read at the head commit the diff is pinned to")
+    func gitAttributesAtHead() async throws {
+        let text = "terragrunt/ls/**/* linguist-generated\n"
+        let (client, stub) = makeClient([meta(total: 1), compare(["a.tf"]), attributes(text)])
+        let diff = try await client.loadDiff(repo: "acme/widget", number: 7)
+        #expect(diff.gitAttributes == text)
+        #expect(body(stub.requests[2]).contains(#"file(path: \".gitattributes\")"#))
+        #expect(try variables(stub.requests[2]) == ["owner": "acme", "name": "widget", "oid": "H1"])
+    }
+
+    /// GitHub answers a missing path with a NOT_FOUND error beside null data.
+    @Test("a repository without .gitattributes loads with none")
+    func gitAttributesMissing() async throws {
+        let missing = json(#"""
+        {"data":{"repository":{"object":{"file":null}}},
+        "errors":[{"type":"NOT_FOUND","path":["repository","object","file"],"message":"Could not resolve file for path '.gitattributes'."}]}
+        """#)
+        let (client, stub) = makeClient([meta(total: 1), compare(["a.swift"]), missing])
+        let diff = try await client.loadDiff(repo: "acme/widget", number: 7)
+        #expect(diff.gitAttributes == nil)
+        #expect(diff.files.count == 1)
+        withExtendedLifetime(stub) {}
+    }
+
+    /// The attributes only sort files; losing them must not cost the reader the diff.
+    @Test("a failed .gitattributes read still returns the diff", arguments: [
+        StubOutcome.response(status: 502, body: Data()),
+        StubOutcome.failure(URLError(.timedOut)),
+    ])
+    func gitAttributesFailure(_ outcome: StubOutcome) async throws {
+        let (client, stub) = makeClient([meta(total: 1), compare(["a.swift"]), outcome])
+        let diff = try await client.loadDiff(repo: "acme/widget", number: 7)
+        #expect(diff.gitAttributes == nil)
+        #expect(diff.files.map(\.path) == ["a.swift"])
+        withExtendedLifetime(stub) {}
     }
 
     @Test(

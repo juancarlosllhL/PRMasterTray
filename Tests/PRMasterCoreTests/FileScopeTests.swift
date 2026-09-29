@@ -145,6 +145,13 @@ struct FileScopeTests {
         #expect(scope.section(of: "generated/dataSetMaps/hardware.test.ts") == .tests)
     }
 
+    @Test("[attr] macro definitions are not paths")
+    func attributesSkipMacros() {
+        let scope = FileScope(gitAttributes: "[attr]gen linguist-generated\nCargo.lock linguist-generated=false")
+        #expect(scope.section(of: "tgen") == .review)
+        #expect(scope.section(of: "Cargo.lock") == .review)
+    }
+
     @Test("linguist-generated=true counts as set")
     func attributesExplicitTrue() {
         #expect(FileScope(gitAttributes: "api/*.yaml linguist-generated=true").section(of: "api/crd.yaml") == .generated)

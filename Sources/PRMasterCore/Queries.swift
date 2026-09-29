@@ -574,6 +574,17 @@ enum Queries {
     }
     """
 
+    /// Pinned by OID, which resolves on the base repository even for a fork's head.
+    static let diffAttributes = """
+    query($owner: String!, $name: String!, $oid: GitObjectID!) {
+      repository(owner: $owner, name: $name) {
+        object(oid: $oid) {
+          ... on Commit { file(path: ".gitattributes") { object { ... on Blob { text } } } }
+        }
+      }
+    }
+    """
+
     /// Everything the diff is pinned to, plus one page of viewed states.
     /// `changedFiles` rather than `files.totalCount`: `files` is nullable.
     static let diffMeta = """
