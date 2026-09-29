@@ -107,8 +107,12 @@ struct DiffWindowView: View {
         .onChange(of: store.isFinding) { _, finding in
             if finding { findFocused = true }
         }
+        .onChange(of: SyntaxTheme(appearance: palette.appearance, contrast: palette.contrast), initial: true) { _, theme in
+            store.setTheme(theme)
+        }
         .onChange(of: selectedFile) { _, path in
             guard let path else { return }
+            store.prioritise(path)
             if store.collapsed.contains(path) { store.toggleCollapsed(path) }
             scrollTarget = path
         }
@@ -206,7 +210,8 @@ struct DiffWindowView: View {
                 fontSize: appearance.diffFontSize,
                 ligatures: appearance.diffLigatures,
                 matches: store.findMatches, currentMatch: store.currentFindMatch,
-                scrollTarget: $scrollTarget, onToggleFile: store.toggleCollapsed
+                scrollTarget: $scrollTarget, onToggleFile: store.toggleCollapsed,
+                onTopFile: store.prioritise
             )
         }
     }

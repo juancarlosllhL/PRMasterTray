@@ -20,6 +20,7 @@ struct DiffTableView: NSViewRepresentable {
     let currentMatch: DiffMatch?
     @Binding var scrollTarget: String?
     let onToggleFile: (String) -> Void
+    let onTopFile: (String) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -74,6 +75,7 @@ struct DiffTableView: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         let coordinator = context.coordinator
         coordinator.onToggleFile = onToggleFile
+        coordinator.onTopFile = onTopFile
         coordinator.update(rows: rows, layout: layout, palette: palette, metrics: metrics,
                            matches: matches, currentMatch: currentMatch)
         guard let target = scrollTarget else { return }
@@ -87,6 +89,8 @@ struct DiffTableView: NSViewRepresentable {
         weak var table: NSTableView?
         weak var pinned: PinnedHeaderView?
         var onToggleFile: ((String) -> Void)?
+        var onTopFile: ((String) -> Void)?
+        private var topFile: String?
         private(set) var rows: [DiffRow] = []
         private var layout: DiffLayout?
         private var palette: ResolvedPalette?
@@ -164,6 +168,7 @@ struct DiffTableView: NSViewRepresentable {
             let clip = scroll.contentView
             let top = clip.bounds.minY
             let topRow = table.row(at: NSPoint(x: 0, y: top))
+            reportTopFile(owning: topRow)
             guard topRow >= 0, let header = DiffRows.fileHeaderIndex(owning: topRow, in: rows),
                   table.rect(ofRow: header).minY < top, wraps.indices.contains(header),
                   case .fileHeader(let path) = rows[header]
@@ -191,6 +196,14 @@ struct DiffTableView: NSViewRepresentable {
             let y = min(max(0, row.midY - clip.bounds.height / 2), highest)
             clip.scroll(to: NSPoint(x: clip.bounds.minX, y: y))
             table.enclosingScrollView?.reflectScrolledClipView(clip)
+        }
+
+        private func reportTopFile(owning row: Int) {
+            guard row >= 0, let header = DiffRows.fileHeaderIndex(owning: row, in: rows),
+                  case .fileHeader(let path) = rows[header], path != topFile
+            else { return }
+            topFile = path
+            onTopFile?(path)
         }
 
         func pinnedHeaderClicked() {
@@ -455,6 +468,8 @@ final class DiffMetrics {
 
     let font: NSFont
     let boldFont: NSFont
+    let italicFont: NSFont
+    let boldItalicFont: NSFont
     let advance: CGFloat
     let lineHeight: CGFloat
     let paragraph: NSParagraphStyle
@@ -467,6 +482,8 @@ final class DiffMetrics {
             ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular))
         boldFont = Self.withLigatures(ligatures, family.flatMap { MonospaceFonts.font(family: $0, size: size, bold: true) }
             ?? NSFont.monospacedSystemFont(ofSize: size, weight: .semibold))
+        italicFont = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask)
+        boldItalicFont = NSFontManager.shared.convert(boldFont, toHaveTrait: .italicFontMask)
         advance = ("0" as NSString).size(withAttributes: [.font: font]).width
         lineHeight = ceil(font.ascender - font.descender + font.leading)
         let style = NSMutableParagraphStyle()
@@ -474,6 +491,15 @@ final class DiffMetrics {
         style.defaultTabInterval = CGFloat(Self.tabWidth) * advance
         style.lineBreakMode = .byClipping
         paragraph = style
+    }
+
+    func font(for style: TokenStyle) -> NSFont? {
+        switch (style.contains(.bold), style.contains(.italic)) {
+        case (true, true): return boldItalicFont
+        case (true, false): return boldFont
+        case (false, true): return italicFont
+        case (false, false): return nil
+        }
     }
 
     /// Coding fonts such as JetBrains Mono build ligatures from contextual
@@ -605,7 +631,13 @@ final class DiffCellView: NSTableCellView {
                 for token in line.tokens where token.location + token.length <= line.text.utf16.count {
                     let range = NSRange(location: start + token.location, length: token.length)
                     if !palette.isMonochrome {
-                        text.addAttribute(.foregroundColor, value: token.colour.nsColor, range: range)
+                        let shown = Palette.syntax(token.colour, tint: tint, appearance: palette.appearance,
+                                                   contrast: palette.contrast)
+                        text.addAttribute(.foregroundColor, value: shown.nsColor, range: range)
+                    }
+                    if let font = metrics.font(for: token.style) { text.addAttribute(.font, value: font, range: range) }
+                    if token.style.contains(.underline) {
+                        text.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
                     }
                 }
             }

@@ -86,10 +86,10 @@ public final class DiffStore {
     private var liveHead: String??
     private var isReady = false
 
-    private var theme = SyntaxTheme.light
-    private var pendingHighlights: [String] = []
-    private var priorityPath: String?
-    private var highlighting: Task<Void, Never>?
+    @ObservationIgnored private var theme = SyntaxTheme.light
+    @ObservationIgnored private var pendingHighlights: [String] = []
+    @ObservationIgnored private var priorityPath: String?
+    @ObservationIgnored private var highlighting: Task<Void, Never>?
 
     public init(
         repo: String, number: Int, source: PullRequestDiffing?, viewedWriter: PullRequestDiffing?,

@@ -11,6 +11,7 @@ final class DiffWindowController: NSObject, NSWindowDelegate {
 
     private let registry = WindowRegistry<NSPanel>()
     private var keyMonitors: [String: Any] = [:]
+    private let highlighter = BundledHighlighter()
 
     func show(
         _ subject: DiffSubject,
@@ -39,7 +40,8 @@ final class DiffWindowController: NSObject, NSWindowDelegate {
         onOpen: @escaping (URL) -> Void
     ) -> NSPanel {
         weak var weakPanel: NSPanel?
-        let store = DiffStore(repo: subject.repo, number: subject.number, source: source, viewedWriter: viewedWriter)
+        let store = DiffStore(repo: subject.repo, number: subject.number, source: source,
+                              viewedWriter: viewedWriter, highlighter: highlighter)
         let hosting = NSHostingController(rootView: DiffWindowView(
             store: store,
             subject: subject,
@@ -84,5 +86,29 @@ final class DiffWindowController: NSObject, NSWindowDelegate {
         guard let key = (notification.object as? NSWindow)?.identifier?.rawValue else { return }
         registry.remove(key)
         keyMonitors.removeValue(forKey: key).map(NSEvent.removeMonitor)
+    }
+}
+
+/// Shiki from the app bundle, loaded on first use so the script's parse stays off the main thread.
+private actor BundledHighlighter: SyntaxHighlighting {
+    private var loaded: ShikiHighlighter??
+
+    func highlight(_ file: DiffFile, theme: SyntaxTheme) async -> DiffFile {
+        guard let highlighter = load() else { return file }
+        return await highlighter.highlight(file, theme: theme)
+    }
+
+    private func load() -> ShikiHighlighter? {
+        if let loaded { return loaded }
+        do {
+            guard let url = Bundle.main.url(forResource: "shiki", withExtension: "js") else {
+                throw ShikiHighlighter.LoadError.missingEntryPoint
+            }
+            loaded = .some(try ShikiHighlighter(script: String(contentsOf: url, encoding: .utf8)))
+        } catch {
+            NSLog("PRMaster: syntax highlighting is off, shiki.js did not load: %@", String(describing: error))
+            loaded = .some(nil)
+        }
+        return loaded ?? nil
     }
 }

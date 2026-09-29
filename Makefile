@@ -55,6 +55,7 @@ bundle: build
 	cp $(BIN) $(APP)/Contents/MacOS/PRMaster
 	cp Resources/Info.plist $(APP)/Contents/Info.plist
 	cp Resources/CHANGELOG.md $(APP)/Contents/Resources/CHANGELOG.md
+	cp Resources/shiki.js Resources/ThirdPartyNotices.txt $(APP)/Contents/Resources/
 	@if [ -d Resources/WhatsNew ]; then \
 	  cp Resources/WhatsNew/*.png $(APP)/Contents/Resources/ 2>/dev/null || true; \
 	fi
