@@ -8,7 +8,7 @@ whoever has to read them in a small window.
 
 - Review replaces Merge and Approve on the rows. It opens a window with the pull request's whole diff, a file list down the side.
 - Switch between unified and split, and tick Viewed on a file the way you would on GitHub. Viewed files fold away.
-- Code is coloured for Swift, Go, TypeScript and JavaScript, C#, Python, JSON, YAML and shell.
+- Code is coloured the way GitHub colours it, for 25 languages. A large diff shows at once, and the file you're looking at is coloured first.
 - Long lines wrap inside the window. Pick the diff's font, its size and whether ligatures are drawn: Settings, Diff Viewer.
 - Merge and Approve now live at the bottom of that window, and act on exactly the commit you read. If someone pushes meanwhile, the window says so and offers a reload.
 

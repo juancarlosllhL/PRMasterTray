@@ -15,7 +15,8 @@ GitHub would merge right now.
 - A notification the moment a pull request becomes mergeable, with **Open PR**
   and **Merge** actions.
 - **Review** on any row opens a window with the pull request's whole diff: a
-  file list down the side, unified or split, coloured by language, with
+  file list down the side, unified or split, coloured with GitHub's own themes
+  and Shiki's grammars for 25 languages, with
   GitHub's own **Viewed** checkbox, in any monospaced font you have installed, at
   the size you want and with or without ligatures (Settings, Diff Viewer). Squash and merge happens from there, or
   from the notification, after a confirmation.
@@ -199,3 +200,18 @@ gh auth refresh -s read:org
 - Notification permission, granted under **System Settings → Notifications**.
   Without it the list and the count still work, but nothing tells you when a
   pull request becomes mergeable.
+
+## Syntax highlighting
+
+The review window colours code with [Shiki](https://shiki.style)'s TextMate
+grammars, run in JavaScriptCore from a script bundled in the app:
+C++, C#, CSS, Dockerfile, Go, GraphQL, HCL, HTML, Java, JavaScript, JSON,
+Kotlin, Makefile, Markdown, Python, Ruby, Rust, shell, SQL, Swift, TOML, TSX,
+TypeScript, XML and YAML. Other files show plain text.
+
+To change the languages, themes or Shiki's version, edit `scripts/shiki/` and
+rebuild the script and its licence notices. It needs Node:
+
+```sh
+scripts/shiki/build.sh
+```
