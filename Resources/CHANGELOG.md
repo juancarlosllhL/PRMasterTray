@@ -4,17 +4,24 @@ What each release changed, newest first. The app shows the entries you missed
 the first time it runs after an update, so keep the lines short and written for
 whoever has to read them in a small window.
 
-## 0.14.0 — 2026-09-28
+## 0.14.0 — 2026-09-29
+
+![The review window: files down the side, a split diff, and the pull request's description beside it](whats-new-0.14.0.png)
 
 - Review replaces Approve on your team's rows, and on your own rows until they're ready to merge. It opens a window with the pull request's whole diff, a file list down the side.
 - Switch between unified and split, and tick Viewed on a file the way you would on GitHub. Viewed files fold away.
+- Tests, generated files and other files set aside wait under their own headings below the review, closed and left out of the counts. Edit what counts as each in Settings, Diff Viewer.
 - Code is coloured the way GitHub colours it, for 25 languages. A large diff shows at once, and the file you're looking at is coloured first.
 - Drag across the code to select text, double-click for a word, triple-click for a line, and Command-C copies it. Click the line numbers to select whole lines, as before.
-- Long lines wrap inside the window. Pick the diff's font, its size and whether ligatures are drawn: Settings, Diff Viewer.
+- Long lines wrap inside the window. Pick the diff's font, its size and whether ligatures are drawn: Settings, Appearance.
+- The pull request's description sits in a panel beside the diff, the way GitHub renders it. The button at the top right shows or hides it, and links open in your browser.
 - Approve lives at the top right of that window, beside Open on GitHub, for other people's pull requests, and approves exactly the commit you read. If someone pushes meanwhile, the window says so and offers a reload.
 - Your own pull request shows Merge on its row again once it's ready.
-- The review window shows the pull request's description in a panel beside the diff, the way GitHub renders it. The button at the top right shows or hides it, and links open in your browser.
+
+![Your pull requests, one reading Quill comments and one Unresolved comments](whats-new-0.14.0-states.png)
+
 - A pull request held up by open conversations no longer says Waiting for review. It says Quill comments while Quill's findings are unresolved, and Unresolved comments when a person's are.
+- Every status icon is redrawn in one style, and Quill's is a small robot.
 
 ## 0.13.0 — 2026-09-28
 
