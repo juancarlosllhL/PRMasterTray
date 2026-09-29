@@ -256,6 +256,29 @@ enum Queries {
     }
     """
 
+    /// Resolution state of each blocked pull request's review threads.
+    ///
+    /// Its own request rather than part of `myPullRequests`: inlined across all
+    /// fifty rows it measured 51 rate-limit points a poll, against 1 without it.
+    static let reviewThreads = """
+    query($ids: [ID!]!) {
+      nodes(ids: $ids) {
+        ... on PullRequest {
+          id
+          reviewThreads(first: 100) {
+            nodes {
+              isResolved
+              comments(first: 1) { nodes { author { login } } }
+            }
+          }
+        }
+      }
+    }
+    """
+
+    /// The GraphQL login of the AI reviewer; REST spells it `quill-reviewer[bot]`.
+    static let quillLogin = "quill-reviewer"
+
     /// Asks, for each candidate, whether a release contains a merge commit.
     ///
     /// The only query in this app assembled from data GitHub sent us, which is

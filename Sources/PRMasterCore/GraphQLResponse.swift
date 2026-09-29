@@ -488,6 +488,43 @@ struct ReleasesPayload: Decodable {
     }
 }
 
+struct ReviewThreadsPayload: Decodable {
+    let nodes: [Node?]
+
+    struct Node: Decodable {
+        let id: String
+        let reviewThreads: Threads
+
+        struct Threads: Decodable {
+            let nodes: [Thread]
+
+            struct Thread: Decodable {
+                let isResolved: Bool
+                let comments: Comments
+
+                struct Comments: Decodable {
+                    let nodes: [Comment]
+                    struct Comment: Decodable {
+                        /// `null` for a deleted account.
+                        let author: Author?
+                        struct Author: Decodable { let login: String }
+                    }
+                }
+
+                var isQuill: Bool { comments.nodes.first?.author?.login == Queries.quillLogin }
+            }
+        }
+
+        var tally: ReviewThreadTally {
+            let open = reviewThreads.nodes.filter { !$0.isResolved }
+            return ReviewThreadTally(
+                unresolved: open.count,
+                unresolvedByQuill: open.filter(\.isQuill).count
+            )
+        }
+    }
+}
+
 /// GitHub `ComparisonStatus`.
 enum CompareStatus: String, Sendable, CaseIterable {
     case ahead = "AHEAD"
@@ -821,6 +858,28 @@ public enum PullRequestDecoder {
 
         return payload.nodes.compactMap { $0 }.reduce(into: [:]) { result, node in
             result[node.id] = node.releases.nodes.compactMap(\.domain)
+        }
+    }
+
+    /// Decodes unresolved review thread tallies, keyed by pull request node ID.
+    public static func decodeReviewThreads(_ data: Data) throws -> [String: ReviewThreadTally] {
+        let response: GraphQLResponse<ReviewThreadsPayload>
+        do {
+            response = try JSONDecoder().decode(GraphQLResponse<ReviewThreadsPayload>.self, from: data)
+        } catch {
+            throw PRMasterError.decoding(String(describing: error))
+        }
+
+        if let errors = response.errors, !errors.isEmpty {
+            throw PRMasterError.graphQL(errors.map(\.message))
+        }
+
+        guard let payload = response.data else {
+            throw PRMasterError.decoding("response contained neither data nor errors")
+        }
+
+        return payload.nodes.compactMap { $0 }.reduce(into: [:]) { result, node in
+            result[node.id] = node.tally
         }
     }
 

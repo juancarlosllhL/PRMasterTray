@@ -1,0 +1,22 @@
+{
+  "data": {
+    "nodes": [
+      {
+        "id": "PR_a",
+        "reviewThreads": {
+          "nodes": [
+            { "isResolved": true, "isOutdated": false, "comments": { "nodes": [{ "author": { "login": "quill-reviewer" } }] } },
+            { "isResolved": false, "isOutdated": false, "comments": { "nodes": [{ "author": { "login": "quill-reviewer" } }] } },
+            { "isResolved": false, "isOutdated": true, "comments": { "nodes": [{ "author": { "login": "antoniovizuete" } }] } },
+            { "isResolved": false, "isOutdated": false, "comments": { "nodes": [{ "author": null }] } }
+          ]
+        }
+      },
+      null,
+      {
+        "id": "PR_b",
+        "reviewThreads": { "nodes": [] }
+      }
+    ]
+  }
+}
