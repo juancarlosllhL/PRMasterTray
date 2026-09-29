@@ -45,6 +45,8 @@ struct DiffTableView: NSViewRepresentable {
         table.action = #selector(Coordinator.clicked(_:))
 
         let scroll = NSScrollView()
+        // Views stopped clipping by default in macOS 14; the pinned header slides up out of the scroll view.
+        scroll.clipsToBounds = true
         scroll.documentView = table
         scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = false
@@ -80,7 +82,9 @@ struct DiffTableView: NSViewRepresentable {
                            matches: matches, currentMatch: currentMatch)
         guard let target = scrollTarget else { return }
         coordinator.scroll(toFile: target)
-        if let offset = Debug.scrollOffset { coordinator.scroll(by: offset) }
+        if let offset = Debug.scrollOffset {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { coordinator.scroll(by: offset) }
+        }
         DispatchQueue.main.async { scrollTarget = nil }
     }
 
