@@ -49,12 +49,12 @@ private func diff(head: String = "H1", truncated: Bool = false, files: [DiffFile
 @MainActor
 private func loadedStore(
     _ value: PullRequestDiff = diff(), viewedError: Error? = nil, writer: Bool = true,
-    preferences: PreferenceStoring = MemoryPreferences()
+    highlighter: SyntaxHighlighting? = nil, preferences: PreferenceStoring = MemoryPreferences()
 ) async -> (DiffStore, StubDiffSource) {
     let source = StubDiffSource(.success(value), viewedError: viewedError)
     let store = DiffStore(
         repo: "acme/widget", number: 7, source: source, viewedWriter: writer ? source : nil,
-        preferences: preferences
+        highlighter: highlighter, preferences: preferences
     )
     await store.load()
     return (store, source)
@@ -301,5 +301,121 @@ struct DiffStoreTests {
         let preferences = UserDefaultsPreferences(defaults: defaults)
         preferences.setDiffLayout(layout)
         #expect(preferences.diffLayout() == layout)
+    }
+}
+
+/// The real highlighter behind a gate, recording which files it is asked for and in what order.
+private actor GatedHighlighter: SyntaxHighlighting {
+    private var isOpen: Bool
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+    private(set) var asked: [String] = []
+
+    init(open: Bool) { isOpen = open }
+
+    func highlight(_ file: DiffFile, theme: SyntaxTheme) async -> DiffFile {
+        asked.append(file.path)
+        if !isOpen { await withCheckedContinuation { waiting.append($0) } }
+        return await ShikiScript.highlighter.highlight(file, theme: theme)
+    }
+
+    func open() {
+        isOpen = true
+        waiting.forEach { $0.resume() }
+        waiting = []
+    }
+
+    func waitUntilAsked() async {
+        while asked.isEmpty { await Task.yield() }
+    }
+}
+
+@MainActor
+private func tokens(_ store: DiffStore, _ path: String) -> [TokenRange] {
+    guard let file = store.diff?.files.first(where: { $0.path == path }), case .hunks(let hunks) = file.content
+    else { return [] }
+    return hunks.flatMap(\.lines).flatMap(\.tokens)
+}
+
+@MainActor
+@Suite("DiffStore highlighting")
+struct DiffStoreHighlightingTests {
+
+    @Test("rows show plain text at once and gain colour in the background")
+    func plainThenColoured() async {
+        let (store, _) = await loadedStore(diff(files: [file("a.swift", text: "let a")]),
+                                           highlighter: ShikiScript.highlighter)
+        #expect(store.phase == .loaded)
+        #expect(tokens(store, "a.swift").isEmpty)
+        await store.highlightingFinished()
+        #expect(!tokens(store, "a.swift").isEmpty)
+        #expect(store.rows.contains {
+            guard case .line(let line) = $0 else { return false }
+            return !line.tokens.isEmpty
+        })
+    }
+
+    @Test("the file asked for first is highlighted before the ones above it")
+    func prioritised() async {
+        let highlighter = GatedHighlighter(open: true)
+        let files = ["a.swift", "b.swift", "c.swift"].map { file($0, text: "let a") }
+        let (store, _) = await loadedStore(diff(files: files), highlighter: highlighter)
+        store.prioritise("c.swift")
+        await store.highlightingFinished()
+        #expect(await highlighter.asked == ["c.swift", "a.swift", "b.swift"])
+    }
+
+    @Test("files no grammar reads are never sent to the highlighter")
+    func unknownLanguagesSkipped() async {
+        let highlighter = GatedHighlighter(open: true)
+        let files = [file("notes.xyz", text: "let a"), file("a.swift", text: "let a")]
+        let (store, _) = await loadedStore(diff(files: files), highlighter: highlighter)
+        await store.highlightingFinished()
+        #expect(await highlighter.asked == ["a.swift"])
+    }
+
+    @Test("a new theme recolours every file in that theme")
+    func themeChange() async {
+        let files = [file("a.swift", text: "let a"), file("b.swift", text: "let b")]
+        let (store, _) = await loadedStore(diff(files: files), highlighter: ShikiScript.highlighter)
+        await store.highlightingFinished()
+        let light = tokens(store, "a.swift").map(\.colour)
+
+        store.setTheme(.dark)
+        await store.highlightingFinished()
+        let dark = Set(await ShikiScript.highlighter.colours(of: .dark))
+        #expect(tokens(store, "a.swift").map(\.colour) != light)
+        for path in ["a.swift", "b.swift"] {
+            #expect(!tokens(store, path).isEmpty)
+            #expect(tokens(store, path).allSatisfy { dark.contains($0.colour) }, "\(path)")
+        }
+    }
+
+    @Test("switching layout while highlighting keeps what is already coloured")
+    func layoutSwitch() async {
+        let highlighter = GatedHighlighter(open: false)
+        let (store, _) = await loadedStore(diff(files: [file("a.swift", text: "let a")]), highlighter: highlighter)
+        await highlighter.waitUntilAsked()
+        store.layout = .split
+        await highlighter.open()
+        await store.highlightingFinished()
+        store.layout = .unified
+        store.layout = .split
+        #expect(store.rows.contains {
+            guard case .pair(let left, _) = $0 else { return false }
+            return left?.tokens.isEmpty == false
+        })
+    }
+
+    @Test("marking a file viewed while it is being highlighted sticks")
+    func viewedDuringHighlight() async {
+        let highlighter = GatedHighlighter(open: false)
+        let (store, _) = await loadedStore(diff(files: [file("a.swift", text: "let a")]), highlighter: highlighter)
+        await highlighter.waitUntilAsked()
+        await store.setViewed("a.swift", true)
+        await highlighter.open()
+        await store.highlightingFinished()
+        #expect(store.diff?.files.first?.viewed == .viewed)
+        #expect(store.collapsed.contains("a.swift"))
+        #expect(!tokens(store, "a.swift").isEmpty)
     }
 }

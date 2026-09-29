@@ -82,17 +82,24 @@ public final class DiffStore {
     private let source: PullRequestDiffing?
     private let viewedWriter: PullRequestDiffing?
     private let preferences: PreferenceStoring
+    private let highlighter: SyntaxHighlighting?
     private var liveHead: String??
     private var isReady = false
 
+    private var theme = SyntaxTheme.light
+    private var pendingHighlights: [String] = []
+    private var priorityPath: String?
+    private var highlighting: Task<Void, Never>?
+
     public init(
         repo: String, number: Int, source: PullRequestDiffing?, viewedWriter: PullRequestDiffing?,
-        preferences: PreferenceStoring = UserDefaultsPreferences()
+        highlighter: SyntaxHighlighting? = nil, preferences: PreferenceStoring = UserDefaultsPreferences()
     ) {
         self.repo = repo
         self.number = number
         self.source = source
         self.viewedWriter = viewedWriter
+        self.highlighter = highlighter
         self.preferences = preferences
         self.layout = preferences.diffLayout()
     }
@@ -111,6 +118,7 @@ public final class DiffStore {
             rebuildRows()
             phase = .loaded
             evaluateLiveState()
+            startHighlighting()
         } catch {
             phase = .failed(Self.message(for: error))
         }
@@ -135,6 +143,53 @@ public final class DiffStore {
             apply(previous, to: path)
             viewedFailures[path] = Self.message(for: error)
         }
+    }
+
+    public func setTheme(_ theme: SyntaxTheme) {
+        guard theme != self.theme else { return }
+        self.theme = theme
+        startHighlighting()
+    }
+
+    /// The file on screen, so it is coloured before the rest.
+    public func prioritise(_ path: String) {
+        priorityPath = path
+        guard let index = pendingHighlights.firstIndex(of: path) else { return }
+        pendingHighlights.insert(pendingHighlights.remove(at: index), at: 0)
+    }
+
+    func highlightingFinished() async {
+        while let task = highlighting {
+            await task.value
+            if task == highlighting { return }
+        }
+    }
+
+    private func startHighlighting() {
+        highlighting?.cancel()
+        guard highlighter != nil, let diff else { return }
+        pendingHighlights = diff.files.filter { file in
+            guard case .hunks = file.content else { return false }
+            return SyntaxLanguage.forPath(file.path) != nil
+        }.map(\.path)
+        if let priorityPath { prioritise(priorityPath) }
+        let theme = theme
+        // Weak between files, so closing the window stops the work after the file in flight.
+        highlighting = Task { [weak self] in
+            while !Task.isCancelled, await self?.highlightNextFile(theme: theme) == true {}
+        }
+    }
+
+    private func highlightNextFile(theme: SyntaxTheme) async -> Bool {
+        guard let highlighter, !pendingHighlights.isEmpty else { return false }
+        let path = pendingHighlights.removeFirst()
+        guard let file = diff?.files.first(where: { $0.path == path }) else { return true }
+        var highlighted = await highlighter.highlight(file, theme: theme)
+        guard !Task.isCancelled, let index = diff?.files.firstIndex(where: { $0.path == path }) else { return false }
+        highlighted.viewed = diff?.files[index].viewed ?? highlighted.viewed
+        diff?.files[index] = highlighted
+        rebuildRows()
+        return true
     }
 
     public func toggleCollapsed(_ path: String) {
