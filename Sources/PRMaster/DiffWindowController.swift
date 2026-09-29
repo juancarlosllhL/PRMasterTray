@@ -22,12 +22,14 @@ final class DiffWindowController: NSObject, NSWindowDelegate {
         onAct: @escaping (MergeTarget, _ close: @escaping () -> Void) -> Void,
         onOpen: @escaping (URL) -> Void
     ) {
-        let (panel, _) = registry.window(for: subject.id) {
+        let (panel, isNew) = registry.window(for: subject.id) {
             makePanel(subject, source: source, viewedWriter: viewedWriter, appearance: appearance,
                       live: live, onAct: onAct, onOpen: onOpen)
         }
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
+        // AppKit hands a new key window's first text field the focus, which here is the file filter.
+        if isNew { DispatchQueue.main.async { panel.makeFirstResponder(nil) } }
     }
 
     private func makePanel(
