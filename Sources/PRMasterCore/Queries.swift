@@ -614,7 +614,7 @@ enum Queries {
     query($owner: String!, $name: String!, $number: Int!, $after: String) {
       repository(owner: $owner, name: $name) {
         pullRequest(number: $number) {
-          id baseRefOid headRefOid changedFiles
+          id baseRefOid headRefOid changedFiles bodyHTML
           files(first: 100, after: $after) {
             pageInfo { hasNextPage endCursor }
             nodes { path viewerViewedState }

@@ -1,0 +1,12 @@
+<h2>Summary</h2>
+<p>Lets <code>checkHost</code> accept GitHub App user-to-server tokens for uploads, and documents which tokens work.</p>
+<h3>Changes</h3>
+<ul class="contains-task-list">
+<li class="task-list-item"><input type="checkbox" checked disabled> Add <code>TokenTypeUserToServer</code> to the upload allow-list</li>
+<li class="task-list-item"><input type="checkbox" checked disabled> Update <code>SKILL.md</code></li>
+<li class="task-list-item"><input type="checkbox" disabled> Follow up on GHES support</li>
+</ul>
+<table><thead><tr><th>Token</th><th>Uploads</th></tr></thead>
+<tbody><tr><td>OAuth</td><td>Yes</td></tr><tr><td>Fine-grained PAT</td><td>Yes</td></tr><tr><td>User-to-server</td><td>Now yes</td></tr></tbody></table>
+<blockquote><p>GitHub Enterprise Server is still unsupported.</p></blockquote>
+<p>Closes <a href="https://github.com/acme/widget-service/issues/1180">#1180</a>.</p>

@@ -1,5 +1,6 @@
 import AppKit
 import PRMasterCore
+import WebKit
 
 /// Serves PRs from a local JSON file instead of GitHub.
 ///
@@ -229,7 +230,24 @@ enum Debug {
         guard let view = window.contentView?.superview,
               let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
         view.cacheDisplay(in: view.bounds, to: rep)
-        try? rep.representation(using: .png, properties: [:])?.write(to: url)
+        // `cacheDisplay` cannot see into a web view, so each one is painted over its own frame.
+        let webViews = descendants(of: view).compactMap { $0 as? WKWebView }
+        Task { @MainActor in
+            for webView in webViews {
+                guard let image = try? await webView.takeSnapshot(configuration: nil) else { continue }
+                var frame = webView.convert(webView.bounds, to: view)
+                if view.isFlipped { frame.origin.y = view.bounds.height - frame.maxY }
+                NSGraphicsContext.saveGraphicsState()
+                NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+                image.draw(in: frame)
+                NSGraphicsContext.restoreGraphicsState()
+            }
+            try? rep.representation(using: .png, properties: [:])?.write(to: url)
+        }
+    }
+
+    private static func descendants(of view: NSView) -> [NSView] {
+        view.subviews + view.subviews.flatMap(descendants)
     }
 
     /// `PRMASTER_DEMO_MERGE=confirm|fail` drives the merge dialogs directly,

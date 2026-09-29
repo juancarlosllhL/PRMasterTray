@@ -69,6 +69,7 @@ struct DiffWindowView: View {
     @State private var selectedFile: String?
     @State private var fileFilter = Debug.fileFilter ?? ""
     @State private var expandedSections: Set<FileSection> = []
+    @AppStorage("diffDescriptionShown") private var showsDescription = true
     @FocusState private var findFocused: Bool
 
     var body: some View {
@@ -95,6 +96,12 @@ struct DiffWindowView: View {
                 }
                 .frame(minWidth: 480, maxWidth: .infinity)
                 .layoutPriority(1)
+                if showsDescription {
+                    DescriptionPanel(
+                        html: store.diff?.descriptionHTML, baseURL: subject.url, isLoading: store.phase == .loading
+                    )
+                    .frame(minWidth: 260, idealWidth: 340, maxWidth: 560)
+                }
             }
         }
         .frame(minWidth: 760, minHeight: 420)
@@ -234,6 +241,12 @@ struct DiffWindowView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .fixedSize()
+            Button { showsDescription.toggle() } label: {
+                Image(systemName: "sidebar.right")
+            }
+            .buttonStyle(.accessoryBar)
+            .help(showsDescription ? "Hide description" : "Show description")
+            .accessibilityLabel(showsDescription ? "Hide description" : "Show description")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

@@ -12,8 +12,14 @@ struct DiffFixtureClient: PullRequestDiffing {
         let row = await liveRow(repo, number)
         return PullRequestDiff(
             pullRequestID: row?.id ?? "fixture", baseOid: "fixture-base", headOid: row?.head ?? "fixture-head",
-            files: files, isTruncated: false
+            files: files, isTruncated: false,
+            descriptionHTML: try? String(contentsOfFile: descriptionPath, encoding: .utf8)
         )
+    }
+
+    /// `<fixture>.description.html` beside the compare fixture, when there is one.
+    private var descriptionPath: String {
+        URL(fileURLWithPath: path).deletingPathExtension().appendingPathExtension("description.html").path
     }
 
     func setViewed(pullRequestID: String, path: String, viewed: Bool) async throws {

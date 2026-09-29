@@ -18,12 +18,13 @@ private func json(_ string: String) -> StubOutcome {
 
 private func meta(
     head: String = "H1", total: Int, viewed: [(String, String)] = [],
-    next: String? = nil
+    next: String? = nil, bodyHTML: String = ""
 ) -> StubOutcome {
     let nodes = viewed.map { #"{"path":"\#($0.0)","viewerViewedState":"\#($0.1)"}"# }.joined(separator: ",")
     let cursor = next.map { #""\#($0)""# } ?? "null"
+    let body = String(decoding: try! JSONEncoder().encode(bodyHTML), as: UTF8.self)
     return json(#"""
-    {"data":{"repository":{"pullRequest":{"id":"PR_1","baseRefOid":"B1","headRefOid":"\#(head)","changedFiles":\#(total),
+    {"data":{"repository":{"pullRequest":{"id":"PR_1","baseRefOid":"B1","headRefOid":"\#(head)","changedFiles":\#(total),"bodyHTML":\#(body),
     "files":{"totalCount":\#(total),"pageInfo":{"hasNextPage":\#(next != nil),"endCursor":\#(cursor)},
     "nodes":[\#(nodes)]}}}}}
     """#)
@@ -74,6 +75,25 @@ struct DiffClientTests {
         #expect(!diff.isTruncated)
         #expect(stub.requests.count == 3)
         #expect(stub.requests[1].url?.path == "/repos/acme/widget/compare/B1...H1")
+    }
+
+    @Test("the description rides on the metadata request, not a request of its own")
+    func descriptionInMeta() async throws {
+        let html = #"<p>Adds <code>paging</code></p>"#
+        let (client, stub) = makeClient([meta(total: 1, bodyHTML: html), compare(["a.swift"]), attributes("")])
+        let diff = try await client.loadDiff(repo: "acme/widget", number: 7)
+
+        #expect(diff.descriptionHTML == html)
+        #expect(body(stub.requests[0]).contains("bodyHTML"))
+        #expect(stub.requests.count == 3)
+    }
+
+    @Test("an empty description reads as none")
+    func emptyDescription() async throws {
+        let (client, stub) = makeClient([meta(total: 1), compare(["a.swift"]), attributes("")])
+        let diff = try await client.loadDiff(repo: "acme/widget", number: 7)
+        #expect(diff.descriptionHTML == nil)
+        #expect(stub.requests.count == 3)
     }
 
     @Test("each file carries the viewed state GitHub holds for it")

@@ -10,10 +10,12 @@ public struct PullRequestDiff: Sendable, Equatable {
     public let isTruncated: Bool
     /// The root `.gitattributes` at the head, or nil when absent or unreadable.
     public var gitAttributes: String?
+    /// GitHub's own rendering of the description, or nil when there is none.
+    public let descriptionHTML: String?
 
     public init(
         pullRequestID: String, baseOid: String, headOid: String, files: [DiffFile], isTruncated: Bool,
-        gitAttributes: String? = nil
+        gitAttributes: String? = nil, descriptionHTML: String? = nil
     ) {
         self.pullRequestID = pullRequestID
         self.baseOid = baseOid
@@ -21,6 +23,7 @@ public struct PullRequestDiff: Sendable, Equatable {
         self.files = files
         self.isTruncated = isTruncated
         self.gitAttributes = gitAttributes
+        self.descriptionHTML = descriptionHTML
     }
 }
 
@@ -81,7 +84,8 @@ extension GitHubClient: PullRequestDiffing {
         }
         return PullRequestDiff(
             pullRequestID: meta.id, baseOid: meta.baseOid, headOid: meta.headOid,
-            files: files, isTruncated: meta.changedFiles > Self.pullFileLimit
+            files: files, isTruncated: meta.changedFiles > Self.pullFileLimit,
+            descriptionHTML: meta.descriptionHTML
         )
     }
 
@@ -128,6 +132,7 @@ struct DiffMeta {
     let baseOid: String
     let headOid: String
     let changedFiles: Int
+    let descriptionHTML: String?
     var viewed: [String: ViewedState]
     let nextCursor: String?
 }
@@ -139,6 +144,7 @@ extension DiffDecoder {
         let nodes = pull.files?.nodes ?? []
         return DiffMeta(
             id: pull.id, baseOid: pull.baseRefOid, headOid: pull.headRefOid, changedFiles: pull.changedFiles,
+            descriptionHTML: pull.bodyHTML?.isEmpty == false ? pull.bodyHTML : nil,
             viewed: Dictionary(
                 nodes.map { ($0.path, ViewedState(rawValue: $0.viewerViewedState) ?? .unviewed) },
                 uniquingKeysWith: { $1 }
@@ -215,6 +221,7 @@ extension DiffDecoder {
         let baseRefOid: String
         let headRefOid: String
         let changedFiles: Int
+        let bodyHTML: String?
         let files: Files?
     }
 
