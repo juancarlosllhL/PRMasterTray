@@ -18,7 +18,7 @@ GitHub would merge right now.
   file list down the side, unified or split, coloured with GitHub's own themes
   and Shiki's grammars for 25 languages, with
   GitHub's own **Viewed** checkbox, in any monospaced font you have installed, at
-  the size you want and with or without ligatures (Settings, Diff Viewer). Once
+  the size you want and with or without ligatures (Settings, Appearance). Once
   your own pull request is ready, **Merge** takes Review's place on its row, and
   squash-merges after a confirmation, as the notification does.
 
@@ -32,7 +32,7 @@ GitHub would merge right now.
   Tests, generated code, lockfiles and planning notes are set aside: they sit
   closed under their own headings below the files to review, one click away,
   and stay out of the viewed count. Which files go where is a list of
-  `.gitignore`-style patterns per heading (Settings, Review Files), and files the
+  `.gitignore`-style patterns per heading (Settings, Diff Viewer), and files the
   repository marks `linguist-generated` in `.gitattributes` count as generated.
 
 <img src="docs/screenshots/review-window.png" width="800" alt="The review window: seven files down the side, the diff of Changelog.swift with added lines in green and removed in red, and Merge at the bottom">

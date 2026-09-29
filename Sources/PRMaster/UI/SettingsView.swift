@@ -19,7 +19,7 @@ struct SettingsView: View {
     @Bindable var jiraStore: JiraStore
 
     private enum Tab: String {
-        case pullRequests, teams, jira, appearance, diffViewer, reviewFiles
+        case pullRequests, teams, jira, appearance, diffViewer
     }
 
     /// Only ever moved by a click, except under `PRMASTER_SETTINGS_TAB`, which is
@@ -43,9 +43,6 @@ struct SettingsView: View {
             DiffViewerSettings(appearance: appearance)
                 .tabItem { Label("Diff Viewer", systemImage: "doc.text.magnifyingglass") }
                 .tag(Tab.diffViewer)
-            ReviewFilesSettings(appearance: appearance)
-                .tabItem { Label("Review Files", systemImage: "line.3.horizontal.decrease.circle") }
-                .tag(Tab.reviewFiles)
         }
         // A fixed height rather than one per tab. Both would be native — System
         // Settings resizes per pane — but this panel is small enough that the
@@ -56,7 +53,7 @@ struct SettingsView: View {
         // when it was only too small — and without leaving a cavern under it
         // either. On the other tab the slack is the point: it is room for the
         // organization list to grow into before it starts scrolling.
-        .frame(width: 520, height: 470)
+        .frame(width: 520, height: 610)
     }
 
     /// Which pull requests the app cares about.
@@ -259,6 +256,8 @@ struct SettingsView: View {
                 // setting.
                 footnote(Text("Turns on by itself when macOS is set to differentiate without colour."))
             }
+
+            DiffFontSection(appearance: appearance)
         }
         .formStyle(.grouped)
         .padding(.horizontal, 12)

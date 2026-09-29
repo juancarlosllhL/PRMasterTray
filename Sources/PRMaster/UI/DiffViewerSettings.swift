@@ -3,31 +3,42 @@ import PRMasterCore
 
 struct DiffViewerSettings: View {
     @Bindable var appearance: AppearanceStore
-    @State private var families: [String] = []
+    @State private var section: FileSection = .tests
 
     var body: some View {
         Form {
             Section {
-                Picker("Font", selection: $appearance.diffFontFamily) {
-                    Text("System (SF Mono)").tag(String?.none)
-                    Divider()
-                    ForEach(families, id: \.self) { family in
-                        Text(verbatim: family).tag(String?.some(family))
+                Picker("List", selection: $section) {
+                    ForEach(FileSection.secondary, id: \.self) { section in
+                        Text(verbatim: section.title).tag(section)
                     }
                 }
-                Picker("Size", selection: $appearance.diffFontSize) {
-                    ForEach(Array(DiffFont.sizes), id: \.self) { size in
-                        Text(verbatim: "\(size) pt").tag(size)
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                TextEditor(text: lines)
+                    .font(.system(size: 12, design: .monospaced))
+                    .autocorrectionDisabled()
+                    .frame(height: 290)
+                HStack(alignment: .firstTextBaseline) {
+                    if !invalidLines.isEmpty {
+                        Text(verbatim: "Not understood: \(invalidLines.joined(separator: ", "))")
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .lineLimit(2)
                     }
+                    Spacer()
+                    Button("Restore Defaults") { appearance.scopePatterns[section] = FileScope.defaultPatterns[section] }
+                        .disabled(appearance.scopePatterns[section] == FileScope.defaultPatterns[section])
                 }
-                Toggle("Ligatures", isOn: $appearance.diffLigatures)
-                Text(verbatim: "func greet(_ name: String) -> String { \"Hello, \\(name)\" } // != <= =>")
-                    .font(previewFont)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .foregroundStyle(.secondary)
             } footer: {
-                Text("Only monospaced fonts installed on this Mac are listed. Ligatures join characters such as -> into one symbol; turn them off to see exactly what is in the file.")
+                Text("Files that match are set aside below the review, closed. One pattern per line, as in .gitignore: *.snap, fixtures/, /plans/, !keep/this.ts. A # line is a comment.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Section {
+                Toggle("Set aside files the repository marks linguist-generated", isOn: $appearance.honoursGitAttributes)
+            } footer: {
+                Text("Read from .gitattributes at the pull request's head, which its author can edit.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -35,13 +46,16 @@ struct DiffViewerSettings: View {
         .formStyle(.grouped)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .onAppear { families = MonospaceFonts.installed() }
     }
 
-    /// The very font the diff draws with, so what the preview shows is what the window shows.
-    private var previewFont: Font {
-        let family = DiffFont.resolve(stored: appearance.diffFontFamily, installed: families)
-        let metrics = DiffMetrics.forFont(family: family, size: appearance.diffFontSize, ligatures: appearance.diffLigatures)
-        return Font(metrics.font as CTFont)
+    private var lines: Binding<String> {
+        Binding(
+            get: { (appearance.scopePatterns[section] ?? []).joined(separator: "\n") },
+            set: { appearance.scopePatterns[section] = $0.components(separatedBy: "\n") }
+        )
+    }
+
+    private var invalidLines: [String] {
+        GlobList(lines: appearance.scopePatterns[section] ?? []).invalidLines
     }
 }
