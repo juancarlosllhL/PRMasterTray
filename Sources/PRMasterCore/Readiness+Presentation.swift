@@ -9,18 +9,18 @@ public enum ReadinessTint: Sendable, Equatable, CaseIterable {
 
 extension Readiness {
 
-    /// SF Symbol shown at the leading edge of each row.
-    public var symbolName: String {
+    /// Glyph shown at the leading edge of each row.
+    public var glyph: StatusGlyph {
         switch self {
-        case .ready:         return "checkmark.circle.fill"
-        case .behind:        return "arrow.down.circle"
-        case .quillComments: return "sparkles"
-        case .unresolvedComments: return "bubble.left.and.bubble.right"
-        case .blocked:       return "eye.circle"
-        case .checksPending: return "clock"
-        case .checksFailing: return "xmark.circle.fill"
-        case .conflicted:    return "exclamationmark.triangle.fill"
-        case .draft:         return "pencil.circle"
+        case .ready:              return .ready
+        case .behind:             return .behind
+        case .quillComments:      return .quill
+        case .unresolvedComments: return .comments
+        case .blocked:            return .waiting
+        case .checksPending:      return .pending
+        case .checksFailing:      return .failing
+        case .conflicted:         return .conflicted
+        case .draft:              return .draft
         }
     }
 

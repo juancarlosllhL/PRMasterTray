@@ -19,9 +19,9 @@ struct ReviewRequestRowView: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
-            Image(systemName: request.state.symbolName)
+            StatusGlyphView(glyph: request.state.glyph)
                 .foregroundStyle(palette.color(request.state.tint))
-                .font(.system(size: 14))
+                .frame(width: 16, height: 16)
                 .frame(width: 18)
                 .accessibilityHidden(true)
 

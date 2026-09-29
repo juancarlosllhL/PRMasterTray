@@ -7,24 +7,24 @@ struct PresentationTests {
     /// Mirrors the table in the design doc, so a drift between the two fails
     /// here rather than being noticed in the menu bar weeks later.
     @Test("glyph and tint match the design table", arguments: [
-        (Readiness.ready, "checkmark.circle.fill", ReadinessTint.green),
-        (Readiness.behind, "arrow.down.circle", ReadinessTint.yellow),
-        (Readiness.quillComments, "sparkles", ReadinessTint.orange),
-        (Readiness.unresolvedComments, "bubble.left.and.bubble.right", ReadinessTint.orange),
-        (Readiness.blocked, "eye.circle", ReadinessTint.blue),
-        (Readiness.checksPending, "clock", ReadinessTint.yellow),
-        (Readiness.checksFailing, "xmark.circle.fill", ReadinessTint.red),
-        (Readiness.conflicted, "exclamationmark.triangle.fill", ReadinessTint.orange),
-        (Readiness.draft, "pencil.circle", ReadinessTint.gray),
+        (Readiness.ready, StatusGlyph.ready, ReadinessTint.green),
+        (Readiness.behind, StatusGlyph.behind, ReadinessTint.yellow),
+        (Readiness.quillComments, StatusGlyph.quill, ReadinessTint.orange),
+        (Readiness.unresolvedComments, StatusGlyph.comments, ReadinessTint.orange),
+        (Readiness.blocked, StatusGlyph.waiting, ReadinessTint.blue),
+        (Readiness.checksPending, StatusGlyph.pending, ReadinessTint.yellow),
+        (Readiness.checksFailing, StatusGlyph.failing, ReadinessTint.red),
+        (Readiness.conflicted, StatusGlyph.conflicted, ReadinessTint.orange),
+        (Readiness.draft, StatusGlyph.draft, ReadinessTint.gray),
     ])
-    func glyphTable(state: Readiness, symbol: String, tint: ReadinessTint) {
-        #expect(state.symbolName == symbol)
+    func glyphTable(state: Readiness, glyph: StatusGlyph, tint: ReadinessTint) {
+        #expect(state.glyph == glyph)
         #expect(state.tint == tint)
     }
 
     @Test("every state has a distinct glyph")
     func glyphsAreDistinct() {
-        let symbols = Readiness.allCases.map(\.symbolName)
+        let symbols = Readiness.allCases.map(\.glyph)
         #expect(Set(symbols).count == symbols.count)
     }
 

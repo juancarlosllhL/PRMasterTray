@@ -30,9 +30,9 @@ struct PRRowView: View {
         // Centred, not top-aligned: against a fixed two-line stack the glyph
         // reads as belonging to the row rather than to the title.
         HStack(alignment: .center, spacing: 10) {
-            Image(systemName: pr.readiness.symbolName)
+            StatusGlyphView(glyph: pr.readiness.glyph)
                 .foregroundStyle(palette.color(pr.readiness.tint))
-                .font(.system(size: 14))
+                .frame(width: 16, height: 16)
                 .frame(width: 18)
                 .accessibilityLabel(pr.readiness.label)
 
@@ -135,7 +135,8 @@ struct PRRowView: View {
     /// so sharing the colour with `conflicted` does not confuse the two.
     private var staleChip: some View {
         HStack(spacing: 3) {
-            Image(systemName: "clock.badge.exclamationmark")
+            StatusGlyphView(glyph: .stale)
+                .frame(width: 12, height: 12)
             // verbatim, or "31 days old" would be read as a format string.
             Text(verbatim: staleAge)
         }

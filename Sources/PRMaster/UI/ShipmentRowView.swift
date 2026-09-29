@@ -17,9 +17,9 @@ struct ShipmentRowView: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
-            Image(systemName: symbolName)
+            StatusGlyphView(glyph: glyph)
                 .foregroundStyle(palette.color(tint))
-                .font(.system(size: 14))
+                .frame(width: 16, height: 16)
                 .frame(width: 18)
                 .accessibilityHidden(true)
 
@@ -106,12 +106,12 @@ struct ShipmentRowView: View {
     /// Deliberately distinct from the readiness glyphs above: a shipped box is
     /// not the same statement as a mergeable checkmark, and a row that borrowed
     /// the glyph would read as one.
-    private var symbolName: String {
+    private var glyph: StatusGlyph {
         switch shipment.status {
-        case .pending:  return "clock"
-        case .building: return "arrow.triangle.2.circlepath"
-        case .failed:   return "xmark.octagon.fill"
-        case .released: return "shippingbox.fill"
+        case .pending:  return .pending
+        case .building: return .building
+        case .failed:   return .shipFailed
+        case .released: return .released
         }
     }
 

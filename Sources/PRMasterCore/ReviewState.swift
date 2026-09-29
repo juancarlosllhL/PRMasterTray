@@ -52,22 +52,22 @@ public enum ReviewState: Sendable, Equatable, CaseIterable {
 
 extension ReviewState {
 
-    /// SF Symbol shown at the leading edge of each row.
+    /// Glyph shown at the leading edge of each row.
     ///
     /// All six are distinct, which matters more here than elsewhere: in
     /// monochrome the colour is gone and the glyph is most of what is left.
-    public var symbolName: String {
+    public var glyph: StatusGlyph {
         switch self {
-        case .changesRequested: return "exclamationmark.bubble"
-        case .checksFailing:    return "xmark.circle.fill"
-        case .checksPending:    return "clock"
-        case .dismissed:        return "exclamationmark.arrow.circlepath"
-        // Deliberately not `checkmark.circle.fill`, which means "you can merge
+        case .changesRequested: return .changesRequested
+        case .checksFailing:    return .failing
+        case .checksPending:    return .pending
+        case .dismissed:        return .dismissed
+        // Deliberately not the ready glyph, which means "you can merge
         // this" everywhere else in the popover. This says somebody else has
         // approved and your team is still being asked, which is a different
         // claim — the same call `ShipmentRowView` makes about its own glyphs.
-        case .approved:         return "checkmark.seal"
-        case .awaiting:         return "eye.circle"
+        case .approved:         return .approved
+        case .awaiting:         return .waiting
         }
     }
 

@@ -118,17 +118,16 @@ struct ReviewStateTests {
 
     // MARK: - Presentation
 
-    @Test("every state has a label and a symbol")
+    @Test("every state has a label")
     func everyStateIsDrawable() {
         #expect(ReviewState.allCases.allSatisfy { !$0.label.isEmpty })
-        #expect(ReviewState.allCases.allSatisfy { !$0.symbolName.isEmpty })
     }
 
     /// In monochrome the colour is gone and the glyph is most of what is left, so
     /// two states sharing one would be indistinguishable.
     @Test("no two states share a symbol")
     func symbolsAreDistinct() {
-        let symbols = Set(ReviewState.allCases.map(\.symbolName))
+        let symbols = Set(ReviewState.allCases.map(\.glyph))
         #expect(symbols.count == ReviewState.allCases.count)
     }
 
@@ -138,7 +137,7 @@ struct ReviewStateTests {
     /// `ShipmentRowView` makes about not borrowing the readiness checkmark.
     @Test("approved does not borrow the ready-to-merge glyph")
     func approvedHasItsOwnGlyph() {
-        #expect(ReviewState.approved.symbolName != Readiness.ready.symbolName)
+        #expect(ReviewState.approved.glyph != Readiness.ready.glyph)
     }
 
     /// `PaletteTests` proves a contrast floor across every `ReadinessTint`, so a
