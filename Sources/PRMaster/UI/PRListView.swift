@@ -49,6 +49,8 @@ struct PRListView: View {
     let jira: JiraStore
     let onOpenIssue: (JiraIssue) -> Void
     let jiraIssueLink: (JiraIssue) -> URL?
+    let jiraKeyLink: (String) -> URL?
+    let onOpenJiraLink: (URL) -> Void
     let onOpenLinkedPullRequest: (LinkedPullRequest) -> Void
 
     var visibleTabs: [PopoverTab] { PopoverTab.allCases }
@@ -287,7 +289,9 @@ struct PRListView: View {
                     onOpenShipment: onOpenShipment,
                     onOpenReviewRequest: onOpenReviewRequest,
                     onReviewRequest: onReviewRequest,
-                    onOpenSettings: onOpenSettings
+                    onOpenSettings: onOpenSettings,
+                    jiraKeyLink: jiraKeyLink,
+                    onOpenJiraLink: onOpenJiraLink
                 )
             case .jira:
                 JiraPaneView(

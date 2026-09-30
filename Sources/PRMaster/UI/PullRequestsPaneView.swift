@@ -16,6 +16,8 @@ struct PullRequestsPaneView: View {
     let onOpenReviewRequest: (ReviewRequest) -> Void
     let onReviewRequest: (ReviewRequest) -> Void
     let onOpenSettings: () -> Void
+    let jiraKeyLink: (String) -> URL?
+    let onOpenJiraLink: (URL) -> Void
 
     private static let rowsBeforeScrolling = 8
     private static let mergedRowsBeforeScrolling = 5
@@ -148,11 +150,17 @@ struct PullRequestsPaneView: View {
                     onMerge: { onMerge(pr) },
                     onClose: { onClose(pr) }
                 )
-                .copyMenu(link: pr.url, repo: pr.repo, number: pr.number)
+                .copyMenu(link: pr.url, repo: pr.repo, number: pr.number, jira: jiraReference(pr.title))
             }
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 4)
+    }
+
+    private func jiraReference(_ title: String) -> JiraKeyReference? {
+        JiraIssueKey.first(in: title).map {
+            JiraKeyReference(key: $0, link: jiraKeyLink($0), open: onOpenJiraLink)
+        }
     }
 
     private var staleBanner: String? {
@@ -184,7 +192,10 @@ struct PullRequestsPaneView: View {
                     shipment: shipment,
                     isLoadingEnvironments: store.isLoadingDeployments
                 ) { onOpenShipment(shipment) }
-                .copyMenu(link: shipment.pr.url, repo: shipment.pr.repo, number: shipment.pr.number)
+                .copyMenu(
+                    link: shipment.pr.url, repo: shipment.pr.repo, number: shipment.pr.number,
+                    jira: jiraReference(shipment.pr.title)
+                )
             }
         }
         .padding(.horizontal, 4)
@@ -224,7 +235,7 @@ struct PullRequestsPaneView: View {
                     onOpen: { onOpenReviewRequest(request) },
                     onReview: { onReviewRequest(request) }
                 )
-                .copyMenu(link: request.url, repo: request.repo, number: request.number)
+                .copyMenu(link: request.url, repo: request.repo, number: request.number, jira: jiraReference(request.title))
             }
         }
         .padding(.horizontal, 4)

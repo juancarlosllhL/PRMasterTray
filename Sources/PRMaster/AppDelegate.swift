@@ -497,6 +497,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 jiraIssueLink: { [weak self] issue in
                     self?.jiraAccount.current.map { issue.browseURL(on: $0.baseURL) }
                 },
+                jiraKeyLink: { [weak self] key in
+                    self?.jiraAccount.current.map { JiraIssueKey.browseURL(key, on: $0.baseURL) }
+                },
+                onOpenJiraLink: { [weak self] url in
+                    self?.open(url)
+                    self?.popover.performClose(nil)
+                },
                 onOpenLinkedPullRequest: { [weak self] pull in
                     self?.open(pull.url)
                     self?.popover.performClose(nil)

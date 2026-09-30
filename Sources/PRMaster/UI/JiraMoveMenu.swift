@@ -15,7 +15,7 @@ struct JiraIssueMenu: ViewModifier {
             if jira.canMove {
                 Divider()
                 ForEach(JiraLane.allCases.filter { $0 != jira.lane(of: issue) }, id: \.self) { lane in
-                    Button("Move to \(lane.title)") {
+                    Button("Move to \(lane.title)", systemImage: "arrow.right") {
                         Task { await jira.move(issue.key, to: lane) }
                     }
                     .disabled(jira.isMoving(issue.key))
@@ -31,9 +31,9 @@ struct CopyMenuItems: View {
 
     var body: some View {
         if let link {
-            Button("Copy Link") { Self.copy(link.absoluteString) }
+            Button("Copy Link", systemImage: "link") { Self.copy(link.absoluteString) }
         }
-        Button("Copy ID") { Self.copy(id) }
+        Button("Copy ID", systemImage: "number") { Self.copy(id) }
     }
 
     static func copy(_ text: String) {
@@ -47,9 +47,32 @@ extension View {
         modifier(JiraIssueMenu(issue: issue, jira: jira, link: link))
     }
 
-    func copyMenu(link: URL, repo: String, number: Int) -> some View {
+    func copyMenu(link: URL, repo: String, number: Int, jira: JiraKeyReference? = nil) -> some View {
         contextMenu {
             CopyMenuItems(link: link, id: PullRequestReference.id(repo: repo, number: number))
+            if let jira {
+                Divider()
+                JiraKeyMenuItems(reference: jira)
+            }
+        }
+    }
+}
+
+/// `link` is nil while signed out of Jira: the key is still worth copying.
+struct JiraKeyReference {
+    let key: String
+    let link: URL?
+    let open: (URL) -> Void
+}
+
+struct JiraKeyMenuItems: View {
+    let reference: JiraKeyReference
+
+    var body: some View {
+        Button("Copy Jira ID", systemImage: "ticket") { CopyMenuItems.copy(reference.key) }
+        if let link = reference.link {
+            Button("Copy Jira Link", systemImage: "link") { CopyMenuItems.copy(link.absoluteString) }
+            Button("Open \(reference.key) in Jira", systemImage: "arrow.up.right.square") { reference.open(link) }
         }
     }
 }
