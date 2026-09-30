@@ -4,6 +4,13 @@ What each release changed, newest first. The app shows the entries you missed
 the first time it runs after an update, so keep the lines short and written for
 whoever has to read them in a small window.
 
+## 0.15.0 — 2026-09-30
+
+- Right-click a pull request whose title names a Jira issue to copy its ID or link, or open it in Jira.
+- Menu items have icons.
+- Jira issues land in the right column when your Jira account shows statuses in another language, and moves between columns work there too.
+- Vulnerabilities and sub-tasks move to Testing without asking for a Changelog. Only bugs still open that form.
+
 ## 0.14.0 — 2026-09-29
 
 ![The review window: files down the side, a split diff, and the pull request's description beside it](whats-new-0.14.0.png)
