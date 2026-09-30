@@ -35,6 +35,7 @@ public struct JiraIssue: Sendable, Equatable, Identifiable {
     public let summary: String
     /// The site's own wording, shown as-is. Grouping goes by category.
     public let statusName: String
+    public let statusID: String?
     public let statusCategory: JiraStatusCategory
     public let issueType: String
     public let priority: JiraPriority
@@ -55,6 +56,7 @@ public struct JiraIssue: Sendable, Equatable, Identifiable {
         key: String,
         summary: String,
         statusName: String,
+        statusID: String? = nil,
         statusCategory: JiraStatusCategory,
         issueType: String,
         priority: JiraPriority = .unset,
@@ -65,6 +67,7 @@ public struct JiraIssue: Sendable, Equatable, Identifiable {
         self.key = key
         self.summary = summary
         self.statusName = statusName
+        self.statusID = statusID
         self.statusCategory = statusCategory
         self.issueType = issueType
         self.priority = priority

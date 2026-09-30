@@ -26,6 +26,18 @@ private let acmeTask: Workflow = {
     ]
 }()
 
+/// How a Spanish account reads the ACME statuses. Only the ids match the English names.
+private let spanish: [String: JiraStatus] = [
+    "To Do": JiraStatus(name: "Tareas por hacer", category: .toDo, id: "10000"),
+    "New": JiraStatus(name: "Nueva", category: .toDo, id: "10029"),
+    "On Hold": JiraStatus(name: "En espera", category: .toDo, id: "10032"),
+    "In Progress": JiraStatus(name: "En curso", category: .inProgress, id: "3"),
+    "Reviewing": JiraStatus(name: "En revisión", category: .inProgress, id: "1"),
+    "Testing": JiraStatus(name: "Pruebas", category: .inProgress, id: "6"),
+    "Done": JiraStatus(name: "Hecho", category: .done, id: "10001"),
+    "Canceled": JiraStatus(name: "Cancelada", category: .done, id: "10076"),
+]
+
 /// Plays a workflow the way Jira does: moves only along offered edges.
 private final class WorkflowClient: JiraIssueMoving, @unchecked Sendable {
     private let lock = NSLock()
@@ -34,19 +46,23 @@ private final class WorkflowClient: JiraIssueMoving, @unchecked Sendable {
     private let failPost: PRMasterError?
     private let failAfter: Int
     private let screens: [String: [JiraField]]
+    private let names: [String: JiraStatus]
     private(set) var posted: [String] = []
     private(set) var values: [[String: String]] = []
 
     init(
         _ workflow: Workflow, at start: String, failPost: PRMasterError? = nil, after: Int = 0,
-        screens: [String: [JiraField]] = [:]
+        screens: [String: [JiraField]] = [:], names: [String: JiraStatus] = [:]
     ) {
         self.workflow = workflow
         self.current = start
         self.failPost = failPost
         self.failAfter = after
         self.screens = screens
+        self.names = names
     }
+
+    private func shown(_ name: String) -> JiraStatus { names[name] ?? status(name) }
 
     func transitions(for key: String) async throws -> (JiraStatus, [JiraTransition]) {
         lock.withLock {
@@ -56,11 +72,11 @@ private final class WorkflowClient: JiraIssueMoving, @unchecked Sendable {
                 let isGlobal: Bool = id == "11" || id == "21"
                 let fields: [JiraField] = atReviewing ? (screens[id] ?? []) : []
                 return JiraTransition(
-                    id: id, to: status(to),
+                    id: id, to: shown(to),
                     isGlobal: isGlobal, needsInput: to == "Canceled", fields: fields
                 )
             }
-            return (status(current), offered)
+            return (shown(current), offered)
         }
     }
 
@@ -206,5 +222,29 @@ struct JiraMoveTests {
         let outcome = await JiraMove(client: client).run("ACME-1", to: .testing)
         #expect(outcome == .stopped(at: status("Step 6"), target: .testing))
         #expect(client.posted.count == JiraMove.maxHops)
+    }
+
+    @Test("a Spanish account's issue already in Testing is left alone")
+    func translatedAlreadyThere() async {
+        let client = WorkflowClient(acmeTask, at: "Testing", names: spanish)
+        let outcome = await JiraMove(client: client).run("ACME-63335", to: .testing)
+        #expect(outcome == .moved(to: spanish["Testing"]!))
+        #expect(client.posted.isEmpty, "a misread lane walked the issue to Done and left it there")
+    }
+
+    @Test("a Spanish account moves In Progress to Testing by way of Reviewing")
+    func translatedInProgressToTesting() async {
+        let client = WorkflowClient(acmeTask, at: "In Progress", names: spanish)
+        let outcome = await JiraMove(client: client).run("ACME-1", to: .testing)
+        #expect(outcome == .moved(to: spanish["Testing"]!))
+        #expect(client.posted == ["61", "71"])
+    }
+
+    @Test("a Spanish account moves Done back to To do through Testing and New")
+    func translatedBackwards() async {
+        let client = WorkflowClient(acmeTask, at: "Done", names: spanish)
+        let outcome = await JiraMove(client: client).run("ACME-1", to: .toDo)
+        #expect(outcome == .moved(to: spanish["New"]!))
+        #expect(client.posted == ["71", "41"])
     }
 }

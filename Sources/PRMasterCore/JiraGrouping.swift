@@ -51,9 +51,18 @@ public enum JiraGrouping {
             .contains { words.contains(String($0)) }
     }
 
+    /// Jira names statuses in each user's profile language, but the ids are the site's own.
+    static let laneByStatusID: [String: JiraLane] = [
+        "10000": .toDo, "10029": .toDo, "3": .inProgress,
+        "1": .reviewing, "6": .testing, "10001": .done,
+    ]
+
     /// The one place a status is given a column, so grouping and choosing where
     /// a move lands cannot disagree. `nil` is parked work, shown nowhere.
-    public static func lane(statusName: String, category: JiraStatusCategory) -> JiraLane? {
+    public static func lane(
+        statusName: String, category: JiraStatusCategory, statusID: String? = nil
+    ) -> JiraLane? {
+        if let statusID, let lane = laneByStatusID[statusID] { return lane }
         switch category {
         case .toDo:                 return isStartable(statusName) ? .toDo : nil
         case .inProgress, .unknown:
@@ -64,7 +73,7 @@ public enum JiraGrouping {
     }
 
     public static func lane(for issue: JiraIssue) -> JiraLane? {
-        lane(statusName: issue.statusName, category: issue.statusCategory)
+        lane(statusName: issue.statusName, category: issue.statusCategory, statusID: issue.statusID)
     }
 
     /// Filtered against the window here as well as in the query, because a poll

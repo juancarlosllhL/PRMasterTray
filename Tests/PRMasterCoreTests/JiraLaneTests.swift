@@ -27,6 +27,39 @@ struct JiraLaneTests {
         #expect(JiraGrouping.lane(statusName: name, category: category) == expected)
     }
 
+    /// Jira names statuses in each user's profile language: a Spanish account reads "Pruebas".
+    static let translated: [(String, String, JiraStatusCategory, JiraLane?)] = [
+        ("10000", "Tareas por hacer", .toDo, .toDo),
+        ("10029", "Nueva", .toDo, .toDo),
+        ("10032", "En espera", .toDo, nil),
+        ("3", "En curso", .inProgress, .inProgress),
+        ("1", "En revisión", .inProgress, .reviewing),
+        ("6", "Pruebas", .inProgress, .testing),
+        ("10001", "Hecho", .done, .done),
+    ]
+
+    @Test("an ACME status keeps its lane whatever language names it", arguments: translated)
+    func translatedLanes(id: String, name: String, category: JiraStatusCategory, expected: JiraLane?) {
+        #expect(JiraGrouping.lane(statusName: name, category: category, statusID: id) == expected)
+    }
+
+    @Test("a status outside the ACME table still goes by its name")
+    func unknownIDGoesByName() {
+        #expect(JiraGrouping.lane(statusName: "QA Testing", category: .inProgress, statusID: "99999") == .testing)
+        #expect(JiraGrouping.lane(statusName: "Pruebas", category: .inProgress, statusID: nil) == .inProgress)
+    }
+
+    @Test("a Spanish account's issue in Testing is grouped under Testing")
+    func translatedIssueGroups() {
+        let issue = JiraIssue(
+            key: "ACME-63335", summary: "s", statusName: "Pruebas", statusID: "6",
+            statusCategory: .inProgress, issueType: "Story", updatedAt: .distantPast
+        )
+        let groups = JiraGrouping.group([issue], window: .default, now: .distantPast)
+        #expect(groups.testing.map(\.key) == ["ACME-63335"])
+        #expect(groups.inProgress.isEmpty)
+    }
+
     @Test("lanes run in the order work moves, and the titles are the column titles")
     func orderAndTitles() {
         #expect(JiraLane.allCases.sorted() == [.toDo, .inProgress, .reviewing, .testing, .done])

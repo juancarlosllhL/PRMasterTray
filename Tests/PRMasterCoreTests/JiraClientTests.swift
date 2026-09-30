@@ -13,7 +13,7 @@ private func page(_ keys: [String], isLast: Bool, token: String? = nil) -> Strin
         """
         {"id":"1","key":"\($0)","fields":{
           "summary":"a summary",
-          "status":{"name":"On Hold","statusCategory":{"key":"new","name":"To Do"}},
+          "status":{"id":"10032","name":"On Hold","statusCategory":{"key":"new","name":"To Do"}},
           "issuetype":{"name":"Task"},
           "updated":"2026-09-10T08:00:00.000+0000"}}
         """
@@ -96,6 +96,7 @@ struct JiraClientTests {
         #expect(issues.count == 1)
         #expect(issues.first?.key == "ACME-1")
         #expect(issues.first?.statusName == "On Hold")
+        #expect(issues.first?.statusID == "10032")
         #expect(issues.first?.statusCategory == .toDo)
         #expect(issues.first?.issueType == "Task")
     }

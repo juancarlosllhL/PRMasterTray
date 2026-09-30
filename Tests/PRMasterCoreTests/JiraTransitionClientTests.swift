@@ -64,6 +64,19 @@ struct JiraTransitionClientTests {
         #expect(items.contains(URLQueryItem(name: "fields", value: "status")))
     }
 
+    @Test("the status id is read for the issue and for every destination")
+    func readsStatusIDs() async throws {
+        let body = """
+        {"fields":{"status":{"id":"6","name":"Pruebas","statusCategory":{"key":"indeterminate"}}},
+         "transitions":[{"id":"61","to":{"id":"1","name":"En revisión","statusCategory":{"key":"indeterminate"}}}]}
+        """
+        let (client, stub) = try client([ok(body)])
+        let (status, transitions) = try await client.transitions(for: "ACME-63335")
+        #expect(status == JiraStatus(name: "Pruebas", category: .inProgress, id: "6"))
+        #expect(transitions.map(\.to.id) == ["1"])
+        withExtendedLifetime(stub) {}
+    }
+
     /// Jira calls all three optional, yet a validator demands them, so the app asks for every one.
     @Test("a screen's fields come back in a stable order with the kind of each")
     func readsScreenFields() async throws {

@@ -193,6 +193,7 @@ struct IssueNode: Decodable {
         }
 
         struct Status: Decodable {
+            let id: String?
             let name: String?
             let statusCategory: Category?
 
@@ -211,6 +212,7 @@ struct IssueNode: Decodable {
             key: key,
             summary: fields.summary ?? "",
             statusName: fields.status?.name ?? "",
+            statusID: fields.status?.id,
             statusCategory: fields.status?.statusCategory?.key
                 .flatMap(JiraStatusCategory.init(rawValue:)) ?? .unknown,
             issueType: fields.issuetype?.name ?? "",
@@ -277,7 +279,8 @@ struct TransitionsPage: Decodable {
     private static func status(_ raw: IssueNode.Fields.Status) -> JiraStatus {
         JiraStatus(
             name: raw.name ?? "",
-            category: raw.statusCategory?.key.flatMap(JiraStatusCategory.init(rawValue:)) ?? .unknown
+            category: raw.statusCategory?.key.flatMap(JiraStatusCategory.init(rawValue:)) ?? .unknown,
+            id: raw.id
         )
     }
 }

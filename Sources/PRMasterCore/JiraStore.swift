@@ -232,7 +232,7 @@ public final class JiraStore {
         let old = issues[index]
         issues[index] = JiraIssue(
             key: old.key, summary: old.summary,
-            statusName: status.name, statusCategory: status.category,
+            statusName: status.name, statusID: status.id, statusCategory: status.category,
             issueType: old.issueType, priority: old.priority,
             updatedAt: now(), createdAt: old.createdAt,
             categoryChangedAt: status.category == old.statusCategory ? old.categoryChangedAt : now()

@@ -3,13 +3,15 @@ import Foundation
 public struct JiraStatus: Sendable, Equatable {
     public let name: String
     public let category: JiraStatusCategory
+    public let id: String?
 
-    public init(name: String, category: JiraStatusCategory) {
+    public init(name: String, category: JiraStatusCategory, id: String? = nil) {
         self.name = name
         self.category = category
+        self.id = id
     }
 
-    public var lane: JiraLane? { JiraGrouping.lane(statusName: name, category: category) }
+    public var lane: JiraLane? { JiraGrouping.lane(statusName: name, category: category, statusID: id) }
 }
 
 public struct JiraTransition: Sendable, Equatable {
@@ -75,6 +77,7 @@ public enum JiraRoute {
 
     /// Cancel is global and category done, and some sites ask no resolution for it.
     private static func namesALane(_ status: JiraStatus) -> Bool {
-        JiraLane.allCases.contains { $0.title.caseInsensitiveCompare(status.name) == .orderedSame }
+        if let id = status.id, JiraGrouping.laneByStatusID[id] != nil { return true }
+        return JiraLane.allCases.contains { $0.title.caseInsensitiveCompare(status.name) == .orderedSame }
     }
 }
