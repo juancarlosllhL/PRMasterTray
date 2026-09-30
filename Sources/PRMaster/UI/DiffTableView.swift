@@ -18,9 +18,12 @@ struct DiffTableView: NSViewRepresentable {
     let ligatures: Bool
     let matches: [DiffMatch]
     let currentMatch: DiffMatch?
+    /// Nil when viewed state cannot be saved, which hides the headers' checkboxes.
+    let viewed: Set<String>?
     @Binding var scrollTarget: String?
     let onToggleFile: (String) -> Void
     let onTopFile: (String) -> Void
+    let onViewed: (String, Bool) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -68,6 +71,7 @@ struct DiffTableView: NSViewRepresentable {
         let pinned = PinnedHeaderView()
         pinned.isHidden = true
         pinned.onClick = { [weak coordinator = context.coordinator] in coordinator?.pinnedHeaderClicked() }
+        pinned.onViewed = { [weak coordinator = context.coordinator] path, viewed in coordinator?.onViewed?(path, viewed) }
         scroll.addSubview(pinned, positioned: .below, relativeTo: scroll.verticalScroller)
         context.coordinator.pinned = pinned
         context.coordinator.table = table
@@ -78,8 +82,9 @@ struct DiffTableView: NSViewRepresentable {
         let coordinator = context.coordinator
         coordinator.onToggleFile = onToggleFile
         coordinator.onTopFile = onTopFile
+        coordinator.onViewed = onViewed
         coordinator.update(rows: rows, layout: layout, palette: palette, metrics: metrics,
-                           matches: matches, currentMatch: currentMatch)
+                           matches: matches, currentMatch: currentMatch, viewed: viewed)
         guard let target = scrollTarget else { return }
         coordinator.scroll(toFile: target)
         if let offset = Debug.scrollOffset {
@@ -97,6 +102,8 @@ struct DiffTableView: NSViewRepresentable {
         weak var pinned: PinnedHeaderView?
         var onToggleFile: ((String) -> Void)?
         var onTopFile: ((String) -> Void)?
+        var onViewed: ((String, Bool) -> Void)?
+        private var viewed: Set<String>?
         private var topFile: String?
         private(set) var rows: [DiffRow] = []
         private var layout: DiffLayout?
@@ -119,13 +126,14 @@ struct DiffTableView: NSViewRepresentable {
 
         func update(
             rows: [DiffRow], layout: DiffLayout, palette: ResolvedPalette, metrics: DiffMetrics,
-            matches: [DiffMatch], currentMatch: DiffMatch?
+            matches: [DiffMatch], currentMatch: DiffMatch?, viewed: Set<String>?
         ) {
             guard let table else { return }
             let rowsChanged = rows != self.rows
             let wrapsChanged = layout != self.layout || metrics !== self.metrics
                 || (rowsChanged && !DiffRows.wrapTheSame(rows, self.rows))
-            let contentChanged = rowsChanged || wrapsChanged || palette != self.palette
+                || (viewed == nil) != (self.viewed == nil)
+            let contentChanged = rowsChanged || wrapsChanged || palette != self.palette || viewed != self.viewed
             let currentMoved = currentMatch != self.currentMatch
             guard contentChanged || currentMoved || matches != self.matches else { return }
             if wrapsChanged { textSelection = nil }
@@ -139,6 +147,7 @@ struct DiffTableView: NSViewRepresentable {
                 self.rows = rows
                 self.layout = layout
                 self.palette = palette
+                self.viewed = viewed
                 rewrap(table, force: wrapsChanged)
             }
             self.matches = matches
@@ -193,7 +202,8 @@ struct DiffTableView: NSViewRepresentable {
                 .map { min(0, table.rect(ofRow: $0).minY - top - height) } ?? 0
             pinned.configure(
                 path: path, segments: wraps[header].segments[0],
-                palette: palette ?? .init(appearance: .light, contrast: .standard), metrics: metrics
+                palette: palette ?? .init(appearance: .light, contrast: .standard), metrics: metrics,
+                isViewed: viewed.map { $0.contains(path) }
             )
             let frame = NSRect(x: clip.bounds.minX, y: top + push, width: clip.bounds.width, height: height)
             pinned.frame = scroll.convert(frame, from: clip)
@@ -246,7 +256,8 @@ struct DiffTableView: NSViewRepresentable {
             let columnWidth = width / CGFloat(max(table.tableColumns.count, 1))
             let code = table.tableColumns.map { _ in metrics.capacity(columnWidth, gutter: gutter) }
             let full = metrics.capacity(width, gutter: 0)
-            let capacities = code + [full]
+            let fileHeader = viewed == nil ? full : metrics.capacity(width - DiffCellView.viewedBoxWidth, gutter: 0)
+            let capacities = code + [full, fileHeader]
             guard force || capacities != self.capacities else { return }
             self.capacities = capacities
 
@@ -256,7 +267,7 @@ struct DiffTableView: NSViewRepresentable {
             wraps = rows.map { row in
                 let segments: [[Range<Int>]]
                 switch row {
-                case .fileHeader(let path): segments = [wrap(path, full)]
+                case .fileHeader(let path): segments = [wrap(path, fileHeader)]
                 case .section(let section, let count): segments = [wrap(section.heading(count: count), full)]
                 case .hunkHeader(let text): segments = [wrap(text, full)]
                 case .omitted(let reason): segments = [wrap(DiffCellView.explanation(reason), full)]
@@ -347,10 +358,15 @@ struct DiffTableView: NSViewRepresentable {
                 .filter { $0.column == columnIndex }
                 .map { (range: $0.range, isCurrent: $0 == currentMatch) }
             let selected = textSelection.flatMap { $0.column == columnIndex ? $0.range(inRow: row, in: rows) : nil }
+            var viewedBox: DiffCellView.ViewedBox?
+            if case .fileHeader(let path) = rows[row], let viewed {
+                viewedBox = DiffCellView.ViewedBox(isOn: viewed.contains(path)) { [weak self] in self?.onViewed?(path, $0) }
+            }
             cell.configure(
                 content(for: rows[row], column: tableColumn),
                 palette: palette ?? .init(appearance: .light, contrast: .standard),
-                segments: segments, metrics: metrics, highlights: highlights, selection: selected
+                segments: segments, metrics: metrics, highlights: highlights, selection: selected,
+                viewedBox: viewedBox
             )
         }
 
@@ -528,6 +544,7 @@ enum SearchHighlight {
 /// The current file's header, drawn above the rows while its own row is scrolled away.
 final class PinnedHeaderView: NSView {
     var onClick: (() -> Void)?
+    var onViewed: ((String, Bool) -> Void)?
     private(set) var path: String?
     private let cell = DiffCellView()
 
@@ -541,10 +558,16 @@ final class PinnedHeaderView: NSView {
 
     required init?(coder: NSCoder) { nil }
 
-    func configure(path: String, segments: [Range<Int>], palette: ResolvedPalette, metrics: DiffMetrics) {
+    func configure(
+        path: String, segments: [Range<Int>], palette: ResolvedPalette, metrics: DiffMetrics, isViewed: Bool?
+    ) {
         self.path = path
         cell.frame = bounds
-        cell.configure(.header(path, isFile: true), palette: palette, segments: segments, metrics: metrics)
+        let box = isViewed.map { isOn in
+            DiffCellView.ViewedBox(isOn: isOn) { [weak self] in self?.onViewed?(path, $0) }
+        }
+        cell.configure(.header(path, isFile: true), palette: palette, segments: segments, metrics: metrics,
+                       viewedBox: box)
         setAccessibilityLabel(path)
         needsDisplay = true
     }
@@ -555,7 +578,9 @@ final class PinnedHeaderView: NSView {
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        isHidden || !frame.contains(point) ? nil : self
+        guard !isHidden, frame.contains(point) else { return nil }
+        let hit = super.hitTest(point)
+        return hit is NSButton ? hit : self
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -674,7 +699,17 @@ final class DiffCellView: NSTableCellView {
         case blank
     }
 
+    struct ViewedBox {
+        let isOn: Bool
+        let set: (Bool) -> Void
+    }
+
+    /// Room kept at a file header's trailing edge for its Viewed checkbox.
+    static let viewedBoxWidth: CGFloat = 84
+
     private var content: Content = .blank
+    private var viewedBox: ViewedBox?
+    private var checkbox: NSButton?
     private var segments: [Range<Int>] = [0..<0]
     private var highlights: [(range: Range<Int>, isCurrent: Bool)] = []
     private var selection: Range<Int>?
@@ -689,9 +724,12 @@ final class DiffCellView: NSTableCellView {
 
     func configure(
         _ content: Content, palette: ResolvedPalette, segments: [Range<Int>], metrics: DiffMetrics,
-        highlights: [(range: Range<Int>, isCurrent: Bool)] = [], selection: Range<Int>? = nil
+        highlights: [(range: Range<Int>, isCurrent: Bool)] = [], selection: Range<Int>? = nil,
+        viewedBox: ViewedBox? = nil
     ) {
         self.metrics = metrics
+        self.viewedBox = viewedBox
+        showCheckbox(viewedBox)
         self.highlights = highlights
         self.selection = selection
         self.content = content
@@ -699,6 +737,39 @@ final class DiffCellView: NSTableCellView {
         self.segments = segments
         setAccessibilityLabel(spokenText)
         needsDisplay = true
+    }
+
+    /// Made on the first file header a cell shows, so line cells stay free of subviews.
+    private func showCheckbox(_ box: ViewedBox?) {
+        guard let box else {
+            checkbox?.isHidden = true
+            return
+        }
+        let button = checkbox ?? {
+            let button = NSButton(checkboxWithTitle: "Viewed", target: self, action: #selector(checkboxToggled(_:)))
+            button.controlSize = .small
+            button.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+            addSubview(button)
+            checkbox = button
+            return button
+        }()
+        button.state = box.isOn ? .on : .off
+        button.isHidden = false
+        needsLayout = true
+    }
+
+    @objc private func checkboxToggled(_ sender: NSButton) {
+        viewedBox?.set(sender.state == .on)
+    }
+
+    override func layout() {
+        super.layout()
+        guard let checkbox, !checkbox.isHidden else { return }
+        let size = checkbox.fittingSize
+        let baseline = DiffMetrics.verticalPadding + NSLayoutManager().defaultBaselineOffset(for: metrics.boldFont)
+        checkbox.frame = NSRect(x: bounds.maxX - size.width - DiffMetrics.padding * 2,
+                                y: (baseline - checkbox.firstBaselineOffsetFromTop).rounded(),
+                                width: size.width, height: size.height)
     }
 
     private var isSelected: Bool { (superview as? NSTableRowView)?.isSelected ?? false }

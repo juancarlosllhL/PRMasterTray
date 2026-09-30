@@ -76,6 +76,8 @@ public final class DiffStore {
     public var viewedReviewCount: Int { reviewFiles.filter { $0.viewed == .viewed }.count }
     public var setAsideCount: Int { (diff?.files.count ?? 0) - reviewFiles.count }
 
+    public var viewedPaths: Set<String> { Set((diff?.files ?? []).filter { $0.viewed == .viewed }.map(\.path)) }
+
     public var collapsed: Set<String> { Set((diff?.files ?? []).map(\.path).filter(isCollapsed)) }
 
     /// Review files stay open until viewed; set-aside files stay closed until opened.

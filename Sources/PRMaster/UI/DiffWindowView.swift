@@ -275,8 +275,10 @@ struct DiffWindowView: View {
                 fontSize: appearance.diffFontSize,
                 ligatures: appearance.diffLigatures,
                 matches: store.findMatches, currentMatch: store.currentFindMatch,
+                viewed: store.canMarkViewed ? store.viewedPaths : nil,
                 scrollTarget: $scrollTarget, onToggleFile: store.toggleCollapsed,
-                onTopFile: store.prioritise
+                onTopFile: store.prioritise,
+                onViewed: { path, viewed in Task { await store.setViewed(path, viewed) } }
             )
         }
     }

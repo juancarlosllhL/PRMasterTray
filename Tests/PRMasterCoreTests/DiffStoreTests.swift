@@ -103,6 +103,7 @@ struct DiffStoreTests {
         #expect(store.diff?.files[0].viewed == .viewed)
         #expect(store.collapsed.contains("a.swift"))
         #expect(source.viewedWrites.map(\.path) == ["a.swift"])
+        #expect(store.viewedPaths == ["a.swift"], "the header's checkbox reads the same state as the sidebar")
     }
 
     @Test("a refused viewed toggle reverts and says so on that file")
@@ -112,6 +113,7 @@ struct DiffStoreTests {
         #expect(store.diff?.files[0].viewed == .unviewed)
         #expect(!store.collapsed.contains("a.swift"))
         #expect(store.viewedFailures["a.swift"] == "Resource not accessible")
+        #expect(store.viewedPaths.isEmpty)
     }
 
     @Test("a successful toggle clears an earlier failure on that file")
