@@ -89,7 +89,7 @@ public actor JiraClient {
             resolvingAgainstBaseURL: false
         )!
         components.queryItems = [
-            URLQueryItem(name: "fields", value: "status"),
+            URLQueryItem(name: "fields", value: "status,issuetype"),
             URLQueryItem(name: "expand", value: "transitions.fields"),
         ]
         let data = try await send(request(for: components.url!), refusing: true)
@@ -203,6 +203,7 @@ struct IssueNode: Decodable {
         }
 
         struct IssueType: Decodable {
+            let id: String?
             let name: String?
         }
     }
@@ -228,7 +229,13 @@ struct TransitionsPage: Decodable {
     let fields: Fields
     let transitions: [Node]
 
-    struct Fields: Decodable { let status: IssueNode.Fields.Status? }
+    struct Fields: Decodable {
+        let status: IssueNode.Fields.Status?
+        let issuetype: IssueNode.Fields.IssueType?
+    }
+
+    /// Only the ACME Bug workflow has a validator demanding the fields Jira calls optional.
+    private static let bugTypeID = "10004"
 
     struct Node: Decodable {
         let id: String
@@ -261,6 +268,7 @@ struct TransitionsPage: Decodable {
         guard let status = fields.status, status.name?.isEmpty == false else {
             throw PRMasterError.decoding("transitions response carried no status")
         }
+        let isBug = fields.issuetype?.id == Self.bugTypeID
         let transitions = transitions.map { node in
             let screen = (node.fields ?? [:]).sorted { $0.key < $1.key }
             return JiraTransition(
@@ -269,7 +277,8 @@ struct TransitionsPage: Decodable {
                 isGlobal: node.isGlobal ?? false,
                 needsInput: screen.contains { $0.value.required == true && $0.value.kind == nil },
                 fields: screen.compactMap { id, field in
-                    field.kind.map { JiraField(id: id, name: field.name ?? id, kind: $0) }
+                    guard isBug || field.required == true else { return nil }
+                    return field.kind.map { JiraField(id: id, name: field.name ?? id, kind: $0) }
                 }
             )
         }

@@ -21,7 +21,8 @@ private func ok(_ body: String) -> StubOutcome {
 
 /// Trimmed from the live answer for ACME-62565, a Bug in Reviewing.
 private let reviewingBug = """
-{"key":"ACME-62565","fields":{"status":{"name":"Reviewing","statusCategory":{"key":"indeterminate"}}},
+{"key":"ACME-62565","fields":{"status":{"name":"Reviewing","statusCategory":{"key":"indeterminate"}},
+ "issuetype":{"id":"10004","name":"Bug"}},
  "transitions":[
   {"id":"21","name":"Canceled","isGlobal":true,"hasScreen":true,
    "to":{"name":"Canceled","statusCategory":{"key":"done"}},
@@ -40,6 +41,20 @@ private let reviewingBug = """
    "to":{"name":"In Progress","statusCategory":{"key":"indeterminate"}}}
  ]}
 """
+
+/// Trimmed from the live answer for LAN-22431, a Vulnerability in Reviewing.
+private func testingScreen(issueType: String, changelogRequired: Bool) -> String {
+    """
+    {"fields":{"status":{"name":"Reviewing","statusCategory":{"key":"indeterminate"}},"issuetype":\(issueType)},
+     "transitions":[{"id":"71","to":{"name":"Testing","statusCategory":{"key":"indeterminate"}},
+      "fields":{
+       "customfield_10346":{"required":false,"name":"Changelog status",
+         "schema":{"type":"option","custom":"com.atlassian.jira.plugin.system.customfieldtypes:select"},
+         "allowedValues":[{"value":"Internal"},{"value":"External"}]},
+       "customfield_10039":{"required":\(changelogRequired),"name":"Changelog",
+         "schema":{"type":"string","custom":"com.atlassian.jira.plugin.system.customfieldtypes:textarea"}}}}]}
+    """
+}
 
 @Suite("JiraClient transitions")
 struct JiraTransitionClientTests {
@@ -61,7 +76,7 @@ struct JiraTransitionClientTests {
         #expect(url.path == "/rest/api/3/issue/ACME-62565")
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         #expect(items.contains(URLQueryItem(name: "expand", value: "transitions.fields")))
-        #expect(items.contains(URLQueryItem(name: "fields", value: "status")))
+        #expect(items.contains(URLQueryItem(name: "fields", value: "status,issuetype")))
     }
 
     @Test("the status id is read for the issue and for every destination")
@@ -86,6 +101,34 @@ struct JiraTransitionClientTests {
         #expect(fields.map(\.name) == ["Changelog", "Remark", "Changelog status"])
         #expect(fields.map(\.kind) == [.richText, .richText, .option(["Internal", "External"])])
         #expect(transitions[0].fields.isEmpty, "a field the app cannot fill is not asked for")
+        withExtendedLifetime(stub) {}
+    }
+
+    /// The Vulnerability workflow has no validator: half of those Done have no Changelog.
+    @Test("a screen Jira calls optional asks nothing of a type other than Bug", arguments: [
+        #"{"id":"10093","name":"Vulnerability"}"#, #"{"id":"10003","name":"Sub-task"}"#,
+    ])
+    func optionalScreenOutsideBugs(issueType: String) async throws {
+        let (client, stub) = try client([ok(testingScreen(issueType: issueType, changelogRequired: false))])
+        let (_, transitions) = try await client.transitions(for: "LAN-22431")
+        #expect(transitions[0].fields.isEmpty)
+        withExtendedLifetime(stub) {}
+    }
+
+    @Test("a field Jira itself requires is asked for on any type")
+    func requiredOutsideBugs() async throws {
+        let body = testingScreen(issueType: #"{"id":"10093","name":"Vulnerability"}"#, changelogRequired: true)
+        let (client, stub) = try client([ok(body)])
+        let (_, transitions) = try await client.transitions(for: "LAN-22431")
+        #expect(transitions[0].fields.map(\.name) == ["Changelog"])
+        withExtendedLifetime(stub) {}
+    }
+
+    @Test("a Bug is known by its type id, whatever the account's language calls it")
+    func translatedBug() async throws {
+        let (client, stub) = try client([ok(testingScreen(issueType: #"{"id":"10004","name":"Error"}"#, changelogRequired: false))])
+        let (_, transitions) = try await client.transitions(for: "ACME-62565")
+        #expect(transitions[0].fields.map(\.name) == ["Changelog", "Changelog status"])
         withExtendedLifetime(stub) {}
     }
 
