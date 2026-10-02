@@ -112,6 +112,17 @@ enum Debug {
     /// live API responses, so a fixture row can carry a real node ID and a real
     /// head oid — merging from one would merge a real pull request, and
     /// expectedHeadOid would not stop it because the oid is real too.
+    /// `PRMASTER_HEATMAP_FIXTURE=1` scores review windows by keyword, offline,
+    /// so the heatmap can be screenshotted without an OpenRouter key.
+    static var heatmapFixture: Bool {
+        ProcessInfo.processInfo.environment["PRMASTER_HEATMAP_FIXTURE"] == "1"
+    }
+
+    /// `PRMASTER_SCORE=1` presses Score as soon as the review window has loaded.
+    static var autoScore: Bool {
+        ProcessInfo.processInfo.environment["PRMASTER_SCORE"] == "1"
+    }
+
     static var overridesActive: Bool {
         fixturePath != nil || fakeError != nil || failAfter != nil || demoMerge != nil || diffFixturePath != nil
     }

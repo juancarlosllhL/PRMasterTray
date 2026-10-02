@@ -61,6 +61,7 @@ struct DiffWindowView: View {
     let live: () -> DiffLiveState
     let appearance: AppearanceStore
     let onOpenOnGitHub: () -> Void
+    var onOpenSettings: () -> Void = {}
     var initialFile: String?
 
     var paletteInputs = PaletteInputs()
@@ -105,6 +106,7 @@ struct DiffWindowView: View {
         .environment(\.palette, palette)
         .task {
             await store.load()
+            if Debug.autoScore { store.requestScoring() }
             selectedFile = initialFile
             if let query = Debug.findQuery { Debug.typeFind(query) }
         }
@@ -116,6 +118,9 @@ struct DiffWindowView: View {
         }
         .onChange(of: SyntaxTheme(appearance: palette.appearance, contrast: palette.contrast), initial: true) { _, theme in
             store.setTheme(theme)
+        }
+        .onChange(of: appearance.heatmapEnabled, initial: true) { _, enabled in
+            store.setHeatmapEnabled(enabled)
         }
         .onChange(of: scopeInputs, initial: true) { _, inputs in
             store.setScope(FileScope(patterns: inputs.patterns, gitAttributes: inputs.gitAttributes))
@@ -163,8 +168,38 @@ struct DiffWindowView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             Divider()
+            if store.showsHeat, let status = heatStatus {
+                status
+                Divider()
+            }
             fileList(palette)
         }
+    }
+
+    /// Only while something is unfinished or has gone wrong: silence means every file is scored.
+    private var heatStatus: AnyView? {
+        if let stopped = store.scoringStopped {
+            return AnyView(HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                Text(verbatim: "Heatmap off: \(stopped)")
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                Button("Settings…", action: onOpenSettings).controlSize(.small)
+            }
+            .font(.system(size: 11))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6))
+        }
+        guard let progress = store.scoringProgress else { return nil }
+        return AnyView(HStack(spacing: 6) {
+            ProgressView().controlSize(.mini)
+            Text(verbatim: "Scoring review importance: \(progress.scored) of \(progress.total) files")
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+        .font(.system(size: 11))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6))
     }
 
     private func fileList(_ palette: ResolvedPalette) -> some View {
@@ -204,6 +239,7 @@ struct DiffWindowView: View {
             highlights: DiffSearch.pathHighlights(of: fileFilter, in: file.path),
             canMarkViewed: store.canMarkViewed,
             failure: store.viewedFailures[file.path],
+            heat: store.showsHeat ? store.heat[file.path] : nil,
             onViewed: { viewed in Task { await store.setViewed(file.path, viewed) } }
         )
         .tag(file.path)
@@ -367,6 +403,11 @@ struct DiffTitleActions: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
+            if store.canRequestScoring {
+                Button { store.requestScoring() } label: { Label("Score", systemImage: "flame") }
+                    .help("Send the changed lines to Jev on OpenRouter and colour them by how closely to review them")
+                    .disabled(store.phase != .loaded)
+            }
             Button(action: onOpenOnGitHub) { Image(systemName: "arrow.up.right.square") }
                 .buttonStyle(.accessoryBar)
                 .help("Open on GitHub")
@@ -383,6 +424,7 @@ struct DiffTitleActions: View {
         .padding(.horizontal, 10)
         .frame(maxHeight: .infinity)
         .onChange(of: blocker) { DispatchQueue.main.async(execute: onResize) }
+        .onChange(of: store.canRequestScoring) { DispatchQueue.main.async(execute: onResize) }
     }
 }
 
@@ -391,6 +433,7 @@ private struct DiffFileRow: View {
     let highlights: (directory: [Range<Int>], name: [Range<Int>])
     let canMarkViewed: Bool
     let failure: String?
+    let heat: FileHeat?
     let onViewed: (Bool) -> Void
     @Environment(\.palette) private var palette
 
@@ -427,6 +470,8 @@ private struct DiffFileRow: View {
                 Text(verbatim: "−\(file.deletions)").foregroundStyle(palette.color(.red))
             }
             .font(.system(size: 10, design: .monospaced))
+            heatBadge
+                .frame(width: 10)
             if canMarkViewed {
                 Toggle("Viewed", isOn: Binding(get: { file.viewed == .viewed }, set: { onViewed($0) }))
                     .toggleStyle(.checkbox)
@@ -435,6 +480,32 @@ private struct DiffFileRow: View {
             }
         }
         .help(file.previousPath.map { "Renamed from \($0)" } ?? file.path)
+    }
+
+    @ViewBuilder
+    private var heatBadge: some View {
+        switch heat {
+        case .scored(let level?):
+            Circle()
+                .fill(Color(nsColor: Palette.heatStripe(level, appearance: palette.appearance, contrast: palette.contrast).nsColor))
+                .frame(width: 7, height: 7)
+                .help("Most important change: \(level.label)")
+                .accessibilityLabel("Review importance: \(level.label)")
+        case .waiting:
+            Circle()
+                .strokeBorder(.secondary, lineWidth: 1)
+                .frame(width: 7, height: 7)
+                .help("Waiting to be scored")
+                .accessibilityLabel("Review importance: waiting")
+        case .failed(let reason):
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 9))
+                .foregroundStyle(palette.color(.orange))
+                .help(reason)
+                .accessibilityLabel("Review importance unavailable: \(reason)")
+        case .scored(nil), nil:
+            EmptyView()
+        }
     }
 
     private var directory: String {
@@ -448,6 +519,17 @@ private struct DiffFileRow: View {
         case .removed: return "minus.square"
         case .renamed: return "arrow.right.square"
         case .modified, .changed, .unchanged: return "square.and.pencil"
+        }
+    }
+}
+
+extension Importance {
+    var label: String {
+        switch self {
+        case .glue: return "glue"
+        case .routine: return "routine"
+        case .logic: return "business logic"
+        case .sensitive: return "sensitive"
         }
     }
 }

@@ -104,3 +104,36 @@ extension RGB {
         )
     }
 }
+
+extension Palette {
+
+    /// The review-importance stripe in a changed line's gutter. Every colour
+    /// clears 3:1 against every line background, the WCAG floor for graphics.
+    public static func heatStripe(_ level: Importance, appearance: AppearanceMode, contrast: ContrastMode) -> RGB {
+        switch (appearance, contrast, level) {
+        case (.light, .monochrome, _): return .hex(0x595959)
+        case (.dark, .monochrome, _): return .hex(0xA6A6A6)
+        case (.light, .standard, .glue): return .hex(0x6E7781)
+        case (.light, .standard, .routine): return .hex(0x0969DA)
+        case (.light, .standard, .logic): return .hex(0x9A6700)
+        case (.light, .standard, .sensitive): return .hex(0xCF222E)
+        case (.light, .increased, .glue): return .hex(0x57606A)
+        case (.light, .increased, .routine): return .hex(0x0550AE)
+        case (.light, .increased, .logic): return .hex(0x7D4E00)
+        case (.light, .increased, .sensitive): return .hex(0xA40E26)
+        case (.dark, .standard, .glue): return .hex(0x8B949E)
+        case (.dark, .standard, .routine): return .hex(0x4493F8)
+        case (.dark, .standard, .logic): return .hex(0xD29922)
+        case (.dark, .standard, .sensitive): return .hex(0xF85149)
+        case (.dark, .increased, .glue): return .hex(0xB7BDC8)
+        case (.dark, .increased, .routine): return .hex(0x71B7FF)
+        case (.dark, .increased, .logic): return .hex(0xF0B72F)
+        case (.dark, .increased, .sensitive): return .hex(0xFF6A69)
+        }
+    }
+
+    /// Points, from 1.5 at glue to 5 at sensitive. The exact score, where colour only shows its level.
+    public static func heatStripeWidth(score: Double) -> Double {
+        1.5 + min(max(score, 0), 3) * 3.5 / 3
+    }
+}

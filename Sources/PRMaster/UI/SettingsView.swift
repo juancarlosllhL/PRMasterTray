@@ -17,6 +17,7 @@ struct SettingsView: View {
     @Bindable var appearance: AppearanceStore
     @Bindable var jira: JiraAccountStore
     @Bindable var jiraStore: JiraStore
+    @Bindable var heatmap: HeatmapAccountStore
 
     private enum Tab: String {
         case pullRequests, teams, jira, appearance, diffViewer
@@ -40,7 +41,7 @@ struct SettingsView: View {
             appearanceSettings
                 .tabItem { Label("Appearance", systemImage: "paintbrush") }
                 .tag(Tab.appearance)
-            DiffViewerSettings(appearance: appearance)
+            DiffViewerSettings(appearance: appearance, heatmap: heatmap)
                 .tabItem { Label("Diff Viewer", systemImage: "doc.text.magnifyingglass") }
                 .tag(Tab.diffViewer)
         }

@@ -11,6 +11,8 @@ public struct DiffLine: Sendable, Equatable {
     public let text: String
     public let noNewlineAtEnd: Bool
     public var tokens: [TokenRange]
+    /// Set only on the rows the store builds, never on the loaded diff.
+    public var heat: LineHeat? = nil
 
     public init(
         kind: Kind, oldNumber: Int?, newNumber: Int?, text: String,
@@ -45,6 +47,10 @@ public struct Hunk: Sendable, Equatable {
         self.newCount = newCount
         self.context = context
         self.lines = lines
+    }
+
+    func with(lines: [DiffLine]) -> Hunk {
+        Hunk(oldStart: oldStart, oldCount: oldCount, newStart: newStart, newCount: newCount, context: context, lines: lines)
     }
 }
 
@@ -95,5 +101,10 @@ public struct DiffFile: Sendable, Equatable, Identifiable {
         self.deletions = deletions
         self.content = content
         self.viewed = viewed
+    }
+
+    func with(content: DiffContent) -> DiffFile {
+        DiffFile(path: path, previousPath: previousPath, change: change, additions: additions,
+                 deletions: deletions, content: content, viewed: viewed)
     }
 }

@@ -139,6 +139,10 @@ public protocol PreferenceStoring: Sendable {
     func setFileScopePatterns(_ lines: [String]?, for section: FileSection)
     func honoursGitAttributes() -> Bool
     func setHonoursGitAttributes(_ value: Bool)
+    func heatmapEnabled() -> Bool
+    func setHeatmapEnabled(_ value: Bool)
+    func heatmapBaseURL() -> String?
+    func setHeatmapBaseURL(_ value: String?)
     /// The teams discovered last time. Stored so a failed discovery falls back to
     /// the last good list instead of emptying the section, and so the settings
     /// window has something to show before the first fetch lands.
@@ -802,6 +806,8 @@ public struct UserDefaultsPreferences: PreferenceStoring {
     private let diffFontSizeKey = "diffFontSize"
     private let diffLigaturesKey = "diffLigatures"
     private let honoursGitAttributesKey = "honourGitAttributes"
+    private let heatmapEnabledKey = "heatmapEnabled"
+    private let heatmapBaseURLKey = "heatmapBaseURL"
     // UserDefaults is documented as thread-safe but predates Sendable.
     nonisolated(unsafe) private let defaults: UserDefaults
 
@@ -995,6 +1001,22 @@ public struct UserDefaultsPreferences: PreferenceStoring {
 
     public func setHonoursGitAttributes(_ value: Bool) {
         defaults.set(value, forKey: honoursGitAttributesKey)
+    }
+
+    public func heatmapEnabled() -> Bool {
+        defaults.object(forKey: heatmapEnabledKey) as? Bool ?? false
+    }
+
+    public func setHeatmapEnabled(_ value: Bool) {
+        defaults.set(value, forKey: heatmapEnabledKey)
+    }
+
+    public func heatmapBaseURL() -> String? {
+        defaults.string(forKey: heatmapBaseURLKey)
+    }
+
+    public func setHeatmapBaseURL(_ value: String?) {
+        defaults.set(value, forKey: heatmapBaseURLKey)
     }
 
     public func jiraLayout() -> JiraLayout {

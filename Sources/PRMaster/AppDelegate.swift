@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var launchAtLogin: LaunchAtLoginStore!
     private let tabSelection = TabSelectionStore()
     private let jiraAccount = JiraAccountStore()
+    private let heatmapAccount = HeatmapAccountStore()
     private var jira: JiraStore!
     private let settingsWindow = SettingsWindowController()
     private let whatsNewWindow = WhatsNewWindowController()
@@ -191,7 +192,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if Debug.openSettings {
             settingsWindow.show(
                 store: store, reviews: reviews,
-                appearance: appearanceStore, jira: jiraAccount, jiraStore: jira
+                appearance: appearanceStore, jira: jiraAccount, jiraStore: jira, heatmap: heatmapAccount
             )
             if let path = Debug.snapshotPath, Debug.openDiff == nil {
                 Task { @MainActor in
@@ -348,7 +349,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func openSettingsFromMenu() {
         settingsWindow.show(
                 store: store, reviews: reviews,
-                appearance: appearanceStore, jira: jiraAccount, jiraStore: jira
+                appearance: appearanceStore, jira: jiraAccount, jiraStore: jira, heatmap: heatmapAccount
             )
     }
 
@@ -477,7 +478,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     popover.performClose(nil)
                     settingsWindow.show(
                 store: store, reviews: reviews,
-                appearance: appearanceStore, jira: jiraAccount, jiraStore: jira
+                appearance: appearanceStore, jira: jiraAccount, jiraStore: jira, heatmap: heatmapAccount
             )
                 },
                 onQuit: { NSApp.terminate(nil) },
@@ -645,6 +646,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             source: diffSource,
             viewedWriter: diffViewedWriter,
             appearance: appearanceStore,
+            scorer: reviewScorer,
             live: { [weak self] in
                 self?.liveState(for: subject) ?? DiffLiveState(head: nil, isReady: false, blocker: nil)
             },
@@ -652,8 +654,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard case .team(let request) = subject else { return }
                 self?.confirmApprove(request, commitOID: target.oid, onApproved: close)
             },
-            onOpen: { [weak self] url in self?.open(url) }
+            onOpen: { [weak self] url in self?.open(url) },
+            onOpenSettings: { [weak self] in self?.openSettingsFromMenu() }
         )
+    }
+
+    /// Debug data never leaves the machine: a fixture diff is scored offline or not at all.
+    private var reviewScorer: BlockScoring? {
+        if Debug.overridesActive { return Debug.heatmapFixture ? FixtureScorer() : nil }
+        return heatmapAccount.scorer
     }
 
     /// Read inside the window's body, so the popover's poll re-renders it.

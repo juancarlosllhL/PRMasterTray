@@ -100,6 +100,10 @@ public final class AppearanceStore {
         didSet { preferences.setHonoursGitAttributes(honoursGitAttributes) }
     }
 
+    public var heatmapEnabled: Bool {
+        didSet { preferences.setHeatmapEnabled(heatmapEnabled) }
+    }
+
     public func fileScope(gitAttributes: String?) -> FileScope {
         FileScope(patterns: scopePatterns, gitAttributes: honoursGitAttributes ? gitAttributes : nil)
     }
@@ -119,6 +123,7 @@ public final class AppearanceStore {
         self.diffLigatures = preferences.diffLigatures()
         self.scopePatterns = Dictionary(uniqueKeysWithValues: FileSection.secondary.map { ($0, preferences.fileScopePatterns($0)) })
         self.honoursGitAttributes = preferences.honoursGitAttributes()
+        self.heatmapEnabled = preferences.heatmapEnabled()
     }
 
     /// What the palette should actually use, given this switch and what macOS

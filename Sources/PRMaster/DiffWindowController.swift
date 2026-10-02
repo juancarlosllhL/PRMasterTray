@@ -18,13 +18,15 @@ final class DiffWindowController: NSObject, NSWindowDelegate {
         source: PullRequestDiffing?,
         viewedWriter: PullRequestDiffing?,
         appearance: AppearanceStore,
+        scorer: BlockScoring?,
         live: @escaping () -> DiffLiveState,
         onAct: @escaping (MergeTarget, _ close: @escaping () -> Void) -> Void,
-        onOpen: @escaping (URL) -> Void
+        onOpen: @escaping (URL) -> Void,
+        onOpenSettings: @escaping () -> Void
     ) {
         let (panel, isNew) = registry.window(for: subject.id) {
-            makePanel(subject, source: source, viewedWriter: viewedWriter, appearance: appearance,
-                      live: live, onAct: onAct, onOpen: onOpen)
+            makePanel(subject, source: source, viewedWriter: viewedWriter, appearance: appearance, scorer: scorer,
+                      live: live, onAct: onAct, onOpen: onOpen, onOpenSettings: onOpenSettings)
         }
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
@@ -37,19 +39,22 @@ final class DiffWindowController: NSObject, NSWindowDelegate {
         source: PullRequestDiffing?,
         viewedWriter: PullRequestDiffing?,
         appearance: AppearanceStore,
+        scorer: BlockScoring?,
         live: @escaping () -> DiffLiveState,
         onAct: @escaping (MergeTarget, @escaping () -> Void) -> Void,
-        onOpen: @escaping (URL) -> Void
+        onOpen: @escaping (URL) -> Void,
+        onOpenSettings: @escaping () -> Void
     ) -> NSPanel {
         weak var weakPanel: NSPanel?
         let store = DiffStore(repo: subject.repo, number: subject.number, source: source,
-                              viewedWriter: viewedWriter, highlighter: highlighter)
+                              viewedWriter: viewedWriter, highlighter: highlighter, scorer: scorer)
         let hosting = NSHostingController(rootView: DiffWindowView(
             store: store,
             subject: subject,
             live: live,
             appearance: appearance,
             onOpenOnGitHub: { onOpen(subject.url) },
+            onOpenSettings: onOpenSettings,
             initialFile: Debug.openFile
         ))
         hosting.sizingOptions = []

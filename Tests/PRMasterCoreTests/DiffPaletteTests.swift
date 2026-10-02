@@ -98,6 +98,50 @@ struct DiffPaletteTests {
             )
         }
     }
+
+    /// WCAG's 3:1 for graphics: a stripe that does not read is a heatmap that lies by omission.
+    @Test("every heat stripe reads against every line it can sit on", arguments: ContrastMode.allCases)
+    func heatStripeContrast(contrast: ContrastMode) {
+        for appearance in AppearanceMode.allCases {
+            for level in Importance.allCases {
+                for tint in [DiffLineTint.added, .removed, .context] {
+                    let ratio = PaletteTests.contrastRatio(
+                        Palette.heatStripe(level, appearance: appearance, contrast: contrast),
+                        Palette.diffBackground(tint, appearance: appearance, contrast: contrast)
+                    )
+                    #expect(ratio >= 3, "\(level) on \(tint) in \(appearance)/\(contrast) is \(ratio)")
+                }
+            }
+        }
+    }
+
+    @Test("with colour, each level has its own colour", arguments: [ContrastMode.standard, .increased])
+    func heatStripeColoursDiffer(contrast: ContrastMode) {
+        for appearance in AppearanceMode.allCases {
+            let colours = Importance.allCases.map { Palette.heatStripe($0, appearance: appearance, contrast: contrast) }
+            #expect(Set(colours).count == Importance.allCases.count, "\(appearance)")
+        }
+    }
+
+    @Test("in monochrome the stripe is grey, so its width carries the score")
+    func heatStripeMonochrome() {
+        for appearance in AppearanceMode.allCases {
+            for level in Importance.allCases {
+                let colour = Palette.heatStripe(level, appearance: appearance, contrast: .monochrome)
+                #expect(colour.red == colour.green && colour.green == colour.blue)
+            }
+        }
+    }
+
+    /// The width shows the exact score, so two lines at the same level still read hotter and cooler.
+    @Test("the stripe widens with the exact score and stays inside the gutter's padding")
+    func heatStripeWidth() {
+        let widths = stride(from: 0.0, through: 3.0, by: 0.25).map(Palette.heatStripeWidth(score:))
+        #expect(zip(widths, widths.dropFirst()).allSatisfy { $0 < $1 }, "\(widths)")
+        #expect(widths.first! >= 1.5)
+        #expect(widths.last! <= 5)
+        #expect(Palette.heatStripeWidth(score: 2.9) - Palette.heatStripeWidth(score: 2.1) >= 0.9)
+    }
 }
 
 /// Degrees around the colour wheel; greys have no hue and count as zero.

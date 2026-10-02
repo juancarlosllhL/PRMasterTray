@@ -198,6 +198,12 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
     private var storedHonoursGitAttributes = true
     func honoursGitAttributes() -> Bool { lock.withLock { storedHonoursGitAttributes } }
     func setHonoursGitAttributes(_ value: Bool) { lock.withLock { storedHonoursGitAttributes = value } }
+    private var storedHeatmapEnabled = false
+    func heatmapEnabled() -> Bool { lock.withLock { storedHeatmapEnabled } }
+    func setHeatmapEnabled(_ value: Bool) { lock.withLock { storedHeatmapEnabled = value } }
+    private var storedHeatmapBaseURL: String?
+    func heatmapBaseURL() -> String? { lock.withLock { storedHeatmapBaseURL } }
+    func setHeatmapBaseURL(_ value: String?) { lock.withLock { storedHeatmapBaseURL = value } }
 
     private var storedAppLocations: [String: [AppLocation]] = [:]
     var appLocationWrites = 0

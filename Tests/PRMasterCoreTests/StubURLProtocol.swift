@@ -1,7 +1,7 @@
 import Foundation
 
 enum StubOutcome {
-    case response(status: Int, body: Data)
+    case response(status: Int, body: Data, headers: [String: String] = [:])
     case failure(URLError)
 }
 
@@ -102,9 +102,9 @@ final class StubURLProtocol: URLProtocol, @unchecked Sendable {
         switch outcome {
         case .failure(let error):
             client?.urlProtocol(self, didFailWithError: error)
-        case .response(let status, let body):
+        case .response(let status, let body, let headers):
             let response = HTTPURLResponse(
-                url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil
+                url: request.url!, statusCode: status, httpVersion: nil, headerFields: headers
             )!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: body)

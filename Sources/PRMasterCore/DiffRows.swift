@@ -17,6 +17,14 @@ public enum DiffRow: Sendable, Equatable {
     case pair(left: DiffLine?, right: DiffLine?)
 }
 
+/// A place on the scroll track worth jumping to.
+public struct HeatMark: Equatable, Sendable {
+    public let row: Int
+    /// How far down the table, from 0 to below 1.
+    public let fraction: Double
+    public let level: Importance
+}
+
 public struct DiffFileGroup: Sendable, Equatable {
     public let section: FileSection
     public let files: [DiffFile]
@@ -110,6 +118,40 @@ public enum DiffRows {
                 return leftA?.text == leftB?.text && rightA?.text == rightB?.text
             default: return pair.0 == pair.1
             }
+        }
+    }
+
+    /// One mark per unbroken run of business logic or sensitive rows.
+    public static func heatMarks(_ rows: [DiffRow]) -> [HeatMark] {
+        var marks: [HeatMark] = []
+        var runStart: Int?
+        var runLevel = Importance.glue
+        for (index, row) in rows.enumerated() {
+            guard let level = importance(of: row), level >= .logic else {
+                if let start = runStart {
+                    marks.append(HeatMark(row: start, fraction: Double(start) / Double(rows.count), level: runLevel))
+                }
+                runStart = nil
+                continue
+            }
+            if runStart == nil {
+                runStart = index
+                runLevel = level
+            } else {
+                runLevel = max(runLevel, level)
+            }
+        }
+        if let start = runStart {
+            marks.append(HeatMark(row: start, fraction: Double(start) / Double(rows.count), level: runLevel))
+        }
+        return marks
+    }
+
+    private static func importance(of row: DiffRow) -> Importance? {
+        switch row {
+        case .line(let line): return line.heat?.level
+        case .pair(let left, let right): return [left?.heat?.level, right?.heat?.level].compactMap { $0 }.max()
+        default: return nil
         }
     }
 

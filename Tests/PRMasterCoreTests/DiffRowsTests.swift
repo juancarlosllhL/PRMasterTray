@@ -227,3 +227,47 @@ struct DiffRowsTests {
         #expect(DiffRows.copyText(Array(rows[3...5])) == "+c\na_test.go")
     }
 }
+
+/// Marks are where a reviewer jumps to, so they must point at the important
+/// changes and nothing else.
+@Suite("Heat marks")
+struct HeatMarksTests {
+
+    private func line(_ level: Importance?, kind: DiffLine.Kind = .added) -> DiffRow {
+        var line = DiffLine(kind: kind, oldNumber: nil, newNumber: 1, text: "x")
+        line.heat = level.map { LineHeat(score: Double($0.rawValue), confidence: 0.9) }
+        return .line(line)
+    }
+
+    @Test("a run of business logic or sensitive rows is one mark at its first row, at its highest level")
+    func runs() {
+        let rows: [DiffRow] = [
+            .fileHeader(path: "a"), line(.glue), line(.logic), line(.sensitive), line(nil, kind: .context),
+            line(.routine), line(.logic), .fileHeader(path: "b"), line(.sensitive), line(.sensitive),
+        ]
+        #expect(DiffRows.heatMarks(rows) == [
+            HeatMark(row: 2, fraction: 0.2, level: .sensitive),
+            HeatMark(row: 6, fraction: 0.6, level: .logic),
+            HeatMark(row: 8, fraction: 0.8, level: .sensitive),
+        ])
+    }
+
+    @Test("glue and routine are not worth a jump")
+    func quietRowsUnmarked() {
+        #expect(DiffRows.heatMarks([line(.glue), line(.routine), line(nil)]).isEmpty)
+    }
+
+    @Test("an empty table has no marks")
+    func empty() {
+        #expect(DiffRows.heatMarks([]).isEmpty)
+    }
+
+    @Test("a split row counts the more important of its two sides")
+    func splitPairs() {
+        var left = DiffLine(kind: .removed, oldNumber: 1, newNumber: nil, text: "x")
+        left.heat = LineHeat(score: 1, confidence: 0.9)
+        var right = DiffLine(kind: .added, oldNumber: nil, newNumber: 1, text: "y")
+        right.heat = LineHeat(score: 3, confidence: 0.9)
+        #expect(DiffRows.heatMarks([.pair(left: left, right: right)]) == [HeatMark(row: 0, fraction: 0, level: .sensitive)])
+    }
+}

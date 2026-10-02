@@ -73,7 +73,11 @@ struct DiffTableView: NSViewRepresentable {
         pinned.onClick = { [weak coordinator = context.coordinator] in coordinator?.pinnedHeaderClicked() }
         pinned.onViewed = { [weak coordinator = context.coordinator] path, viewed in coordinator?.onViewed?(path, viewed) }
         scroll.addSubview(pinned, positioned: .below, relativeTo: scroll.verticalScroller)
+        let marks = HeatMarksView()
+        marks.onJump = { [weak coordinator = context.coordinator] row in coordinator?.jump(toRow: row) }
+        scroll.addSubview(marks, positioned: .below, relativeTo: scroll.verticalScroller)
         context.coordinator.pinned = pinned
+        context.coordinator.marks = marks
         context.coordinator.table = table
         return scroll
     }
@@ -100,6 +104,7 @@ struct DiffTableView: NSViewRepresentable {
     final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         weak var table: NSTableView?
         weak var pinned: PinnedHeaderView?
+        weak var marks: HeatMarksView?
         var onToggleFile: ((String) -> Void)?
         var onTopFile: ((String) -> Void)?
         var onViewed: ((String, Bool) -> Void)?
@@ -163,12 +168,40 @@ struct DiffTableView: NSViewRepresentable {
                 pendingFile = nil
                 scroll(toFile: file)
             }
+            if contentChanged { updateHeatMarks() }
             updatePinnedHeader()
+        }
+
+        /// Placed by where rows really are, since wrapping makes some rows taller than others.
+        func updateHeatMarks() {
+            placeHeatMarks()
+            guard let table, let marks, let palette else { return }
+            let height = max(table.frame.height, 1)
+            marks.marks = DiffRows.heatMarks(rows).map { mark in
+                HeatMarksView.Mark(
+                    row: mark.row,
+                    position: table.rect(ofRow: mark.row).minY / height,
+                    colour: Palette.heatStripe(mark.level, appearance: palette.appearance, contrast: palette.contrast).nsColor
+                )
+            }
+        }
+
+        /// Set by hand: the scroll view never resized it from the zero frame it was made with.
+        private func placeHeatMarks() {
+            guard let marks, let scroll = marks.superview else { return }
+            marks.frame = NSRect(x: scroll.bounds.maxX - HeatMarksView.width, y: 0,
+                                 width: HeatMarksView.width, height: scroll.bounds.height)
+        }
+
+        func jump(toRow row: Int) {
+            guard let table else { return }
+            scroll(table, toRow: row)
         }
 
         /// Rewraps only when a column's width in characters changed. A large diff
         /// waits for the end of a live resize rather than rewrapping on every frame.
         @objc func tableResized() {
+            placeHeatMarks()
             guard let table, !isRewrapping, !(table.inLiveResize && rows.count > 5000) else { return }
             let before = capacities
             let top = topVisibleRow(table)
@@ -178,6 +211,7 @@ struct DiffTableView: NSViewRepresentable {
             // drawing their old wrapping inside the new heights.
             table.reloadData()
             scroll(table, toRow: top)
+            updateHeatMarks()
             updatePinnedHeader()
         }
 
@@ -542,6 +576,53 @@ enum SearchHighlight {
 }
 
 /// The current file's header, drawn above the rows while its own row is scrolled away.
+/// Where the business logic and sensitive changes are, down the right edge; a click jumps there.
+final class HeatMarksView: NSView {
+    static let width: CGFloat = 6
+    static let markHeight: CGFloat = 3
+
+    struct Mark {
+        let row: Int
+        /// 0 at the top of the table, 1 at the bottom.
+        let position: CGFloat
+        let colour: NSColor
+    }
+
+    var marks: [Mark] = [] {
+        didSet {
+            isHidden = marks.isEmpty
+            needsDisplay = true
+        }
+    }
+    var onJump: ((Int) -> Void)?
+
+    override var isFlipped: Bool { true }
+
+    private func rect(_ mark: Mark) -> NSRect {
+        let track = bounds.height - Self.markHeight
+        return NSRect(x: 1, y: (mark.position * track).rounded(), width: bounds.width - 2, height: Self.markHeight)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        for mark in marks {
+            mark.colour.setFill()
+            rect(mark).fill()
+        }
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard !isHidden, frame.contains(point) else { return nil }
+        let local = convert(point, from: superview)
+        return marks.contains { rect($0).insetBy(dx: 0, dy: -3).contains(local) } ? self : nil
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        guard let mark = marks.min(by: { abs(rect($0).midY - point.y) < abs(rect($1).midY - point.y) }) else { return }
+        onJump?(mark.row)
+    }
+}
+
 final class PinnedHeaderView: NSView {
     var onClick: (() -> Void)?
     var onViewed: ((String, Bool) -> Void)?
@@ -784,6 +865,15 @@ final class DiffCellView: NSTableCellView {
             Palette.diffBackground(tint, appearance: appearance, contrast: contrast).nsColor.setFill()
         }
         bounds.fill()
+        if !isSelected, case .line(let line, _) = content, let heat = line.heat {
+            Palette.heatStripe(heat.level, appearance: appearance, contrast: contrast).nsColor.setFill()
+            let width = Palette.heatStripeWidth(score: heat.score)
+            if heat.isUncertain {
+                for y in stride(from: 0, to: bounds.height, by: 4) { NSRect(x: 0, y: y, width: width, height: 2).fill() }
+            } else {
+                NSRect(x: 0, y: 0, width: width, height: bounds.height).fill()
+            }
+        }
 
         let textColour = isSelected && backgroundStyle == .emphasized
             ? NSColor.alternateSelectedControlTextColor

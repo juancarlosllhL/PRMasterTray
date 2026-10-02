@@ -37,6 +37,17 @@ GitHub would merge right now.
   `.gitignore`-style patterns per heading (Settings, Diff Viewer), and files the
   repository marks `linguist-generated` in `.gitattributes` count as generated.
 
+  With an OpenRouter key saved (Settings, Diff Viewer), **Score** in a review
+  window gives each block of changed lines a stripe in the gutter for how
+  closely to review it, line by line: glue, routine,
+  business logic or sensitive, scored by TypeSafe's Jev model. The sidebar shows
+  each file's most important change, and marks down the right edge jump to the
+  business logic and sensitive blocks. Changed lines are sent to OpenRouter with
+  data collection refused, or to your own proxy if you give its URL, and
+  nothing is sent until you press Score. The scores are
+  hints: nothing is hidden. The stripe widens with the exact score, and a
+  line the model is unsure about is drawn hatched.
+
 <img src="docs/screenshots/review-window.png" width="800" alt="The review window: seven files down the side, the diff of Changelog.swift with added lines in green and removed in red, and Merge at the bottom">
 
 - Pull requests you opened a long time ago and forgot are marked with their age,

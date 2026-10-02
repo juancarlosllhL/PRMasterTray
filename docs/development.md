@@ -100,6 +100,8 @@ them. All of them fake only *fetching* — merging always goes to the real API.
 |---|---|
 | `PRMASTER_FIXTURE=path.json` | serve PRs from a search-response JSON file, with review threads from `path.threads.json` if present |
 | `PRMASTER_DIFF_FIXTURE=path.json` | serve a compare response to every review window, with the description from `path.description.html` if present |
+| `PRMASTER_HEATMAP_FIXTURE=1` | score review windows offline by keyword, for heatmap screenshots without a key |
+| `PRMASTER_SCORE=1` | press Score as soon as a review window has loaded |
 | `PRMASTER_FAKE_ERROR=ghNotFound\|notAuthenticated\|network\|notJSON` | force a failure state |
 | `PRMASTER_FAIL_AFTER=n` | succeed `n` times, then fail — shows the stale banner |
 | `PRMASTER_DEMO_MERGE=confirm\|fail` | open the merge confirm sheet or failure alert; any other value offers Merge on fixture rows, against a no-op merger that takes 2 s |

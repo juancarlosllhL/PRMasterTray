@@ -61,6 +61,14 @@ public enum PRMasterError: Error, LocalizedError {
     case jiraMoveRefused(String)
     /// The branch was pushed to twice while its diff was being read.
     case diffHeadMoved
+    case heatmapUnauthorized
+    case heatmapNoCredits
+    /// Worth one more try: the provider stumbled, or nil when the network did.
+    case heatmapUnavailable(status: Int?)
+    /// Asking again gets the same answer; the payload says what was refused.
+    case heatmapRefused(String)
+    /// Why the API URL was refused, already phrased for Settings.
+    case heatmapInvalidURL(String)
 
     public var errorDescription: String? {
         switch self {
@@ -127,6 +135,18 @@ public enum PRMasterError: Error, LocalizedError {
             return "Couldn't install the update — \(detail)"
         case .diffHeadMoved:
             return "New commits kept arriving while the diff was loading. Try again in a moment."
+        case .heatmapUnauthorized:
+            return "OpenRouter didn't accept the API key. Check it in Settings, Diff Viewer."
+        case .heatmapNoCredits:
+            return "Your OpenRouter account is out of credits."
+        case .heatmapUnavailable(let status?):
+            return "OpenRouter couldn't answer (HTTP \(status))."
+        case .heatmapUnavailable(nil):
+            return "Couldn't reach OpenRouter."
+        case .heatmapRefused(let detail):
+            return "OpenRouter refused this file (\(detail))."
+        case .heatmapInvalidURL(let reason):
+            return reason
         }
     }
 }
@@ -141,7 +161,9 @@ extension PRMasterError: Equatable {
              (.releaseAssetMissing, .releaseAssetMissing),
              (.updateVerificationFailed, .updateVerificationFailed),
              (.jiraUnauthorized, .jiraUnauthorized),
-             (.diffHeadMoved, .diffHeadMoved):
+             (.diffHeadMoved, .diffHeadMoved),
+             (.heatmapUnauthorized, .heatmapUnauthorized),
+             (.heatmapNoCredits, .heatmapNoCredits):
             return true
         case (.notAuthenticated(let l), .notAuthenticated(let r)):
             return l == r
@@ -163,7 +185,11 @@ extension PRMasterError: Equatable {
         case (.decoding(let l), .decoding(let r)),
              (.releaseCheckFailed(let l), .releaseCheckFailed(let r)),
              (.updateFailed(let l), .updateFailed(let r)),
-             (.jiraInvalidCredentials(let l), .jiraInvalidCredentials(let r)):
+             (.jiraInvalidCredentials(let l), .jiraInvalidCredentials(let r)),
+             (.heatmapRefused(let l), .heatmapRefused(let r)),
+             (.heatmapInvalidURL(let l), .heatmapInvalidURL(let r)):
+            return l == r
+        case (.heatmapUnavailable(let l), .heatmapUnavailable(let r)):
             return l == r
         default:
             return false

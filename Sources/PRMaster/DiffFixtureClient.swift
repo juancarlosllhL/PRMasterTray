@@ -26,3 +26,24 @@ struct DiffFixtureClient: PullRequestDiffing {
         throw PRMasterError.graphQL(["Viewed state isn't saved while the app shows debug data."])
     }
 }
+
+/// Scores by keyword, never over the network: for screenshots only.
+struct FixtureScorer: BlockScoring {
+    func score(path: String, blocks: [DiffBlock]) async throws -> BlockScores {
+        try await Task.sleep(for: .milliseconds(150))
+        return BlockScores(blocks: blocks.map { block in
+            let lines = DiffBlocks.text(of: block).components(separatedBy: "\n").map(heat)
+            return BlockScore(block: lines.max { $0.score < $1.score } ?? LineHeat(score: 1, confidence: 0.5), lines: lines)
+        }, tooLarge: false)
+    }
+
+    private func heat(_ line: String) -> LineHeat {
+        let lower = line.lowercased()
+        if ["token", "auth", "password", "delete", "secret", "permission"].contains(where: lower.contains) {
+            return LineHeat(score: 2.8, confidence: 0.8)
+        }
+        if ["if ", "guard ", "switch ", "throw ", ">", "<"].contains(where: lower.contains) { return LineHeat(score: 1.9, confidence: 0.6) }
+        if ["import ", "case ", "let ", "var "].contains(where: lower.contains) { return LineHeat(score: 0.3, confidence: 0.8) }
+        return LineHeat(score: 1.2, confidence: 0.3)
+    }
+}
