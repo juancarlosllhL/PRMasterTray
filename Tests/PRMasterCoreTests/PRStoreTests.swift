@@ -1098,3 +1098,286 @@ private final class Counter: @unchecked Sendable {
     var count: Int { lock.withLock { _durations.count } }
     func record(_ d: Duration) { lock.withLock { _durations.append(d) } }
 }
+
+private final class SpyMerger: PullRequestMerging, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _calls: [String] = []
+    private var _seen: (progress: MergeProgress?, readyCount: Int)?
+    private let error: PRMasterError?
+    weak var store: PRStore?
+    /// Runs while GitHub is "merging", e.g. a poll landing mid-flight.
+    var during: (@Sendable () async -> Void)?
+
+    init(error: PRMasterError? = nil) { self.error = error }
+
+    var calls: [String] { lock.withLock { _calls } }
+    /// What the row and the badge said while GitHub was merging.
+    var seenWhileMerging: (progress: MergeProgress?, readyCount: Int)? { lock.withLock { _seen } }
+
+    func squashMerge(id: String, expectedHeadOid: String) async throws {
+        await during?()
+        let seen = await MainActor.run { (self.store?.merges[id], self.store?.readyCount ?? -1) }
+        lock.withLock {
+            _calls.append(id)
+            _seen = seen
+        }
+        if let error { throw error }
+    }
+}
+
+@MainActor
+private final class ConfirmSpy {
+    private(set) var asks = 0
+    func answer(_ value: Bool) -> Bool {
+        asks += 1
+        return value
+    }
+}
+
+@MainActor
+@Suite("PRStore merging")
+struct PRStoreMergeTests {
+
+    private func makeStore(
+        _ results: [Result<[PullRequest], PRMasterError>],
+        merger: SpyMerger? = SpyMerger(),
+        notifier: SpyNotifier = SpyNotifier(),
+        updater: SpyUpdater? = nil,
+        sleep: @escaping @Sendable (Duration) async throws -> Void = { _ in }
+    ) -> (PRStore, StubClient) {
+        let client = StubClient(results)
+        let store = PRStore(
+            client: client,
+            notifier: notifier,
+            idStore: MemoryIDStore(),
+            updater: updater,
+            merger: merger.map { MergeCoordinator(client: $0, mergingAllowed: true) },
+            preferences: MemoryPreferences(),
+            now: { Date(timeIntervalSince1970: 1000) },
+            sleep: sleep
+        )
+        merger?.store = store
+        return (store, client)
+    }
+
+    private func listed(_ pr: PullRequest, times: Int = 6) -> [Result<[PullRequest], PRMasterError>] {
+        Array(repeating: .success([pr]), count: times)
+    }
+
+    @Test("a confirmed merge reads merging while GitHub merges, merged after, and leaves the badge")
+    func confirmedMerge() async {
+        let merger = SpyMerger()
+        let (store, _) = makeStore(listed(makePR("a")), merger: merger)
+        await store.refresh()
+        #expect(store.readyCount == 1)
+
+        let outcome = await store.merge(id: "a", expectedHeadOid: "oid") { true }
+
+        #expect(outcome == .merged)
+        #expect(merger.seenWhileMerging?.progress == .merging)
+        #expect(merger.seenWhileMerging?.readyCount == 0)
+        #expect(store.merges["a"] == .merged)
+        #expect(store.readyCount == 0)
+    }
+
+    @Test("declining at the confirmation marks nothing and reaches no network")
+    func declinedMerge() async {
+        let merger = SpyMerger()
+        let (store, _) = makeStore(listed(makePR("a")), merger: merger)
+        await store.refresh()
+
+        let outcome = await store.merge(id: "a", expectedHeadOid: "oid") { false }
+
+        #expect(outcome == .cancelled)
+        #expect(merger.calls.isEmpty)
+        #expect(store.merges.isEmpty)
+        #expect(store.readyCount == 1)
+    }
+
+    @Test("a refused merge puts the row back to ready, with GitHub's message")
+    func failedMerge() async {
+        let merger = SpyMerger(error: .mergeRejected("Head branch was modified."))
+        let (store, _) = makeStore(listed(makePR("a")), merger: merger)
+        await store.refresh()
+
+        let outcome = await store.merge(id: "a", expectedHeadOid: "oid") { true }
+
+        #expect(outcome == .failed("Head branch was modified."))
+        #expect(merger.seenWhileMerging?.progress == .merging)
+        #expect(store.merges.isEmpty)
+        #expect(store.readyCount == 1)
+    }
+
+    /// The notification's Merge can arrive for a row the popover already merged.
+    @Test("merging a row already merged asks nothing and leaves it merged")
+    func secondMergeAfterwards() async {
+        let merger = SpyMerger()
+        let (store, _) = makeStore(listed(makePR("a")), merger: merger)
+        await store.refresh()
+        _ = await store.merge(id: "a", expectedHeadOid: "oid") { true }
+        let confirm = ConfirmSpy()
+
+        let outcome = await store.merge(id: "a", expectedHeadOid: "oid") { confirm.answer(true) }
+
+        #expect(outcome == .cancelled)
+        #expect(confirm.asks == 0)
+        #expect(merger.calls == ["a"])
+        #expect(store.merges["a"] == .merged)
+    }
+
+    @Test("a merge that lands while another dialog is up wins, and the dialog's answer is dropped")
+    func secondMergeDuringDialog() async {
+        let merger = SpyMerger()
+        let (store, _) = makeStore(listed(makePR("a")), merger: merger)
+        await store.refresh()
+
+        let outcome = await store.merge(id: "a", expectedHeadOid: "oid") {
+            _ = await store.merge(id: "a", expectedHeadOid: "oid") { true }
+            return true
+        }
+
+        #expect(outcome == .cancelled)
+        #expect(merger.calls == ["a"])
+        #expect(store.merges["a"] == .merged)
+    }
+
+    @Test("a store with no merger refuses and marks nothing")
+    func noMerger() async {
+        let (store, _) = makeStore(listed(makePR("a")), merger: nil)
+        await store.refresh()
+
+        let outcome = await store.merge(id: "a", expectedHeadOid: "oid") { true }
+
+        #expect(outcome == .refusedDebugOverride)
+        #expect(store.merges.isEmpty)
+    }
+
+    // MARK: reconciling with the search
+
+    /// Holds the follow-up re-checks back, so each refresh here is the test's own.
+    private static let parked: @Sendable (Duration) async throws -> Void = { _ in
+        try await Task.sleep(for: .seconds(3600))
+    }
+
+    @Test("a merged row stays while the search still lists it, and goes once it does not")
+    func mergedRowWaitsForTheSearch() async {
+        let (store, client) = makeStore(
+            [.success([makePR("a")]), .success([makePR("a")]), .success([makePR("a")]), .success([])],
+            sleep: Self.parked
+        )
+        defer { store.stop() }
+        await store.refresh()
+
+        _ = await store.merge(id: "a", expectedHeadOid: "oid") { true }
+        #expect(client.calls == 2)
+        #expect(store.merges["a"] == .merged)
+
+        await store.refresh()
+        #expect(store.merges["a"] == .merged)
+        #expect(store.prs.map(\.id) == ["a"])
+
+        await store.refresh()
+        #expect(store.merges.isEmpty)
+        #expect(store.prs.isEmpty)
+    }
+
+    @Test("a poll landing mid-merge does not drop the row's merging state")
+    func mergingSurvivesARefresh() async {
+        let merger = SpyMerger()
+        let (store, _) = makeStore([.success([makePR("a")]), .success([])], merger: merger, sleep: Self.parked)
+        defer { store.stop() }
+        merger.during = { await store.refresh() }
+        await store.refresh()
+
+        _ = await store.merge(id: "a", expectedHeadOid: "oid") { true }
+
+        #expect(merger.seenWhileMerging?.progress == .merging)
+        #expect(store.merges.isEmpty)
+    }
+
+    /// The stale search returns the merged pull request with live fields, which can
+    /// read as not ready and then ready again, re-arming the notification.
+    @Test("a merged row the search still lists is never notified about again")
+    func mergedRowIsNotNotified() async {
+        let notifier = SpyNotifier()
+        let (store, _) = makeStore(
+            [
+                .success([makePR("a")]), .success([makePR("a")]),
+                .success([makePR("a", mergeState: .unknown)]), .success([makePR("a")]),
+            ],
+            notifier: notifier,
+            sleep: Self.parked
+        )
+        defer { store.stop() }
+        await store.refresh()
+        #expect(notifier.notified == ["a"])
+
+        _ = await store.merge(id: "a", expectedHeadOid: "oid") { true }
+        await store.refresh()
+        await store.refresh()
+
+        #expect(notifier.notified == ["a"])
+    }
+
+    @Test("a merged row the search still lists as behind is not brought up to date")
+    func mergedRowIsNotUpdated() async {
+        let updater = SpyUpdater()
+        let (store, _) = makeStore(
+            [.success([makePR("a")]), .success([makePR("a")]), .success([makePR("a", mergeState: .behind)])],
+            updater: updater,
+            sleep: Self.parked
+        )
+        defer { store.stop() }
+        await store.refresh()
+
+        _ = await store.merge(id: "a", expectedHeadOid: "oid") { true }
+        await store.refresh()
+
+        #expect(updater.calls.isEmpty)
+    }
+
+    // MARK: re-checks after a merge
+
+    @Test("after a merge the list is re-checked at 5 and 10 s, and no more once the row has moved")
+    func rechecksStopOnceTheRowMoves() async {
+        let sleeps = Counter()
+        let (store, client) = makeStore(
+            [.success([makePR("a")]), .success([makePR("a")]), .success([makePR("a")]), .success([])],
+            sleep: { sleeps.record($0) }
+        )
+        await store.refresh()
+
+        _ = await store.merge(id: "a", expectedHeadOid: "oid") { true }
+        await store.awaitRechecks()
+
+        #expect(sleeps.durations == [.seconds(5), .seconds(10)])
+        #expect(client.calls == 4)
+        #expect(store.merges.isEmpty)
+    }
+
+    @Test("a search that never catches up is re-checked three times, then left to the poll")
+    func rechecksGiveUp() async {
+        let sleeps = Counter()
+        let (store, client) = makeStore(listed(makePR("a")), sleep: { sleeps.record($0) })
+        await store.refresh()
+
+        _ = await store.merge(id: "a", expectedHeadOid: "oid") { true }
+        await store.awaitRechecks()
+
+        #expect(sleeps.durations == [.seconds(5), .seconds(10), .seconds(15)])
+        #expect(client.calls == 5)
+        #expect(store.merges["a"] == .merged)
+    }
+
+    @Test("stopping the store cancels the re-checks")
+    func stopCancelsRechecks() async {
+        let (store, client) = makeStore(listed(makePR("a")), sleep: Self.parked)
+        await store.refresh()
+
+        _ = await store.merge(id: "a", expectedHeadOid: "oid") { true }
+        store.stop()
+        await store.awaitRechecks()
+
+        #expect(client.calls == 2)
+    }
+}

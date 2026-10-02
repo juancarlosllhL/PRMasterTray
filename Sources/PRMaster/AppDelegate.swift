@@ -10,7 +10,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var store: PRStore!
     private var reviews: ReviewStore!
     private var client: GitHubClient!
-    private var merger: MergeCoordinator!
     private var closer: CloseCoordinator!
     private var updates: AppUpdateStore!
     private var appearanceStore: AppearanceStore!
@@ -48,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // Merging is refused outright while any debug override is active: the
         // displayed rows may carry real node IDs from a captured fixture.
+        let merger: MergeCoordinator
         if Debug.demoMerge != nil {
             // Demonstrates the dialogs against a no-op merger: real UI, no API.
             merger = MergeCoordinator(client: NoopMerger(), mergingAllowed: true)
@@ -80,6 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // roughly ten a minute, and a fixture's repository names would spend
             // them looking for deployments repositories that do not exist.
             deploymentClient: Debug.overridesActive ? nil : client,
+            merger: merger,
             preferences: UserDefaultsPreferences()
         )
 
@@ -704,15 +705,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// always goes through an explicit confirmation.
     func confirmMerge(id: String, oid: String, title: String, url: URL) {
         Task { @MainActor in
-            let outcome = await merger.attempt(id: id, expectedHeadOid: oid) {
+            let outcome = await store.merge(id: id, expectedHeadOid: oid) {
                 self.askToMerge(title: title)
             }
 
             switch outcome {
-            case .merged:
-                await store.refresh()
-            case .cancelled:
-                break
+            case .merged, .cancelled:
+                break  // The store refreshes after a merge itself.
             case .refusedDebugOverride:
                 presentRefusal(action: "Merging")
             case .failed(let message):

@@ -142,6 +142,7 @@ struct PullRequestsPaneView: View {
                     pr: pr,
                     canMerge: canMerge,
                     isUpdating: store.updatingIDs.contains(pr.id),
+                    merge: store.merges[pr.id],
                     isStale: threshold.isStale(createdAt: pr.createdAt, now: now),
                     staleAge: StaleAge.label(createdAt: pr.createdAt, now: now),
                     canClose: canClose,

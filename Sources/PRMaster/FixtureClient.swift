@@ -72,7 +72,10 @@ final class FlakyClient: PullRequestFetching, @unchecked Sendable {
 /// Accepts a merge and does nothing. Used only by PRMASTER_DEMO_MERGE, so the
 /// confirmation dialog can be exercised without any call to GitHub.
 struct NoopMerger: PullRequestMerging {
-    func squashMerge(id: String, expectedHeadOid: String) async throws {}
+    /// Long enough to see the row's "Merging…" state.
+    func squashMerge(id: String, expectedHeadOid: String) async throws {
+        try await Task.sleep(for: .seconds(2))
+    }
 }
 
 enum Debug {

@@ -185,6 +185,8 @@ public final class PRStore {
     /// PRs currently being brought up to date. This app writes to GitHub with
     /// no user gesture behind it, so it says so while it is happening.
     public private(set) var updatingIDs: Set<String> = []
+    /// Kept past the merge because the open search lags it by up to a minute.
+    public private(set) var merges: [String: MergeProgress] = [:]
     /// What became of the pull requests merged inside the retention window.
     ///
     /// Kept through a failed refresh for the same reason `prs` is: a wifi blip
@@ -268,12 +270,13 @@ public final class PRStore {
     }
 
     public var readyCount: Int {
-        prs.filter { $0.readiness == .ready }.count
+        prs.filter { $0.readiness == .ready && merges[$0.id] == nil }.count
     }
 
     /// 60s normally, stepping up while GitHub is unreachable so an offline
     /// laptop is not hammering the network every minute.
     private static let intervals: [Duration] = [.seconds(60), .seconds(120), .seconds(300)]
+    private static let recheckDelays: [Duration] = [.seconds(5), .seconds(10), .seconds(15)]
 
     private let client: PullRequestFetching
     private let notifier: ReadyPRNotifying
@@ -291,6 +294,7 @@ public final class PRStore {
     /// The merged rows still carry their version; they just say nothing about
     /// which environment is running it.
     private let deploymentClient: DeploymentFetching?
+    private let merger: MergeCoordinator?
     private let preferences: PreferenceStoring
     private let now: @Sendable () -> Date
     private let sleep: @Sendable (Duration) async throws -> Void
@@ -329,6 +333,7 @@ public final class PRStore {
     private var promotionTask: Task<Void, Never>?
     private var consecutiveFailures = 0
     private var pollTask: Task<Void, Never>?
+    private var recheckTask: Task<Void, Never>?
 
     public init(
         client: PullRequestFetching,
@@ -337,6 +342,7 @@ public final class PRStore {
         updater: PullRequestBranchUpdating? = nil,
         shipmentClient: ShipmentFetching? = nil,
         deploymentClient: DeploymentFetching? = nil,
+        merger: MergeCoordinator? = nil,
         preferences: PreferenceStoring = UserDefaultsPreferences(),
         now: @escaping @Sendable () -> Date = { Date() },
         sleep: @escaping @Sendable (Duration) async throws -> Void = {
@@ -349,6 +355,7 @@ public final class PRStore {
         self.updater = updater
         self.shipmentClient = shipmentClient
         self.deploymentClient = deploymentClient
+        self.merger = merger
         self.preferences = preferences
         self.appLocations = preferences.appLocations()
         self.now = now
@@ -389,9 +396,14 @@ public final class PRStore {
             // same one the query asked for.
             freshMerged = mergedWindow.recent(filter.apply(to: fetched.merged), now: now())
 
+            let listed = Set(fetched.open.map(\.id))
+            merges = merges.filter { $0.value == .merging || listed.contains($0.key) }
+            // A row with a merge in hand is still drawn, but its live fields are the merge's business.
+            let settled = fresh.filter { merges[$0.id] == nil }
+
             // Only reached on success, which is what guarantees a network flap
             // cannot be mistaken for every PR going ready at once.
-            let decision = NotificationDecider.decide(prs: fresh, notified: notifiedIDs)
+            let decision = NotificationDecider.decide(prs: settled, notified: notifiedIDs)
 
             allPRs = fetched.open
             prs = fresh
@@ -420,7 +432,7 @@ public final class PRStore {
             // Only ever reached on a successful fetch, for the same reason the
             // notification decision is: a network flap must not look like every
             // PR falling behind at once.
-            await updateBehindBranches(fresh)
+            await updateBehindBranches(settled)
         } catch {
             // `prs` and `lastSuccessfulFetch` are deliberately untouched.
             lastError = error as? PRMasterError ?? .decoding(String(describing: error))
@@ -633,6 +645,54 @@ public final class PRStore {
         }
     }
 
+    // MARK: - Merging
+
+    public func merge(
+        id: String,
+        expectedHeadOid: String,
+        confirm: @MainActor () async -> Bool
+    ) async -> MergeOutcome {
+        guard let merger else { return .refusedDebugOverride }
+        guard merges[id] == nil else { return .cancelled }
+
+        let outcome = await merger.attempt(id: id, expectedHeadOid: expectedHeadOid) {
+            // The dialog suspends, so a notification's Merge can claim the row meanwhile.
+            guard await confirm(), self.merges[id] == nil else { return false }
+            self.merges[id] = .merging
+            return true
+        }
+
+        switch outcome {
+        case .merged:
+            merges[id] = .merged
+            await refresh()
+            startRechecks()
+        case .failed:
+            merges[id] = nil
+        case .cancelled, .refusedDebugOverride:
+            break
+        }
+        return outcome
+    }
+
+    /// Refreshes at 5, 15 and 30 s after a merge, so the row moves before the next poll.
+    private func startRechecks() {
+        recheckTask?.cancel()
+        let sleep = self.sleep
+        recheckTask = Task { [weak self] in
+            for delay in Self.recheckDelays {
+                guard self?.merges.values.contains(.merged) == true else { return }
+                do { try await sleep(delay) } catch { return }
+                await self?.refresh()
+            }
+        }
+    }
+
+    /// Exists so tests can wait for the re-checks; nothing in the app waits on them.
+    func awaitRechecks() async {
+        await recheckTask?.value
+    }
+
     // MARK: - Automatic branch update
 
     /// Merges the base branch into any PR that is behind it.
@@ -693,6 +753,7 @@ public final class PRStore {
     public func stop() {
         pollTask?.cancel()
         pollTask = nil
+        recheckTask?.cancel()
     }
 }
 

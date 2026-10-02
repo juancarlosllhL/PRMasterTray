@@ -115,6 +115,12 @@ private struct Pen {
             ring()
             line(p(5.7, 5.7), p(10.3, 10.3))
             line(p(10.3, 5.7), p(5.7, 10.3))
+        case .merged:
+            for (x, y) in [(4.6, 3.4), (4.6, 12.6), (11.6, 9.0)] as [(CGFloat, CGFloat)] {
+                stroke(Path(ellipseIn: CGRect(x: x - 1.7, y: y - 1.7, width: 3.4, height: 3.4)))
+            }
+            line(p(4.6, 5.1), p(4.6, 10.9))
+            stroke(Path { $0.move(to: p(4.6, 5.1)); $0.addQuadCurve(to: p(9.9, 9.0), control: p(4.6, 9.0)) })
         case .shipFailed:
             stroke(polygon(sides: 8, radii: [6.6], rotation: .pi / 8))
             line(p(5.8, 5.8), p(10.2, 10.2))

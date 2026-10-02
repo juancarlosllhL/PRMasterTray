@@ -20,7 +20,9 @@ GitHub would merge right now.
   GitHub's own **Viewed** checkbox, in any monospaced font you have installed, at
   the size you want and with or without ligatures (Settings, Appearance). Once
   your own pull request is ready, **Merge** takes Review's place on its row, and
-  squash-merges after a confirmation, as the notification does.
+  squash-merges after a confirmation, as the notification does. The row says
+  **Merging…** while GitHub merges, then **Merged** until it moves to Recently
+  merged.
 
   The window is pinned to the commit it loaded. If anybody pushes while it is
   open it says so and offers a reload, and Merge stays off until you have seen

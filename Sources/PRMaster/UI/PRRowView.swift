@@ -7,6 +7,8 @@ struct PRRowView: View {
     let canMerge: Bool
     /// True while the app is merging the base branch into this PR.
     let isUpdating: Bool
+    /// Set from the confirmation until GitHub's search stops listing the row as open.
+    let merge: MergeProgress?
     /// Whether this pull request has been open longer than the user's threshold.
     /// Decided by the caller, which is the only place that knows the threshold.
     let isStale: Bool
@@ -30,11 +32,10 @@ struct PRRowView: View {
         // Centred, not top-aligned: against a fixed two-line stack the glyph
         // reads as belonging to the row rather than to the title.
         HStack(alignment: .center, spacing: 10) {
-            StatusGlyphView(glyph: pr.readiness.glyph)
-                .foregroundStyle(palette.color(pr.readiness.tint))
+            leadingGlyph
                 .frame(width: 16, height: 16)
                 .frame(width: 18)
-                .accessibilityLabel(pr.readiness.label)
+                .accessibilityLabel(statusLabel)
 
             VStack(alignment: .leading, spacing: 2) {
                 // verbatim: PR titles are user content and must never be
@@ -63,7 +64,17 @@ struct PRRowView: View {
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .truncationMode(.middle)
-                    if isUpdating {
+                    if merge == .merging {
+                        Text("Merging…")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .layoutPriority(1)
+                    } else if merge == .merged {
+                        Text("Merged")
+                            .font(.system(size: 11, weight: palette.isMonochrome ? .semibold : .regular))
+                            .foregroundStyle(palette.color(.green))
+                            .layoutPriority(1)
+                    } else if isUpdating {
                         Text("Updating branch…")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
@@ -97,21 +108,23 @@ struct PRRowView: View {
 
             // Plain against the prominent button and to its left, so the
             // better outcome is the one that looks like it.
-            if isStale, isHovering, canClose {
-                Button("Close", action: onClose)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-            }
+            if merge == nil {
+                if isStale, isHovering, canClose {
+                    Button("Close", action: onClose)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                }
 
-            // Merging is irreversible, so it is only offered once the pull request can be merged.
-            if isHovering, pr.readiness == .ready, canMerge {
-                Button("Merge", action: onMerge)
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-            } else if isHovering {
-                Button("Review", action: onReview)
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
+                // Merging is irreversible, so it is only offered once the pull request can be merged.
+                if isHovering, pr.readiness == .ready, canMerge {
+                    Button("Merge", action: onMerge)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                } else if isHovering {
+                    Button("Review", action: onReview)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                }
             }
         }
         .padding(.horizontal, 12)
@@ -126,6 +139,25 @@ struct PRRowView: View {
         // interpolated string literal is a LocalizedStringKey, which applies
         // locale grouping and had VoiceOver reading #1204 as "1.204".
         .accessibilityLabel(Text(verbatim: accessibilityDescription))
+    }
+
+    @ViewBuilder private var leadingGlyph: some View {
+        switch merge {
+        case .merging:
+            ProgressView().controlSize(.small)
+        case .merged:
+            StatusGlyphView(glyph: .merged).foregroundStyle(palette.color(.green))
+        case nil:
+            StatusGlyphView(glyph: pr.readiness.glyph).foregroundStyle(palette.color(pr.readiness.tint))
+        }
+    }
+
+    private var statusLabel: String {
+        switch merge {
+        case .merging: return "Merging"
+        case .merged: return "Merged"
+        case nil: return pr.readiness.label
+        }
     }
 
     /// Orange rather than a new tint: `PaletteTests` proves a contrast floor
@@ -154,7 +186,7 @@ struct PRRowView: View {
     /// which is true when the row is being read aloud.
     private var accessibilityDescription: String {
         let base = "\(pr.repo) pull request \(pr.number), "
-            + "\(title), \(pr.readiness.label)"
+            + "\(title), \(statusLabel)"
         return isStale ? base + ", opened \(staleAge) ago" : base
     }
 }

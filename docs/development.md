@@ -102,7 +102,7 @@ them. All of them fake only *fetching* — merging always goes to the real API.
 | `PRMASTER_DIFF_FIXTURE=path.json` | serve a compare response to every review window, with the description from `path.description.html` if present |
 | `PRMASTER_FAKE_ERROR=ghNotFound\|notAuthenticated\|network\|notJSON` | force a failure state |
 | `PRMASTER_FAIL_AFTER=n` | succeed `n` times, then fail — shows the stale banner |
-| `PRMASTER_DEMO_MERGE=confirm\|fail` | open the merge confirm sheet or failure alert |
+| `PRMASTER_DEMO_MERGE=confirm\|fail` | open the merge confirm sheet or failure alert; any other value offers Merge on fixture rows, against a no-op merger that takes 2 s |
 | `PRMASTER_AUTO_OPEN=1` | open the popover at launch |
 | `PRMASTER_OPEN_SETTINGS=1` | open the settings window at launch |
 | `PRMASTER_SETTINGS_TAB=pullRequests\|appearance` | which settings tab to open on |

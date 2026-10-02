@@ -17,6 +17,11 @@ public enum MergeOutcome: Equatable, Sendable {
     case failed(String)
 }
 
+/// A row's merge, from the confirmation until GitHub's search stops listing it as open.
+public enum MergeProgress: Sendable, Equatable {
+    case merging, merged
+}
+
 /// Guards the one irreversible operation in the app.
 ///
 /// The confirmation is injected rather than built here, so the decision table —
