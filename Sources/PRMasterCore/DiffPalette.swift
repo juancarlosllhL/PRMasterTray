@@ -1,12 +1,12 @@
 import Foundation
 
-/// What a diff row is painted as. Headers share one tint.
+/// What a diff row is painted as. File headers stand apart; hunk headers, dividers and notices share one tint.
 public enum DiffLineTint: Sendable, Equatable, CaseIterable {
-    case context, added, removed, header
+    case context, added, removed, header, fileHeader
 }
 
 /// Diff colours for the review window. Worst text ratios against any row:
-/// standard 11.64:1, increased 13.76:1, monochrome 12.08:1. Syntax colours are floored at 4.5:1 or 7:1.
+/// standard 10.36:1, increased 12.24:1, monochrome 10.37:1. Syntax colours are floored at 4.5:1 or 7:1.
 extension Palette {
 
     public static func diffText(appearance: AppearanceMode, contrast: ContrastMode) -> RGB {
@@ -26,18 +26,22 @@ extension Palette {
         case (.light, false, .added): return .hex(0xE6FFEC)
         case (.light, false, .removed): return .hex(0xFFEBE9)
         case (.light, false, .header): return .hex(0xF6F8FA)
+        case (.light, false, .fileHeader): return .hex(0xDDF4FF)
         case (.light, true, .context): return .hex(0xFFFFFF)
         case (.light, true, .added): return .hex(0xF0F0F0)
         case (.light, true, .removed): return .hex(0xE4E4E4)
         case (.light, true, .header): return .hex(0xEBEBEB)
+        case (.light, true, .fileHeader): return .hex(0xD4D4D4)
         case (.dark, false, .context): return .hex(0x1E1E1E)
         case (.dark, false, .added): return .hex(0x203124)
         case (.dark, false, .removed): return .hex(0x342322)
         case (.dark, false, .header): return .hex(0x2B2B2B)
+        case (.dark, false, .fileHeader): return .hex(0x24364F)
         case (.dark, true, .context): return .hex(0x1E1E1E)
         case (.dark, true, .added): return .hex(0x2A2A2A)
         case (.dark, true, .removed): return .hex(0x363636)
         case (.dark, true, .header): return .hex(0x262626)
+        case (.dark, true, .fileHeader): return .hex(0x404040)
         }
     }
 }

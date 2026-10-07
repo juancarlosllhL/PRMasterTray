@@ -99,6 +99,20 @@ struct DiffPaletteTests {
         }
     }
 
+    /// A file header painted like a hunk header hides where one file ends and the next begins.
+    @Test("a file header never shares a background with any other row", arguments: ContrastMode.allCases)
+    func fileHeaderStandsOut(contrast: ContrastMode) {
+        for appearance in AppearanceMode.allCases {
+            let header = Palette.diffBackground(.fileHeader, appearance: appearance, contrast: contrast)
+            for tint in DiffLineTint.allCases where tint != .fileHeader {
+                #expect(
+                    header != Palette.diffBackground(tint, appearance: appearance, contrast: contrast),
+                    "\(tint) in \(appearance)/\(contrast)"
+                )
+            }
+        }
+    }
+
     /// WCAG's 3:1 for graphics: a stripe that does not read is a heatmap that lies by omission.
     @Test("every heat stripe reads against every line it can sit on", arguments: ContrastMode.allCases)
     func heatStripeContrast(contrast: ContrastMode) {

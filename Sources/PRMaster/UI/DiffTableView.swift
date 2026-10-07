@@ -905,6 +905,7 @@ final class DiffCellView: NSTableCellView {
             case .added: return .added
             case .removed: return .removed
             }
+        case .header(_, isFile: true): return .fileHeader
         case .header, .divider, .notice: return .header
         case .blank: return .context
         }
