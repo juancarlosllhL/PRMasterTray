@@ -4,6 +4,10 @@ What each release changed, newest first. The app shows the entries you missed
 the first time it runs after an update, so keep the lines short and written for
 whoever has to read them in a small window.
 
+## 0.16.1 — 2026-10-07
+
+- In the review window, each file's header has its own colour, so you can see where one file ends and the next begins.
+
 ## 0.16.0 — 2026-10-02
 
 - After you merge from a row, it says Merging… while GitHub merges, then Merged until it moves to Recently merged. It no longer goes back to Ready to merge in between.
