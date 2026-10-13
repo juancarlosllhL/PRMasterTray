@@ -31,6 +31,10 @@ GitHub would merge right now.
   GitHub judges too large and pull requests over 3000 files are named rather
   than shown blank.
 
+  While a review window is open, the app sits in the Dock and in Command-Tab,
+  and window switchers such as AltTab list each review by its title. Closing
+  the last one puts the app back in the menu bar only.
+
   Tests, generated code, lockfiles and planning notes are set aside: they sit
   closed under their own headings below the files to review, one click away,
   and stay out of the viewed count. Which files go where is a list of
