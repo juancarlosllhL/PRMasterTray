@@ -6,6 +6,8 @@
 	<string>PR Master Tray</string>
 	<key>CFBundleExecutable</key>
 	<string>PRMaster</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.jcll.PRMaster</string>
 	<key>CFBundleName</key>

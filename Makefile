@@ -59,6 +59,13 @@ bundle: build
 	@if [ -d Resources/WhatsNew ]; then \
 	  cp Resources/WhatsNew/*.png $(APP)/Contents/Resources/ 2>/dev/null || true; \
 	fi
+	# sips ignores SVG filters, so the icon's depth is drawn with gradients only.
+	@set -e; iconset=.build/AppIcon.iconset; rm -rf $$iconset; mkdir -p $$iconset; \
+	 for s in 16 32 128 256 512; do \
+	   sips -s format png -z $$s $$s Resources/AppIcon.svg --out $$iconset/icon_$${s}x$${s}.png >/dev/null; \
+	   sips -s format png -z $$((s*2)) $$((s*2)) Resources/AppIcon.svg --out $$iconset/icon_$${s}x$${s}@2x.png >/dev/null; \
+	 done; \
+	 iconutil -c icns $$iconset -o $(APP)/Contents/Resources/AppIcon.icns
 	codesign -s "$(SIGN_ID)" --force --options runtime --timestamp=none $(APP)
 	@codesign --verify --strict $(APP) && echo "signed: $(SIGN_ID)"
 	@linked=$$(vtool -show-build $(APP)/Contents/MacOS/PRMaster \
