@@ -99,6 +99,82 @@ enum Queries {
     }
     """
 
+    /// Your own boards, and each organization's most recently updated ones plus
+    /// any you changed lately. Team projects were measured finding none of the
+    /// boards in use, and recent projects alone missed two. Needs `read:project`.
+    static let myProjects = """
+    query {
+      viewer {
+        projectsV2(first: 20) { nodes { ...ProjectFields } }
+        organizations(first: 20) {
+          nodes {
+            recentProjects(first: 20) { nodes { ...ProjectFields } }
+            projects: projectsV2(first: 20, orderBy: { field: UPDATED_AT, direction: DESC }) { nodes { ...ProjectFields } }
+          }
+        }
+      }
+    }
+    fragment ProjectFields on ProjectV2 {
+      id number title url closed
+      owner { ... on Organization { login } ... on User { login } }
+      field(name: "Status") { ... on ProjectV2SingleSelectField { id options { id name } } }
+    }
+    """
+
+    static let projectItemPageCap = 5
+
+    static let viewerLogin = "query { viewer { login } }"
+
+    /// One page of a board's items. `$q` names the viewer's login rather than
+    /// `@me`: the login was measured filtering on GitHub's side, `@me` could not
+    /// be. Archived items are left out by GitHub's own default.
+    static let projectItems = """
+    query($id: ID!, $after: String, $q: String!) {
+      node(id: $id) {
+        ... on ProjectV2 {
+          items(first: 100, after: $after, query: $q) {
+            pageInfo { hasNextPage endCursor }
+            nodes {
+              id
+              status: fieldValueByName(name: "Status") {
+                ... on ProjectV2ItemFieldSingleSelectValue { optionId name updatedAt }
+              }
+              content {
+                __typename
+                ... on Issue {
+                  number title url createdAt
+                  issueType { name }
+                  repository { nameWithOwner }
+                  closedByPullRequestsReferences(first: 5, includeClosedPrs: true) {
+                    nodes { id number title url state isDraft repository { nameWithOwner isPrivate } }
+                  }
+                }
+                ... on PullRequest {
+                  number title url createdAt
+                  repository { nameWithOwner }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    """
+
+    /// Sets one item's Status. Every id rides as a variable.
+    static let setProjectStatus = """
+    mutation($project: ID!, $item: ID!, $field: ID!, $option: String!) {
+      updateProjectV2ItemFieldValue(input: {
+        projectId: $project
+        itemId: $item
+        fieldId: $field
+        value: { singleSelectOptionId: $option }
+      }) {
+        projectV2Item { id }
+      }
+    }
+    """
+
     /// How many rows to fetch per enabled team.
     ///
     /// Per team rather than overall, which is the point of searching each one

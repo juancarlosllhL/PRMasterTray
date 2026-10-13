@@ -3,15 +3,15 @@ import PRMasterCore
 
 /// Columns of a fixed height so they all reach the same bottom edge. Ragged
 /// columns do not read as a board.
-struct JiraBoardView: View {
-    let columns: [JiraColumn]
-    let jira: JiraStore
+struct BoardView: View {
+    let columns: [BoardColumn]
+    let board: BoardStore
     let filter: PRFilter
-    let onOpenIssue: (JiraIssue) -> Void
-    let issueLink: (JiraIssue) -> URL?
+    let onOpenCard: (BoardCard) -> Void
+    let cardLink: (BoardCard) -> URL?
     let onOpenLink: (LinkedPullRequest) -> Void
 
-    @State private var targetedLane: JiraLane?
+    @State private var targetedLane: BoardLane?
     @Environment(\.palette) private var palette
 
     private static let columnWidth = CGFloat(JiraBoard.columnWidth)
@@ -35,12 +35,12 @@ struct JiraBoardView: View {
     /// Only the long columns get a scroller and a fixed height. A short one
     /// sized to the tallest would leave the popover mostly empty space.
     @ViewBuilder
-    private func column(_ column: JiraColumn) -> some View {
+    private func column(_ column: BoardColumn) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            PaneHeaderView(title: column.title, trailing: "\(column.issues.count)")
-            if column.issues.isEmpty {
+            PaneHeaderView(title: column.title, trailing: "\(column.cards.count)")
+            if column.cards.isEmpty {
                 empty
-            } else if column.issues.count > Self.cardsBeforeScrolling {
+            } else if column.cards.count > Self.cardsBeforeScrolling {
                 ScrollView { cards(column) }
                     .frame(height: Self.columnHeight)
             } else {
@@ -60,9 +60,9 @@ struct JiraBoardView: View {
                 .strokeBorder(palette.color(.blue).opacity(0.6), lineWidth: 1.5)
                 .opacity(targetedLane == column.lane ? 1 : 0)
         }
-        .modifier(DropTarget(lane: column.lane, jira: jira, targetedLane: $targetedLane))
+        .modifier(DropTarget(lane: column.lane, board: board, targetedLane: $targetedLane))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(column.title), \(column.issues.count) issues")
+        .accessibilityLabel("\(column.title), \(column.cards.count) cards")
     }
 
     /// Kept rather than collapsed: an empty column is what says the group exists
@@ -75,22 +75,21 @@ struct JiraBoardView: View {
             .padding(.vertical, 12)
     }
 
-    private func cards(_ column: JiraColumn) -> some View {
+    private func cards(_ column: BoardColumn) -> some View {
         LazyVStack(spacing: 6) {
-            ForEach(column.issues) { issue in
-                JiraIssueCardView(
-                    issue: issue,
-                    links: jira.links(for: issue.key, under: filter),
-                    linkState: jira.linkState(for: issue.key),
-                    isExpanded: jira.expandedKeys.contains(issue.key),
+            ForEach(column.cards) { card in
+                BoardCardView(
+                    card: card,
+                    links: filter.apply(to: card.links),
+                    isExpanded: board.isExpanded(card.id),
                     showsPriority: column.showsPriority,
-                    isMoving: jira.isMoving(issue.key),
-                    onToggle: { jira.toggle(issue.key) },
-                    onOpenIssue: { onOpenIssue(issue) },
+                    isMoving: board.isMoving(card.id),
+                    onToggle: { board.toggle(card.id) },
+                    onOpen: { onOpenCard(card) },
                     onOpenLink: onOpenLink
                 )
-                .modifier(DragSource(key: issue.key, isEnabled: jira.canMove && !jira.isMoving(issue.key)))
-                .jiraIssueMenu(issue, jira: jira, link: issueLink(issue))
+                .modifier(DragSource(id: card.id, isEnabled: board.canMove(card) && !board.isMoving(card.id)))
+                .boardCardMenu(card, board: board, link: cardLink(card))
             }
         }
         .padding(.horizontal, 2)

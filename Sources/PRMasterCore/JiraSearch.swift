@@ -1,18 +1,21 @@
 import Foundation
 
-public enum JiraSearch {
+/// Words rather than a phrase, so "extract logic" finds a card whose title
+/// separates the two.
+public enum BoardSearch {
 
-    /// Words rather than a phrase, so "extract logic" finds an issue whose
-    /// summary separates the two.
-    public static func matches(_ issue: JiraIssue, query: String) -> Bool {
-        let terms = words(in: query)
+    public static func terms(in query: String) -> [String] {
+        folded(query).split(whereSeparator: \.isWhitespace).map(String.init)
+    }
+
+    public static func matches(_ text: String, terms: [String]) -> Bool {
         guard !terms.isEmpty else { return true }
-        let haystack = folded("\(issue.key) \(issue.summary)")
+        let haystack = folded(text)
         return terms.allSatisfy(haystack.contains)
     }
 
-    private static func words(in query: String) -> [String] {
-        folded(query).split(whereSeparator: \.isWhitespace).map(String.init)
+    public static func matches(_ card: BoardCard, terms: [String]) -> Bool {
+        matches("\(card.reference) \(card.title)", terms: terms)
     }
 
     private static func folded(_ text: String) -> String {
@@ -20,14 +23,8 @@ public enum JiraSearch {
     }
 }
 
-extension JiraGroups {
-    public func matching(_ query: String) -> JiraGroups {
-        JiraGroups(
-            toDo: toDo.filter { JiraSearch.matches($0, query: query) },
-            inProgress: inProgress.filter { JiraSearch.matches($0, query: query) },
-            reviewing: reviewing.filter { JiraSearch.matches($0, query: query) },
-            testing: testing.filter { JiraSearch.matches($0, query: query) },
-            done: done.filter { JiraSearch.matches($0, query: query) }
-        )
+public enum JiraSearch {
+    public static func matches(_ issue: JiraIssue, query: String) -> Bool {
+        BoardSearch.matches("\(issue.key) \(issue.summary)", terms: BoardSearch.terms(in: query))
     }
 }

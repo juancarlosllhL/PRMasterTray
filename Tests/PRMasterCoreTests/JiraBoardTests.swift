@@ -2,116 +2,6 @@ import Foundation
 import Testing
 @testable import PRMasterCore
 
-private let boardNow = Date(timeIntervalSince1970: 2_000_000)
-
-private func boardIssue(
-    _ key: String,
-    category: JiraStatusCategory = .toDo,
-    priority: JiraPriority = .medium,
-    status: String = "To Do",
-    doneDaysAgo: Double? = nil
-) -> JiraIssue {
-    JiraIssue(
-        key: key,
-        summary: "summary for \(key)",
-        statusName: status,
-        statusCategory: category,
-        issueType: "Task",
-        priority: priority,
-        updatedAt: boardNow,
-        categoryChangedAt: doneDaysAgo.map { boardNow.addingTimeInterval(-$0 * 86_400) }
-    )
-}
-
-private let populated = JiraGrouping.group(
-    [
-        boardIssue("ACME-1"),
-        boardIssue("ACME-2", category: .inProgress, status: "In Progress"),
-        boardIssue("ACME-3", category: .inProgress, status: "Testing"),
-        boardIssue("ACME-4", category: .done, status: "Done", doneDaysAgo: 1),
-        boardIssue("ACME-5", category: .inProgress, status: "Reviewing"),
-    ],
-    window: .twoWeeks,
-    now: boardNow
-)
-
-@Suite("JiraColumn")
-struct JiraColumnTests {
-
-    @Test("columns read left to right in the order the work moves")
-    func workflowOrder() {
-        #expect(
-            populated.boardColumns(includesDone: true).map(\.title)
-                == ["To do", "In progress", "Reviewing", "Testing", "Done"]
-        )
-    }
-
-    @Test("every column carries its own issues")
-    func issuesPerColumn() {
-        let columns = populated.boardColumns(includesDone: true)
-        #expect(columns.map { $0.issues.map(\.key) }
-            == [["ACME-1"], ["ACME-2"], ["ACME-5"], ["ACME-3"], ["ACME-4"]])
-    }
-
-    /// The list drops an empty section. A board must not: an empty column is
-    /// what says the group exists and has nothing in it.
-    @Test("an empty group still gets a column")
-    func emptyGroupsSurvive() {
-        let onlyToDo = JiraGrouping.group([boardIssue("ACME-1")], window: .twoWeeks, now: boardNow)
-        let columns = onlyToDo.boardColumns(includesDone: true)
-
-        #expect(columns.count == 5)
-        #expect(columns.map(\.issues.isEmpty) == [false, true, true, true, true])
-    }
-
-    @Test("no issues at all still gives every column")
-    func emptyBoardKeepsColumns() {
-        let none = JiraGrouping.group([], window: .twoWeeks, now: boardNow)
-        #expect(none.boardColumns(includesDone: true).count == 5)
-        #expect(none.boardColumns(includesDone: false).count == 4)
-    }
-
-    /// A column that can never fill would read as a bug rather than as a window
-    /// that is switched off.
-    @Test("Done is dropped when its window is off")
-    func doneDroppedWhenOff() {
-        let columns = populated.boardColumns(includesDone: false)
-        #expect(columns.map(\.title) == ["To do", "In progress", "Reviewing", "Testing"])
-    }
-
-    @Test("Done is the only column without priority")
-    func priorityShownExceptOnDone() {
-        let columns = populated.boardColumns(includesDone: true)
-        #expect(columns.map(\.showsPriority) == [true, true, true, true, false])
-    }
-
-    @Test("a column is identified by its title")
-    func identifiedByTitle() {
-        let columns = populated.boardColumns(includesDone: true)
-        #expect(columns.map(\.id) == columns.map(\.title))
-        #expect(Set(columns.map(\.id)).count == columns.count)
-    }
-
-    /// Ordering belongs to `JiraGrouping`, and reading it through a column must
-    /// not disturb it.
-    @Test("ordering inside a column is whatever the grouping decided")
-    func orderingUntouched() {
-        let groups = JiraGrouping.group(
-            [
-                boardIssue("ACME-9", priority: .low),
-                boardIssue("ACME-8", priority: .critical),
-                boardIssue("ACME-7", priority: .medium),
-            ],
-            window: .twoWeeks,
-            now: boardNow
-        )
-        let column = groups.boardColumns(includesDone: true)[0]
-
-        #expect(column.issues.map(\.key) == groups.toDo.map(\.key))
-        #expect(column.issues.map(\.key) == ["ACME-8", "ACME-7", "ACME-9"])
-    }
-}
-
 @Suite("JiraBoard width")
 struct JiraBoardWidthTests {
 
@@ -177,10 +67,10 @@ struct JiraBoardDecisionTests {
         (false, true, JiraBoard.listWidth),
         (false, false, JiraBoard.listWidth),
     ])
-    func popoverWidth(isJiraTab: Bool, showsBoard: Bool, expected: Double) {
+    func popoverWidth(isBoardTab: Bool, showsBoard: Bool, expected: Double) {
         #expect(
             JiraBoard.popoverWidth(
-                isJiraTab: isJiraTab, showsBoard: showsBoard,
+                isBoardTab: isBoardTab, showsBoard: showsBoard,
                 columns: 4, available: Self.roomy
             ) == expected
         )
@@ -218,33 +108,5 @@ struct JiraBoardDecisionTests {
     func singularLink() {
         #expect(JiraBoard.cardLinkSummary(.linked, count: 1) == "1 pull request")
         #expect(JiraBoard.cardLinkSummary(.linked, count: 2) == "2 pull requests")
-    }
-}
-
-@Suite("JiraStore board reading")
-@MainActor
-struct JiraStoreBoardTests {
-
-    @Test("the store drops Done when the window is off")
-    func storeHonoursWindow() {
-        let preferences = MemoryPreferences()
-        preferences.setJiraWindow(.off)
-        let store = JiraStore(issues: nil, links: nil, preferences: preferences)
-
-        #expect(store.boardColumns.map(\.title) == ["To do", "In progress", "Reviewing", "Testing"])
-    }
-
-    @Test("the board is off while the layout is the list")
-    func noBoardInListLayout() {
-        #expect(JiraStore(issues: nil, links: nil, preferences: MemoryPreferences()).showsBoard == false)
-    }
-
-    /// A wide popover over "Jira isn't set up yet" would be absurd, and a wide
-    /// one over nothing at all no less so.
-    @Test("the board is off while Jira is unconfigured")
-    func noBoardWhenUnconfigured() {
-        let preferences = MemoryPreferences()
-        preferences.setJiraLayout(.board)
-        #expect(JiraStore(issues: nil, links: nil, preferences: preferences).showsBoard == false)
     }
 }

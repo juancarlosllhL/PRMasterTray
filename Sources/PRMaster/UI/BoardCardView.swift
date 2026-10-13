@@ -1,17 +1,16 @@
 import SwiftUI
 import PRMasterCore
 
-/// The board's answer to `JiraIssueRowView`: the same issue stacked into a
+/// The board's answer to `BoardRowView`: the same card stacked into a
 /// column's width instead of spread across the popover's.
-struct JiraIssueCardView: View {
-    let issue: JiraIssue
+struct BoardCardView: View {
+    let card: BoardCard
     let links: [LinkedPullRequest]
-    let linkState: IssueLinkState
     let isExpanded: Bool
     var showsPriority = false
     var isMoving = false
     let onToggle: () -> Void
-    let onOpenIssue: () -> Void
+    let onOpen: () -> Void
     let onOpenLink: (LinkedPullRequest) -> Void
 
     @State private var isHovering = false
@@ -31,24 +30,26 @@ struct JiraIssueCardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay {
             RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(palette.color(issue.statusCategory.tint).opacity(0.25))
+                .strokeBorder(palette.color(card.tint).opacity(0.25))
         }
         .contentShape(Rectangle())
-        .onTapGesture(perform: onOpenIssue)
+        .onTapGesture(perform: onOpen)
         .onHover { isHovering = $0 }
     }
 
     private var background: Color {
-        palette.wash(issue.statusCategory.tint)
+        palette.wash(card.tint)
             .opacity(isHovering ? 1 : 0.55)
     }
 
     private var heading: some View {
-        HStack(spacing: 6) {
-            Text(verbatim: issue.key)
+        HStack(spacing: 5) {
+            SourceMark(source: card.source)
+            Text(verbatim: card.reference)
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundStyle(palette.color(issue.statusCategory.tint))
+                .foregroundStyle(palette.color(card.tint))
                 .lineLimit(1)
+                .truncationMode(.middle)
             Spacer(minLength: 0)
             if let age {
                 Text(verbatim: age)
@@ -61,45 +62,47 @@ struct JiraIssueCardView: View {
     }
 
     /// Two lines rather than one: a column is narrow enough that a single line
-    /// truncates most summaries to uselessness.
+    /// truncates most titles to uselessness.
     private var summary: some View {
-        Text(verbatim: issue.summary)
+        Text(verbatim: card.title)
             .font(.rowTitle)
             .lineLimit(2)
             .multilineTextAlignment(.leading)
             .truncationMode(.tail)
-            .helpWhenTruncated(issue.summary)
+            .helpWhenTruncated(card.title)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var footer: some View {
         HStack(spacing: 5) {
-            if showsPriority, let symbol = issue.priority.symbolName {
+            if showsPriority, let symbol = card.priority.symbolName {
                 Image(systemName: symbol)
                     .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(palette.color(issue.priority.tint))
-                    .help("\(issue.priority.name) priority")
-                    .accessibilityLabel("\(issue.priority.name) priority")
+                    .foregroundStyle(palette.color(card.priority.tint))
+                    .help("\(card.priority.name) priority")
+                    .accessibilityLabel("\(card.priority.name) priority")
             }
-            chip(issue.typeLabel, tint: issue.typeTint)
+            chip(card.typeLabel, tint: card.typeTint)
             if isMoving {
                 ProgressView().controlSize(.mini).scaleEffect(0.6)
                     .accessibilityLabel("Moving")
             }
-            Text(verbatim: issue.statusName)
+            Text(verbatim: card.statusName)
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 0)
-            linkControl
+            if let linkState = card.linkState {
+                linkControl(linkState)
+            }
         }
     }
 
     /// A button only where there is something to expand, so a card with no pull
     /// requests does not offer a control that would do nothing.
     @ViewBuilder
-    private var linkControl: some View {
+    private func linkControl(_ linkState: IssueLinkState) -> some View {
         if linkState == .linked {
             Button(action: onToggle) {
                 HStack(spacing: 3) {
@@ -120,7 +123,7 @@ struct JiraIssueCardView: View {
                 if linkState == .loading {
                     ProgressView().controlSize(.mini).scaleEffect(0.6)
                 }
-                Text(verbatim: linkSummary)
+                Text(verbatim: JiraBoard.cardLinkSummary(linkState, count: links.count))
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -141,11 +144,7 @@ struct JiraIssueCardView: View {
     }
 
     private var age: String? {
-        issue.createdAt.map { RelativeAge.label(since: $0, now: Date()) }
-    }
-
-    private var linkSummary: String {
-        JiraBoard.cardLinkSummary(linkState, count: links.count)
+        card.createdAt.map { RelativeAge.label(since: $0, now: Date()) }
     }
 
     @ViewBuilder

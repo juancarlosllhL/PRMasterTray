@@ -1,0 +1,102 @@
+{
+  "data": {
+    "node": {
+      "items": {
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": "Y3Vyc29yOjQ="
+        },
+        "nodes": [
+          {
+            "id": "PVTI_issue",
+            "status": {
+              "optionId": "t-review",
+              "name": "In Review",
+              "updatedAt": "2026-10-10T09:00:00Z"
+            },
+            "content": {
+              "__typename": "Issue",
+              "number": 42,
+              "title": "Board column map",
+              "url": "https://github.com/acme/widget/issues/42",
+              "createdAt": "2026-10-01T08:00:00Z",
+              "issueType": {
+                "name": "Task"
+              },
+              "repository": {
+                "nameWithOwner": "acme/widget",
+                "isPrivate": true
+              },
+              "assignees": {
+                "nodes": [
+                  {
+                    "login": "octo"
+                  }
+                ]
+              },
+              "closedByPullRequestsReferences": {
+                "nodes": [
+                  {
+                    "id": "PR_1",
+                    "number": 43,
+                    "title": "Map Status options",
+                    "url": "https://github.com/acme/widget/pull/43",
+                    "state": "OPEN",
+                    "isDraft": false,
+                    "repository": {
+                      "nameWithOwner": "acme/widget",
+                      "isPrivate": true
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "PVTI_pull",
+            "status": null,
+            "content": {
+              "__typename": "PullRequest",
+              "number": 50,
+              "title": "Bump deps",
+              "url": "https://github.com/acme/widget/pull/50",
+              "createdAt": "2026-10-02T08:00:00Z",
+              "state": "OPEN",
+              "isDraft": true,
+              "repository": {
+                "nameWithOwner": "acme/widget",
+                "isPrivate": true
+              },
+              "assignees": {
+                "nodes": [
+                  {
+                    "login": "someone"
+                  },
+                  {
+                    "login": "octo"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "PVTI_draft",
+            "status": {
+              "optionId": "t-backlog",
+              "name": "Backlog",
+              "updatedAt": "2026-10-03T08:00:00Z"
+            },
+            "content": {
+              "__typename": "DraftIssue"
+            }
+          },
+          {
+            "id": "PVTI_redacted",
+            "status": null,
+            "content": null
+          }
+        ]
+      }
+    }
+  }
+}

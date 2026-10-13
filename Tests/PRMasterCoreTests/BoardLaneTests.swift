@@ -2,11 +2,11 @@ import Foundation
 import Testing
 @testable import PRMasterCore
 
-@Suite("JiraLane")
-struct JiraLaneTests {
+@Suite("BoardLane")
+struct BoardLaneTests {
 
     /// Statuses and categories exactly as the ACME workflow reports them.
-    static let acme: [(String, JiraStatusCategory, JiraLane?)] = [
+    static let acme: [(String, JiraStatusCategory, BoardLane?)] = [
         ("To Do", .toDo, .toDo),
         ("New", .toDo, .toDo),
         ("On Hold", .toDo, nil),
@@ -23,12 +23,12 @@ struct JiraLaneTests {
     ]
 
     @Test("each ACME status lands in the lane its column shows it in", arguments: acme)
-    func lanes(name: String, category: JiraStatusCategory, expected: JiraLane?) {
+    func lanes(name: String, category: JiraStatusCategory, expected: BoardLane?) {
         #expect(JiraGrouping.lane(statusName: name, category: category) == expected)
     }
 
     /// Jira names statuses in each user's profile language: a Spanish account reads "Pruebas".
-    static let translated: [(String, String, JiraStatusCategory, JiraLane?)] = [
+    static let translated: [(String, String, JiraStatusCategory, BoardLane?)] = [
         ("10000", "Tareas por hacer", .toDo, .toDo),
         ("10029", "Nueva", .toDo, .toDo),
         ("10032", "En espera", .toDo, nil),
@@ -39,7 +39,7 @@ struct JiraLaneTests {
     ]
 
     @Test("an ACME status keeps its lane whatever language names it", arguments: translated)
-    func translatedLanes(id: String, name: String, category: JiraStatusCategory, expected: JiraLane?) {
+    func translatedLanes(id: String, name: String, category: JiraStatusCategory, expected: BoardLane?) {
         #expect(JiraGrouping.lane(statusName: name, category: category, statusID: id) == expected)
     }
 
@@ -62,8 +62,8 @@ struct JiraLaneTests {
 
     @Test("lanes run in the order work moves, and the titles are the column titles")
     func orderAndTitles() {
-        #expect(JiraLane.allCases.sorted() == [.toDo, .inProgress, .reviewing, .testing, .done])
-        #expect(JiraLane.allCases.map(\.title)
+        #expect(BoardLane.allCases.sorted() == [.toDo, .inProgress, .reviewing, .testing, .done])
+        #expect(BoardLane.allCases.map(\.title)
             == ["To do", "In progress", "Reviewing", "Testing", "Done"])
     }
 
@@ -74,11 +74,5 @@ struct JiraLaneTests {
             statusCategory: .inProgress, issueType: "Task", updatedAt: .distantPast
         )
         #expect(JiraGrouping.lane(for: issue) == .reviewing)
-    }
-
-    @Test("every board column carries the lane it shows")
-    func columnsCarryLanes() {
-        let groups = JiraGroups(toDo: [], inProgress: [], reviewing: [], testing: [], done: [])
-        #expect(groups.boardColumns(includesDone: true).map(\.lane) == JiraLane.allCases)
     }
 }

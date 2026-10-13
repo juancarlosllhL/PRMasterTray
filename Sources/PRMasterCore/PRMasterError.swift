@@ -61,6 +61,8 @@ public enum PRMasterError: Error, LocalizedError {
     case jiraMoveRefused(String)
     /// The branch was pushed to twice while its diff was being read.
     case diffHeadMoved
+    /// The gh token was never granted `project`, which GitHub Projects need.
+    case projectScopeMissing
     case heatmapUnauthorized
     case heatmapNoCredits
     /// Worth one more try: the provider stumbled, or nil when the network did.
@@ -135,6 +137,8 @@ public enum PRMasterError: Error, LocalizedError {
             return "Couldn't install the update — \(detail)"
         case .diffHeadMoved:
             return "New commits kept arriving while the diff was loading. Try again in a moment."
+        case .projectScopeMissing:
+            return "GitHub Projects need the project scope. Run: gh auth refresh -s project"
         case .heatmapUnauthorized:
             return "OpenRouter didn't accept the API key. Check it in Settings, Diff Viewer."
         case .heatmapNoCredits:
@@ -162,6 +166,7 @@ extension PRMasterError: Equatable {
              (.updateVerificationFailed, .updateVerificationFailed),
              (.jiraUnauthorized, .jiraUnauthorized),
              (.diffHeadMoved, .diffHeadMoved),
+             (.projectScopeMissing, .projectScopeMissing),
              (.heatmapUnauthorized, .heatmapUnauthorized),
              (.heatmapNoCredits, .heatmapNoCredits):
             return true

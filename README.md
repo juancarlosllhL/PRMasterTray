@@ -120,8 +120,9 @@ GitHub would merge right now.
   show at all. Hidden ones are left out of the count, never notify, and are never
   brought up to date automatically. Both also apply to the teams section above.
 - The popover has two tabs. **Pull requests** is everything above, in the order
-  it has always been in. **Jira** is the issues assigned to you that are not
-  done. Command-1 and Command-2 switch between them.
+  it has always been in. **Board** is the work assigned to you that is not
+  done, from Jira and from the GitHub projects you switch on. Command-1 and
+  Command-2 switch between them.
 - **Jira** lists each assigned issue with its own status, and expands to the
   pull requests carrying its key in their title. One issue routinely spans
   several repositories, which is what the nesting is for.
@@ -141,9 +142,31 @@ GitHub would merge right now.
 
   Finding the pull requests costs one request no matter how many issues you
   have, and the key match is exact: `ACME-6023` never pulls in `ACME-60236`.
-- **Layout** on the Jira settings tab draws the same issues as a board instead:
-  a column per group, left to right in the order the work moves, each issue a
-  card. The popover widens to fit the columns while the Jira tab is open and
+- **GitHub projects** share the board with Jira, in the same five columns.
+  Settings, Board lists your own projects and each organization's boards,
+  most recently updated first, each with a switch, all off until you turn them
+  on. Only items assigned to you appear, and every card carries the Jira or
+  GitHub logo so you can tell where it came from. An issue card expands to the
+  pull requests that close it.
+
+  A project's Status options are placed on the columns by their names: Todo,
+  Ready and Draft in To do, In Review in Reviewing, QA in Testing, and anything
+  unrecognised in In progress, where it is seen rather than lost. Work not yet
+  started in earnest starts hidden: Backlog, In Refinement, items with no
+  Status, and Blocked, On hold and Canceled. Each choice can be changed under
+  the project's Columns section, and a choice survives the option being renamed
+  on GitHub. Draft issues, the board-only notes with no repository, are not
+  shown: there is nothing to link to.
+
+  Reading projects needs the `read:project` scope and moving cards needs
+  `project`, which the `gh` token does not carry by default. Run
+  `gh auth refresh -s project` once; the app picks the new token up without a
+  restart. The app reads the token `gh` has stored, so if your shell sets
+  `GH_TOKEN`, refresh the stored one instead:
+  `env -u GH_TOKEN gh auth refresh -h github.com -s project`.
+- **Layout** on the Board settings tab draws the same cards as a board instead:
+  a column per group, left to right in the order the work moves, each one a
+  card. The popover widens to fit the columns while the Board tab is open and
   narrows again when you leave it, capped so it never runs off the display it
   opened on.
 
@@ -160,12 +183,14 @@ GitHub would merge right now.
   at the top of the pane asks for its fields first. Every field is required,
   because Jira's validators demand fields its API calls optional. A Remark gets
   "PM: " in front if you leave it out. A card lands in its new column at once; if Jira refuses, it
-  goes back and a banner names the status it stopped at.
+  goes back and a banner names the status it stopped at. A GitHub card moves in
+  one step, to the Status option mapped to that column; a column with no option
+  mapped says so rather than guessing.
 - **Copy Link** and **Copy ID** are on the right-click menu of every pull
-  request and every Jira issue, in both tabs and both layouts. An issue's ID is
-  its key, `ACME-64471`. A pull request's is `owner/repo#675`, which GitHub
-  turns into a link wherever you paste it.
-- **Jira** in Settings is where you sign in: your site, your email, and an API
+  request and every board card, in both tabs and both layouts. A Jira issue's ID
+  is its key, `ACME-64471`. A pull request's or a GitHub issue's is
+  `owner/repo#675`, which GitHub turns into a link wherever you paste it.
+- **Board** in Settings is where you sign in to Jira: your site, your email, and an API
   token from [id.atlassian.com](https://id.atlassian.com) under Security.
   Nothing is stored until it has been tested, so a typo is refused where you
   typed it rather than an hour later as a failed refresh. On success it names

@@ -15,7 +15,7 @@ extension JiraClient: JiraIssueFetching {}
 /// `settledAfter` is the refresh generation current when Jira confirmed the
 /// move. Only a fetch started later is new enough to replace the override.
 public struct PendingMove: Sendable, Equatable {
-    public let lane: JiraLane
+    public let lane: BoardLane
     public var settledAfter: Int?
 }
 
@@ -40,7 +40,6 @@ public final class JiraStore {
     /// banner over a perfectly good issue list.
     public private(set) var lastLinkFailure: String?
     public private(set) var isRefreshing = false
-    public private(set) var expandedKeys: Set<String> = []
     public private(set) var pendingLinkKeys: Set<String> = []
     public private(set) var moves: [String: PendingMove] = [:]
     public private(set) var lastMoveFailure: String?
@@ -58,35 +57,10 @@ public final class JiraStore {
         }
     }
 
-    /// No refetch, unlike `window`: this changes how the issues in hand are
-    /// drawn, not which ones were asked for.
-    public var layout: JiraLayout {
-        didSet {
-            guard layout != oldValue else { return }
-            preferences.setJiraLayout(layout)
-        }
-    }
-
-    /// Deliberately not persisted: a filter still in force on the next launch,
-    /// with nothing on screen to say so, reads as a list that has broken.
-    public var searchQuery = ""
-
     public var groups: JiraGroups {
         JiraGrouping.group(
             issues, window: window, now: now(), overrides: moves.mapValues(\.lane)
         )
-    }
-
-    public var visibleGroups: JiraGroups { groups.matching(searchQuery) }
-
-    public var boardColumns: [JiraColumn] {
-        visibleGroups.boardColumns(includesDone: window != .off)
-    }
-
-    /// The one flag the pane and the popover's width both read, so the two cannot
-    /// disagree about whether a board is on screen.
-    public var showsBoard: Bool {
-        layout == .board && isConfigured && !visibleGroups.isEmpty
     }
 
     private static let intervals: [Duration] = [.seconds(60), .seconds(120), .seconds(300)]
@@ -125,7 +99,6 @@ public final class JiraStore {
         self.now = now
         self.sleep = sleep
         self.window = preferences.jiraWindow()
-        self.layout = preferences.jiraLayout()
     }
 
     var currentInterval: Duration {
@@ -144,25 +117,17 @@ public final class JiraStore {
         filter.apply(to: links[key] ?? [])
     }
 
-    public func toggle(_ key: String) {
-        if expandedKeys.contains(key) {
-            expandedKeys.remove(key)
-        } else {
-            expandedKeys.insert(key)
-        }
-    }
-
     public func isMoving(_ key: String) -> Bool {
         moves[key].map { $0.settledAfter == nil } ?? false
     }
 
-    public func lane(of issue: JiraIssue) -> JiraLane? {
+    public func lane(of issue: JiraIssue) -> BoardLane? {
         moves[issue.key]?.lane ?? JiraGrouping.lane(for: issue)
     }
 
     // MARK: - Moving
 
-    public func move(_ key: String, to lane: JiraLane) async {
+    public func move(_ key: String, to lane: BoardLane) async {
         guard let mover, !isMoving(key),
               let issue = issues.first(where: { $0.key == key }),
               self.lane(of: issue) != lane
@@ -350,7 +315,6 @@ public final class JiraStore {
             issues = []
             links = [:]
             pendingLinkKeys = []
-            expandedKeys = []
             lastSuccessfulFetch = nil
             return
         }

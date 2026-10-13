@@ -11,7 +11,7 @@ public struct JiraStatus: Sendable, Equatable {
         self.id = id
     }
 
-    public var lane: JiraLane? { JiraGrouping.lane(statusName: name, category: category, statusID: id) }
+    public var lane: BoardLane? { JiraGrouping.lane(statusName: name, category: category, statusID: id) }
 }
 
 public struct JiraTransition: Sendable, Equatable {
@@ -41,13 +41,13 @@ public enum JiraRoute {
 
     public static func nextHop(
         from current: JiraStatus,
-        toward target: JiraLane,
+        toward target: BoardLane,
         offered: [JiraTransition],
         visited: Set<String>
     ) -> JiraTransition? {
         guard let here = current.lane else { return nil }
 
-        let usable = offered.compactMap { transition -> (JiraTransition, JiraLane)? in
+        let usable = offered.compactMap { transition -> (JiraTransition, BoardLane)? in
             guard !transition.needsInput, !visited.contains(transition.to.name),
                   !transition.isGlobal || namesALane(transition.to),
                   let lane = transition.to.lane
@@ -62,13 +62,13 @@ public enum JiraRoute {
                 ?? arriving.first
         }
 
-        func distance(_ lane: JiraLane) -> Int { abs(lane.rawValue - target.rawValue) }
-        func rank(_ candidate: (JiraTransition, JiraLane)) -> (Int, Int) {
+        func distance(_ lane: BoardLane) -> Int { abs(lane.rawValue - target.rawValue) }
+        func rank(_ candidate: (JiraTransition, BoardLane)) -> (Int, Int) {
             (distance(candidate.1), candidate.0.isGlobal ? 1 : 0)
         }
 
         // Strict `<` keeps Jira's own order on a tie.
-        var best: (JiraTransition, JiraLane)?
+        var best: (JiraTransition, BoardLane)?
         for candidate in usable where distance(candidate.1) <= distance(here) {
             if best.map({ rank(candidate) < rank($0) }) ?? true { best = candidate }
         }
@@ -78,6 +78,6 @@ public enum JiraRoute {
     /// Cancel is global and category done, and some sites ask no resolution for it.
     private static func namesALane(_ status: JiraStatus) -> Bool {
         if let id = status.id, JiraGrouping.laneByStatusID[id] != nil { return true }
-        return JiraLane.allCases.contains { $0.title.caseInsensitiveCompare(status.name) == .orderedSame }
+        return BoardLane.allCases.contains { $0.title.caseInsensitiveCompare(status.name) == .orderedSame }
     }
 }

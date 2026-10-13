@@ -148,6 +148,13 @@ public protocol PreferenceStoring: Sendable {
     /// window has something to show before the first fetch lands.
     func knownTeams() -> [Team]
     func setKnownTeams(_ value: [Team])
+    /// The GitHub projects discovered last time, for the same reason as `knownTeams`.
+    func knownProjects() -> [GitHubProject]
+    func setKnownProjects(_ value: [GitHubProject])
+    func projectSelection() -> ProjectSelection
+    func setProjectSelection(_ value: ProjectSelection)
+    func projectLaneMap() -> ProjectLaneMap
+    func setProjectLaneMap(_ value: ProjectLaneMap)
     /// Discovered app folders, keyed by service repository. An empty array is a
     /// real answer — that repository was searched and deploys nothing findable —
     /// so it is stored rather than retried on every poll.
@@ -800,6 +807,9 @@ public struct UserDefaultsPreferences: PreferenceStoring {
     private let jiraLayoutKey = "jiraLayout"
     private let disabledTeamsKey = "disabledTeams"
     private let knownTeamsKey = "knownTeams"
+    private let knownProjectsKey = "knownProjects"
+    private let projectSelectionKey = "projectSelection"
+    private let projectLaneMapKey = "projectLaneMap"
     private let approvalQuipsKey = "approvalQuips"
     private let diffLayoutKey = "diffLayout"
     private let diffFontFamilyKey = "diffFontFamily"
@@ -1053,6 +1063,40 @@ public struct UserDefaultsPreferences: PreferenceStoring {
     public func setKnownTeams(_ value: [Team]) {
         guard let data = try? JSONEncoder().encode(value) else { return }
         defaults.set(data, forKey: knownTeamsKey)
+    }
+
+    public func knownProjects() -> [GitHubProject] {
+        decoded([GitHubProject].self, forKey: knownProjectsKey) ?? []
+    }
+
+    public func setKnownProjects(_ value: [GitHubProject]) {
+        encode(value, forKey: knownProjectsKey)
+    }
+
+    public func projectSelection() -> ProjectSelection {
+        decoded(ProjectSelection.self, forKey: projectSelectionKey) ?? ProjectSelection()
+    }
+
+    public func setProjectSelection(_ value: ProjectSelection) {
+        encode(value, forKey: projectSelectionKey)
+    }
+
+    public func projectLaneMap() -> ProjectLaneMap {
+        decoded(ProjectLaneMap.self, forKey: projectLaneMapKey) ?? ProjectLaneMap()
+    }
+
+    public func setProjectLaneMap(_ value: ProjectLaneMap) {
+        encode(value, forKey: projectLaneMapKey)
+    }
+
+    /// Unreadable reads as never written, the safe direction `knownTeams` takes.
+    private func decoded<T: Decodable>(_ type: T.Type, forKey key: String) -> T? {
+        defaults.data(forKey: key).flatMap { try? JSONDecoder().decode(type, from: $0) }
+    }
+
+    private func encode<T: Encodable>(_ value: T, forKey key: String) {
+        guard let data = try? JSONEncoder().encode(value) else { return }
+        defaults.set(data, forKey: key)
     }
 
     public func appLocations() -> [String: [AppLocation]] {

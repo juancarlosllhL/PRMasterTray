@@ -11,6 +11,8 @@ public actor GitHubClient {
     private let tokenProvider: TokenProvider
     private let session: URLSession
     private var cachedToken: String?
+    /// Asked once: board items are filtered by it on every poll.
+    private var viewerLogin: String?
 
     public init(tokenProvider: TokenProvider = TokenProvider(), session: URLSession = .shared) {
         self.tokenProvider = tokenProvider
@@ -96,6 +98,65 @@ public actor GitHubClient {
     /// array, which the decoder refuses to read as "no teams".
     public func fetchTeams() async throws -> [Team] {
         try PullRequestDecoder.decodeTeams(try await perform(query: Queries.myTeams))
+    }
+
+    // MARK: - GitHub Projects
+
+    public func fetchProjects() async throws -> [GitHubProject] {
+        try await retryingScope { try ProjectDecoder.decodeProjects(try await self.perform(query: Queries.myProjects)) }
+    }
+
+    /// Stops after `Queries.projectItemPageCap` pages, so a runaway board cannot spin.
+    public func fetchProjectItems(projectID: String) async throws -> [ProjectItem] {
+        let login = try await self.login()
+        var items: [ProjectItem] = []
+        var after: String?
+        for _ in 0..<Queries.projectItemPageCap {
+            var variables: [String: GraphQLValue] = [
+                "id": .string(projectID), "q": .string("assignee:\(login)"),
+            ]
+            if let after { variables["after"] = .string(after) }
+            let page = try await retryingScope {
+                try ProjectDecoder.decodeItems(
+                    try await self.perform(query: Queries.projectItems, variables: variables),
+                    projectID: projectID
+                )
+            }
+            items += page.items
+            guard let next = page.next else { break }
+            after = next
+        }
+        return items
+    }
+
+    public func setStatus(project: String, item: String, field: String, option: String) async throws {
+        try await retryingScope {
+            try ProjectDecoder.decodeStatusUpdate(try await self.perform(
+                query: Queries.setProjectStatus,
+                variables: [
+                    "project": .string(project), "item": .string(item),
+                    "field": .string(field), "option": .string(option),
+                ]
+            ))
+        }
+    }
+
+    private func login() async throws -> String {
+        if let viewerLogin { return viewerLogin }
+        let login = try ProjectDecoder.decodeLogin(try await perform(query: Queries.viewerLogin))
+        viewerLogin = login
+        return login
+    }
+
+    /// `gh auth refresh -s project` can hand out a new token, which would
+    /// otherwise wait for a relaunch: the cached one is only dropped on a 401.
+    private func retryingScope<T>(_ attempt: () async throws -> T) async throws -> T {
+        do {
+            return try await attempt()
+        } catch PRMasterError.projectScopeMissing {
+            cachedToken = nil
+            return try await attempt()
+        }
     }
 
     /// Empty rather than a request when there is nothing to ask about, on the

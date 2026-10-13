@@ -1,0 +1,23 @@
+{
+  "projects": [
+    { "id": "PVT_fixture_platform", "title": "Platform Board",
+      "options": [["p-backlog", "Backlog"], ["p-todo", "Todo"], ["p-progress", "In Progress"],
+                  ["p-review", "In Review"], ["p-qa", "QA"], ["p-blocked", "Blocked"], ["p-done", "Done"]] }
+  ],
+  "items": [
+    { "id": "PVTI_f1", "projectID": "PVT_fixture_platform", "number": 412, "title": "Map each board's Status options onto the shared columns",
+      "repo": "acme/widget-service", "typeName": "Feature", "statusOptionID": "p-progress", "createdHoursAgo": 30,
+      "links": [ { "number": 418, "title": "map Status options to lanes", "state": "OPEN" } ] },
+    { "id": "PVTI_f2", "projectID": "PVT_fixture_platform", "number": 77, "title": "Retry the webhook relay after a 502",
+      "repo": "acme/hooks", "typeName": "Bug", "statusOptionID": "p-review", "createdHoursAgo": 70 },
+    { "id": "PVTI_f3", "projectID": "PVT_fixture_platform", "number": 501, "title": "Bump the HTTP client",
+      "repo": "acme/widget-service", "isPullRequest": true, "typeName": "Pull request", "statusOptionID": "p-qa", "createdHoursAgo": 5 },
+    { "id": "PVTI_f4", "projectID": "PVT_fixture_platform", "number": 390, "title": "Document the board column map",
+      "repo": "acme/handbook", "typeName": "Task", "statusOptionID": "p-backlog", "createdHoursAgo": 200 },
+    { "id": "PVTI_f5", "projectID": "PVT_fixture_platform", "number": 388, "title": "Drop the legacy sync job",
+      "repo": "acme/widget-service", "typeName": "Task", "statusOptionID": "p-done", "statusChangedDaysAgo": 2, "createdHoursAgo": 400,
+      "links": [ { "number": 395, "title": "remove legacy sync", "state": "MERGED" } ] },
+    { "id": "PVTI_f6", "projectID": "PVT_fixture_platform", "number": 12, "title": "Waiting on the vendor's answer",
+      "repo": "acme/hooks", "typeName": "Task", "statusOptionID": "p-blocked", "createdHoursAgo": 90 }
+  ]
+}

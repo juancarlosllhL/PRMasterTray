@@ -2,23 +2,23 @@ import AppKit
 import SwiftUI
 import PRMasterCore
 
-/// One menu per issue: SwiftUI shows only one of two stacked context menus.
+/// One menu per card: SwiftUI shows only one of two stacked context menus.
 /// The moves repeat what dragging does, for the list and for VoiceOver.
-struct JiraIssueMenu: ViewModifier {
-    let issue: JiraIssue
-    let jira: JiraStore
+struct BoardCardMenu: ViewModifier {
+    let card: BoardCard
+    let board: BoardStore
     let link: URL?
 
     func body(content: Content) -> some View {
         content.contextMenu {
-            CopyMenuItems(link: link, id: issue.key)
-            if jira.canMove {
+            CopyMenuItems(link: link, id: card.copyID)
+            if board.canMove(card) {
                 Divider()
-                ForEach(JiraLane.allCases.filter { $0 != jira.lane(of: issue) }, id: \.self) { lane in
+                ForEach(BoardLane.allCases.filter { $0 != card.lane }, id: \.self) { lane in
                     Button("Move to \(lane.title)", systemImage: "arrow.right") {
-                        Task { await jira.move(issue.key, to: lane) }
+                        Task { await board.move(card.id, to: lane) }
                     }
-                    .disabled(jira.isMoving(issue.key))
+                    .disabled(board.isMoving(card.id))
                 }
             }
         }
@@ -43,8 +43,8 @@ struct CopyMenuItems: View {
 }
 
 extension View {
-    func jiraIssueMenu(_ issue: JiraIssue, jira: JiraStore, link: URL?) -> some View {
-        modifier(JiraIssueMenu(issue: issue, jira: jira, link: link))
+    func boardCardMenu(_ card: BoardCard, board: BoardStore, link: URL?) -> some View {
+        modifier(BoardCardMenu(card: card, board: board, link: link))
     }
 
     func copyMenu(link: URL, repo: String, number: Int, jira: JiraKeyReference? = nil) -> some View {
@@ -77,14 +77,14 @@ struct JiraKeyMenuItems: View {
     }
 }
 
-/// The payload is the bare key. A string dropped from another app is ignored by `move`.
+/// The payload is a `BoardCardID`. A string dropped from another app names no card.
 struct DragSource: ViewModifier {
-    let key: String
+    let id: BoardCardID
     let isEnabled: Bool
 
     func body(content: Content) -> some View {
         if isEnabled {
-            content.draggable(key)
+            content.draggable(id.rawValue)
         } else {
             content
         }
@@ -92,28 +92,23 @@ struct DragSource: ViewModifier {
 }
 
 struct DropTarget: ViewModifier {
-    let lane: JiraLane
-    let jira: JiraStore
-    @Binding var targetedLane: JiraLane?
+    let lane: BoardLane
+    let board: BoardStore
+    @Binding var targetedLane: BoardLane?
 
     func body(content: Content) -> some View {
-        if jira.canMove {
-            content.dropDestination(for: String.self) { keys, _ in
-                guard let key = keys.first,
-                      let issue = jira.issues.first(where: { $0.key == key }),
-                      jira.lane(of: issue) != lane
-                else { return false }
-                Task { await jira.move(key, to: lane) }
-                return true
-            } isTargeted: { isTargeted in
-                if isTargeted {
-                    targetedLane = lane
-                } else if targetedLane == lane {
-                    targetedLane = nil
-                }
+        content.dropDestination(for: String.self) { payloads, _ in
+            guard let id = payloads.first.flatMap(BoardCardID.init(rawValue:)),
+                  let card = board.card(id), board.canMove(card), card.lane != lane
+            else { return false }
+            Task { await board.move(id, to: lane) }
+            return true
+        } isTargeted: { isTargeted in
+            if isTargeted {
+                targetedLane = lane
+            } else if targetedLane == lane {
+                targetedLane = nil
             }
-        } else {
-            content
         }
     }
 }

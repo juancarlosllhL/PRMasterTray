@@ -169,15 +169,15 @@ struct JiraStoreMoveTests {
         let move = Task { await store.move("ACME-1", to: .inProgress) }
         await mover.waitUntilPosting()
 
-        #expect(store.visibleGroups.inProgress.map(\.key) == ["ACME-1"])
-        #expect(store.visibleGroups.toDo.isEmpty)
+        #expect(store.groups.inProgress.map(\.key) == ["ACME-1"])
+        #expect(store.groups.toDo.isEmpty)
         #expect(store.isMoving("ACME-1"))
 
         mover.release()
         await move.value
 
         #expect(!store.isMoving("ACME-1"))
-        #expect(store.visibleGroups.inProgress.map(\.key) == ["ACME-1"])
+        #expect(store.groups.inProgress.map(\.key) == ["ACME-1"])
         #expect(mover.posted == ["51"])
         #expect(store.lastMoveFailure == nil)
         #expect(store.moves.isEmpty, "the refresh after a settled move clears its override")
@@ -190,7 +190,7 @@ struct JiraStoreMoveTests {
         await store.move("ACME-1", to: .inProgress)
 
         #expect(store.issues.first?.statusName == "In Progress")
-        #expect(store.visibleGroups.inProgress.map(\.key) == ["ACME-1"])
+        #expect(store.groups.inProgress.map(\.key) == ["ACME-1"])
     }
 
     @Test("a refused move puts the card back and says why")
@@ -200,7 +200,7 @@ struct JiraStoreMoveTests {
 
         await store.move("ACME-1", to: .inProgress)
 
-        #expect(store.visibleGroups.toDo.map(\.key) == ["ACME-1"])
+        #expect(store.groups.toDo.map(\.key) == ["ACME-1"])
         #expect(store.lastMoveFailure?.contains("ACME-1") == true)
         #expect(store.lastMoveFailure?.contains("No permission.") == true)
     }
@@ -238,7 +238,7 @@ struct JiraStoreMoveTests {
 
         await store.move("ACME-1", to: .testing)
 
-        #expect(store.visibleGroups.toDo.map(\.key) == ["ACME-1"])
+        #expect(store.groups.toDo.map(\.key) == ["ACME-1"])
         #expect(store.lastMoveFailure?.contains("To Do") == true)
         #expect(store.lastMoveFailure?.contains("Testing") == true)
     }
@@ -259,10 +259,10 @@ struct JiraStoreMoveTests {
         issues.release()
         await poll.value
 
-        #expect(store.visibleGroups.inProgress.map(\.key) == ["ACME-1"])
+        #expect(store.groups.inProgress.map(\.key) == ["ACME-1"])
 
         await store.refresh()
-        #expect(store.visibleGroups.inProgress.map(\.key) == ["ACME-1"])
+        #expect(store.groups.inProgress.map(\.key) == ["ACME-1"])
         #expect(store.moves.isEmpty)
     }
 
@@ -305,7 +305,7 @@ struct JiraStoreMoveTests {
 
         await store.move("ACME-1", to: .done)
 
-        #expect(store.visibleGroups.done.map(\.key) == ["ACME-1"])
+        #expect(store.groups.done.map(\.key) == ["ACME-1"])
         #expect(store.issues.first?.categoryChangedAt == now)
     }
 
@@ -320,7 +320,7 @@ struct JiraStoreMoveTests {
 
         #expect(store.lastMoveFailure == nil)
         #expect(store.canMove)
-        #expect(store.visibleGroups.toDo.map(\.key) == ["ACME-1"])
+        #expect(store.groups.toDo.map(\.key) == ["ACME-1"])
     }
 
     @Test("a step with a screen opens a form, and only a valid answer is sent")

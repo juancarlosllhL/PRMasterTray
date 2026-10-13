@@ -66,6 +66,11 @@ bundle: build
 	   sips -s format png -z $$((s*2)) $$((s*2)) Resources/AppIcon.svg --out $$iconset/icon_$${s}x$${s}@2x.png >/dev/null; \
 	 done; \
 	 iconutil -c icns $$iconset -o $(APP)/Contents/Resources/AppIcon.icns
+	# Template images for the board's source marks; SourceMark falls back to SF Symbols without them.
+	@set -e; for mark in github jira; do \
+	   sips -s format png -z 16 16 Resources/SourceMarks/$$mark.svg --out $(APP)/Contents/Resources/$$mark-mark.png >/dev/null; \
+	   sips -s format png -z 32 32 Resources/SourceMarks/$$mark.svg --out $(APP)/Contents/Resources/$$mark-mark@2x.png >/dev/null; \
+	 done
 	codesign -s "$(SIGN_ID)" --force --options runtime --timestamp=none $(APP)
 	@codesign --verify --strict $(APP) && echo "signed: $(SIGN_ID)"
 	@linked=$$(vtool -show-build $(APP)/Contents/MacOS/PRMaster \

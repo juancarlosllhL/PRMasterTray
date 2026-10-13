@@ -16,11 +16,11 @@ struct SettingsView: View {
     @Bindable var reviews: ReviewStore
     @Bindable var appearance: AppearanceStore
     @Bindable var jira: JiraAccountStore
-    @Bindable var jiraStore: JiraStore
+    @Bindable var board: BoardStore
     @Bindable var heatmap: HeatmapAccountStore
 
     private enum Tab: String {
-        case pullRequests, teams, jira, appearance, diffViewer
+        case pullRequests, teams, board, appearance, diffViewer
     }
 
     /// Only ever moved by a click, except under `PRMASTER_SETTINGS_TAB`, which is
@@ -35,9 +35,9 @@ struct SettingsView: View {
             teamSettings
                 .tabItem { Label("Teams", systemImage: "person.2") }
                 .tag(Tab.teams)
-            jiraSettings
-                .tabItem { Label("Jira", systemImage: "square.stack.3d.up") }
-                .tag(Tab.jira)
+            boardSettings
+                .tabItem { Label("Board", systemImage: "square.stack.3d.up") }
+                .tag(Tab.board)
             appearanceSettings
                 .tabItem { Label("Appearance", systemImage: "paintbrush") }
                 .tag(Tab.appearance)
@@ -272,7 +272,7 @@ struct SettingsView: View {
         string: "https://id.atlassian.com/manage-profile/security/api-tokens"
     )!
 
-    private var jiraSettings: some View {
+    private var boardSettings: some View {
         Form {
             Section {
                 LabeledContent("Site") {
@@ -337,7 +337,31 @@ struct SettingsView: View {
             }
 
             Section {
-                Picker("Show issues as", selection: $jiraStore.layout) {
+                if board.projects.projects.isEmpty {
+                    footnote(Text(verbatim: projectsEmptyNote))
+                } else {
+                    projectList
+                }
+            } header: {
+                Text("GitHub projects")
+            } footer: {
+                footnote(Text(verbatim: projectSummary))
+            }
+
+            // A section per project rather than a DisclosureGroup, which unboxes
+            // the grouped form's other sections on macOS.
+            ForEach(board.projects.shownProjects) { project in
+                Section {
+                    columnPickers(project)
+                } header: {
+                    Text(verbatim: "Columns: \(project.title)")
+                } footer: {
+                    footnote(Text("A choice is guessed from the option's name until you make one."))
+                }
+            }
+
+            Section {
+                Picker("Show cards as", selection: $board.layout) {
                     ForEach(JiraLayout.allCases, id: \.self) { layout in
                         Text(verbatim: layout.label).tag(layout)
                     }
@@ -350,7 +374,7 @@ struct SettingsView: View {
             }
 
             Section {
-                Picker("Show issues finished within", selection: $jiraStore.window) {
+                Picker("Show cards finished within", selection: $board.window) {
                     ForEach(JiraWindow.allCases, id: \.self) { window in
                         Text(verbatim: window.label).tag(window)
                     }
@@ -365,21 +389,90 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        .task { await board.projects.discover() }
+    }
+
+    /// One switch per project. A board with no Status field has no columns to
+    /// map, so it cannot be switched on.
+    private var projectList: some View {
+        ForEach(board.projects.projects) { project in
+            Toggle(isOn: projectBinding(project)) {
+                HStack(spacing: 6) {
+                    Text(verbatim: project.title)
+                    Spacer(minLength: 8)
+                    Text(verbatim: project.hasStatus ? project.owner : "No Status field")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .disabled(!project.hasStatus)
+        }
+    }
+
+    private func projectBinding(_ project: GitHubProject) -> Binding<Bool> {
+        Binding(
+            get: { board.projects.selection.shows(project) },
+            set: { board.projects.setShown(project, $0) }
+        )
+    }
+
+    private func columnPickers(_ project: GitHubProject) -> some View {
+        Group {
+            ForEach(project.options) { option in
+                laneMenu(Text(verbatim: option.name), option: option, in: project)
+            }
+            laneMenu(Text("No Status"), option: nil, in: project)
+        }
+    }
+
+    private static let laneChoices = LaneChoice.allCases.filter { $0 != .hidden } + [.hidden]
+
+    private func laneMenu(_ label: Text, option: StatusOption?, in project: GitHubProject) -> some View {
+        Picker(selection: Binding(
+            get: { board.projects.choice(for: option, in: project) },
+            set: { board.projects.setChoice($0, option: option?.id ?? ProjectLaneMap.noStatus, in: project) }
+        )) {
+            ForEach(Self.laneChoices, id: \.self) { choice in
+                Text(verbatim: choice.label).tag(choice)
+            }
+        } label: {
+            label
+        }
+    }
+
+    private var projectsEmptyNote: String {
+        switch board.projects.discoveryError {
+        case .projectScopeMissing?:
+            return "GitHub Projects need the project scope. Run: gh auth refresh -s project"
+        case let error?:
+            return "Couldn't list your projects — \(error.localizedDescription)"
+        case nil:
+            return "No projects yet — they appear as soon as GitHub answers."
+        }
+    }
+
+    private var projectSummary: String {
+        if board.projects.discoveryError == .projectScopeMissing, !board.projects.projects.isEmpty {
+            return "GitHub refused the project scope, so this list may be out of date. Run: gh auth refresh -s project"
+        }
+        let shown = board.projects.shownProjects.count
+        let total = board.projects.projects.count
+        return "Your own projects and your organizations' boards, most recently updated first. "
+            + "Only items assigned to you appear on the board. \(shown) of \(total) switched on."
     }
 
     private var jiraLayoutSummary: String {
-        JiraBoard.layoutSummary(jiraStore.layout, columns: jiraStore.boardColumns.count)
+        JiraBoard.layoutSummary(board.layout, columns: board.columns.count)
     }
 
     /// Says what the window is worth right now rather than in the abstract,
     /// the shape every other footer in this window uses.
     private var jiraDoneSummary: String {
-        guard jiraStore.window != .off else {
-            return "Finished issues are hidden. To do and In progress still show."
+        guard board.window != .off else {
+            return "Finished cards are hidden. Every other column still shows."
         }
-        let count = jiraStore.groups.done.count
-        let shown = count == 1 ? "1 issue" : "\(count) issues"
-        return "Measured from when an issue moved to Done. \(shown) would show right now."
+        let count = board.allCards[.done]?.count ?? 0
+        let shown = count == 1 ? "1 card" : "\(count) cards"
+        return "Measured from when a card moved to Done. \(shown) would show right now."
     }
 
     private func statusLine(_ symbol: String, _ text: String) -> some View {

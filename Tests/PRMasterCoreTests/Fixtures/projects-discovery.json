@@ -1,0 +1,151 @@
+{
+  "data": {
+    "viewer": {
+      "projectsV2": {
+        "nodes": [
+          {
+            "id": "PVT_user",
+            "number": 1,
+            "title": "My side board",
+            "url": "https://github.com/users/octo/projects/1",
+            "closed": false,
+            "owner": {
+              "login": "octo"
+            },
+            "field": {
+              "id": "PVTSSF_user",
+              "options": [
+                {
+                  "id": "u-todo",
+                  "name": "Todo"
+                },
+                {
+                  "id": "u-done",
+                  "name": "Done"
+                }
+              ]
+            }
+          },
+          {
+            "id": "PVT_closed",
+            "number": 2,
+            "title": "Old board",
+            "url": "https://github.com/users/octo/projects/2",
+            "closed": true,
+            "owner": {
+              "login": "octo"
+            },
+            "field": null
+          }
+        ]
+      },
+      "organizations": {
+        "nodes": [
+          {
+            "recentProjects": {
+              "nodes": [
+                {
+                  "id": "PVT_team",
+                  "number": 7,
+                  "title": "Platform Board",
+                  "url": "https://github.com/orgs/acme/projects/7",
+                  "closed": false,
+                  "owner": {
+                    "login": "acme"
+                  },
+                  "field": {
+                    "id": "PVTSSF_team",
+                    "options": [
+                      {
+                        "id": "t-backlog",
+                        "name": "Backlog"
+                      },
+                      {
+                        "id": "t-progress",
+                        "name": "In Progress"
+                      },
+                      {
+                        "id": "t-review",
+                        "name": "In Review"
+                      },
+                      {
+                        "id": "t-done",
+                        "name": "Done"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "projects": {
+              "nodes": [
+                {
+                  "id": "PVT_team",
+                  "number": 7,
+                  "title": "Platform Board",
+                  "url": "https://github.com/orgs/acme/projects/7",
+                  "closed": false,
+                  "owner": {
+                    "login": "acme"
+                  },
+                  "field": {
+                    "id": "PVTSSF_team",
+                    "options": [
+                      {
+                        "id": "t-backlog",
+                        "name": "Backlog"
+                      },
+                      {
+                        "id": "t-progress",
+                        "name": "In Progress"
+                      },
+                      {
+                        "id": "t-review",
+                        "name": "In Review"
+                      },
+                      {
+                        "id": "t-done",
+                        "name": "Done"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "PVT_nostatus",
+                  "number": 9,
+                  "title": "Roadmap",
+                  "url": "https://github.com/orgs/acme/projects/9",
+                  "closed": false,
+                  "owner": {
+                    "login": "acme"
+                  },
+                  "field": null
+                },
+                {
+                  "id": "PVT_admin",
+                  "number": 3,
+                  "title": "Bugs",
+                  "url": "https://github.com/orgs/acme/projects/3",
+                  "closed": false,
+                  "owner": {
+                    "login": "acme"
+                  },
+                  "field": {
+                    "id": "PVTSSF_admin",
+                    "options": [
+                      {
+                        "id": "a-new",
+                        "name": "New"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          null
+        ]
+      }
+    }
+  }
+}

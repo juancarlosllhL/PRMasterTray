@@ -52,7 +52,7 @@ public enum JiraGrouping {
     }
 
     /// Jira names statuses in each user's profile language, but the ids are the site's own.
-    static let laneByStatusID: [String: JiraLane] = [
+    static let laneByStatusID: [String: BoardLane] = [
         "10000": .toDo, "10029": .toDo, "3": .inProgress,
         "1": .reviewing, "6": .testing, "10001": .done,
     ]
@@ -61,7 +61,7 @@ public enum JiraGrouping {
     /// a move lands cannot disagree. `nil` is parked work, shown nowhere.
     public static func lane(
         statusName: String, category: JiraStatusCategory, statusID: String? = nil
-    ) -> JiraLane? {
+    ) -> BoardLane? {
         if let statusID, let lane = laneByStatusID[statusID] { return lane }
         switch category {
         case .toDo:                 return isStartable(statusName) ? .toDo : nil
@@ -72,7 +72,7 @@ public enum JiraGrouping {
         }
     }
 
-    public static func lane(for issue: JiraIssue) -> JiraLane? {
+    public static func lane(for issue: JiraIssue) -> BoardLane? {
         lane(statusName: issue.statusName, category: issue.statusCategory, statusID: issue.statusID)
     }
 
@@ -84,7 +84,7 @@ public enum JiraGrouping {
         _ issues: [JiraIssue],
         window: JiraWindow,
         now: Date,
-        overrides: [String: JiraLane] = [:]
+        overrides: [String: BoardLane] = [:]
     ) -> JiraGroups {
         var toDo: [JiraIssue] = []
         var inProgress: [JiraIssue] = []

@@ -46,9 +46,9 @@ struct PRListView: View {
     var paletteInputs = PaletteInputs()
 
     let selection: TabSelectionStore
-    let jira: JiraStore
-    let onOpenIssue: (JiraIssue) -> Void
-    let jiraIssueLink: (JiraIssue) -> URL?
+    let board: BoardStore
+    let onOpenCard: (BoardCard) -> Void
+    let cardLink: (BoardCard) -> URL?
     let jiraKeyLink: (String) -> URL?
     let onOpenJiraLink: (URL) -> Void
     let onOpenLinkedPullRequest: (LinkedPullRequest) -> Void
@@ -80,7 +80,7 @@ struct PRListView: View {
     private func rowCount(_ tab: PopoverTab) -> Int {
         switch tab {
         case .pullRequests: return store.prs.count
-        case .jira:         return jira.issues.count
+        case .jira:         return board.cardCount
         }
     }
 
@@ -93,11 +93,8 @@ struct PRListView: View {
             )
         case .jira:
             // An unconfigured integration is not a pane still loading.
-            guard jira.isConfigured else { return .empty }
-            return PaneState.resolve(
-                rowCount: jira.issues.count, hiddenCount: 0,
-                lastError: jira.lastError, lastSuccessfulFetch: jira.lastSuccessfulFetch
-            )
+            guard board.isConfigured else { return .empty }
+            return board.paneState
         }
     }
 
@@ -152,9 +149,9 @@ struct PRListView: View {
     private var popoverWidth: CGFloat {
         CGFloat(
             JiraBoard.popoverWidth(
-                isJiraTab: activeTab == .jira,
-                showsBoard: jira.showsBoard,
-                columns: jira.boardColumns.count,
+                isBoardTab: activeTab == .jira,
+                showsBoard: board.showsBoard,
+                columns: board.columns.count,
                 available: availableWidth
             )
         )
@@ -294,11 +291,11 @@ struct PRListView: View {
                     onOpenJiraLink: onOpenJiraLink
                 )
             case .jira:
-                JiraPaneView(
-                    jira: jira,
+                BoardPaneView(
+                    board: board,
                     filter: store.filter,
-                    onOpenIssue: onOpenIssue,
-                    issueLink: jiraIssueLink,
+                    onOpenCard: onOpenCard,
+                    cardLink: cardLink,
                     onOpenLink: onOpenLinkedPullRequest,
                     onOpenSettings: onOpenSettings
                 )

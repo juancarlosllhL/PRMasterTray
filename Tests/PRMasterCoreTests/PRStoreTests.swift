@@ -158,6 +158,18 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
         }
     }
 
+    private var storedKnownProjects: [GitHubProject] = []
+    func knownProjects() -> [GitHubProject] { lock.withLock { storedKnownProjects } }
+    func setKnownProjects(_ value: [GitHubProject]) { lock.withLock { storedKnownProjects = value } }
+
+    private var storedProjectSelection = ProjectSelection()
+    func projectSelection() -> ProjectSelection { lock.withLock { storedProjectSelection } }
+    func setProjectSelection(_ value: ProjectSelection) { lock.withLock { storedProjectSelection = value } }
+
+    private var storedProjectLaneMap = ProjectLaneMap()
+    func projectLaneMap() -> ProjectLaneMap { lock.withLock { storedProjectLaneMap } }
+    func setProjectLaneMap(_ value: ProjectLaneMap) { lock.withLock { storedProjectLaneMap = value } }
+
     private var storedJiraWindow: JiraWindow = .default
     func jiraWindow() -> JiraWindow { lock.withLock { storedJiraWindow } }
     func setJiraWindow(_ value: JiraWindow) { lock.withLock { storedJiraWindow = value } }

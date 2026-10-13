@@ -21,7 +21,7 @@ final class SettingsWindowController {
         reviews: ReviewStore,
         appearance: AppearanceStore,
         jira: JiraAccountStore,
-        jiraStore: JiraStore,
+        board: BoardStore,
         heatmap: HeatmapAccountStore
     ) {
         if let panel {
@@ -32,7 +32,7 @@ final class SettingsWindowController {
         let hosting = NSHostingController(
             rootView: SettingsView(
                 store: store, reviews: reviews, appearance: appearance,
-                jira: jira, jiraStore: jiraStore, heatmap: heatmap
+                jira: jira, board: board, heatmap: heatmap
             )
         )
         // Without this the panel is sized once from a stale measurement, which

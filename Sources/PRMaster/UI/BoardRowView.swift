@@ -4,15 +4,14 @@ import PRMasterCore
 /// The first expandable row in this app, so the chevron is drawn by hand rather
 /// than with `DisclosureGroup`, whose own indent and animation do not line up
 /// with the flat rows in the other tab.
-struct JiraIssueRowView: View {
-    let issue: JiraIssue
+struct BoardRowView: View {
+    let card: BoardCard
     let links: [LinkedPullRequest]
-    let linkState: IssueLinkState
     let isExpanded: Bool
     var showsPriority = false
     var isMoving = false
     let onToggle: () -> Void
-    let onOpenIssue: () -> Void
+    let onOpen: () -> Void
     let onOpenLink: (LinkedPullRequest) -> Void
 
     @State private var isHovering = false
@@ -39,8 +38,8 @@ struct JiraIssueRowView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(linkState != .linked)
-        .opacity(linkState == .linked ? 1 : 0)
+        .disabled(card.linkState != .linked)
+        .opacity(card.linkState == .linked ? 1 : 0)
         .accessibilityLabel(isExpanded ? "Collapse" : "Expand")
     }
 
@@ -52,26 +51,27 @@ struct JiraIssueRowView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(verbatim: issue.key)
+                    SourceMark(source: card.source)
+                    Text(verbatim: card.reference)
                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(palette.color(issue.statusCategory.tint))
-                    Text(verbatim: issue.summary)
+                        .foregroundStyle(palette.color(card.tint))
+                    Text(verbatim: card.title)
                         .font(.rowTitle)
                         .lineLimit(1)
                         .truncationMode(.tail)
-                        .helpWhenTruncated(issue.summary)
+                        .helpWhenTruncated(card.title)
                     Spacer(minLength: 0)
                 }
                 HStack(spacing: 6) {
-                    if showsPriority, let symbol = issue.priority.symbolName {
+                    if showsPriority, let symbol = card.priority.symbolName {
                         Image(systemName: symbol)
                             .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(palette.color(issue.priority.tint))
+                            .foregroundStyle(palette.color(card.priority.tint))
                             .frame(width: 10)
-                            .help("\(issue.priority.name) priority")
-                            .accessibilityLabel("\(issue.priority.name) priority")
+                            .help("\(card.priority.name) priority")
+                            .accessibilityLabel("\(card.priority.name) priority")
                     }
-                    chip(issue.typeLabel, tint: issue.typeTint)
+                    chip(card.typeLabel, tint: card.typeTint)
                     if isMoving {
                         ProgressView()
                             .controlSize(.mini)
@@ -79,22 +79,24 @@ struct JiraIssueRowView: View {
                             .frame(width: 10, height: 10)
                             .accessibilityLabel("Moving")
                     }
-                    Text(verbatim: issue.statusName)
+                    Text(verbatim: card.statusName)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
-                    Text(verbatim: "·")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                    if linkState == .loading {
-                        ProgressView()
-                            .controlSize(.mini)
-                            .scaleEffect(0.7)
-                            .frame(width: 10, height: 10)
+                    if let linkSummary {
+                        Text(verbatim: "·")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                        if card.linkState == .loading {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .scaleEffect(0.7)
+                                .frame(width: 10, height: 10)
+                        }
+                        Text(verbatim: linkSummary)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
-                    Text(verbatim: linkSummary)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
                     Spacer(minLength: 6)
                     if let age {
                         Text(verbatim: age)
@@ -111,7 +113,7 @@ struct JiraIssueRowView: View {
         .background(isHovering ? Color.primary.opacity(0.06) : .clear)
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .contentShape(Rectangle())
-        .onTapGesture(perform: onOpenIssue)
+        .onTapGesture(perform: onOpen)
         .onHover { isHovering = $0 }
     }
 
@@ -128,13 +130,14 @@ struct JiraIssueRowView: View {
     }
 
     private var age: String? {
-        issue.createdAt.map { RelativeAge.label(since: $0, now: Date()) }
+        card.createdAt.map { RelativeAge.label(since: $0, now: Date()) }
     }
 
-    /// The search is scoped to the viewer, so a colleague's pull request is
-    /// invisible here and this counts only your own.
-    private var linkSummary: String {
-        switch linkState {
+    /// Jira's search is scoped to the viewer, so a colleague's pull request is
+    /// invisible there. Nil on a card that is itself a pull request.
+    private var linkSummary: String? {
+        guard let state = card.linkState else { return nil }
+        switch state {
         case .loading:
             return "Checking pull requests…"
         case .unknown:

@@ -18,6 +18,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let jiraAccount = JiraAccountStore()
     private let heatmapAccount = HeatmapAccountStore()
     private var jira: JiraStore!
+    private var projects: ProjectStore!
+    private var board: BoardStore!
     private let settingsWindow = SettingsWindowController()
     private let whatsNewWindow = WhatsNewWindowController()
     private let diffWindows = DiffWindowController()
@@ -130,6 +132,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         jira = JiraStore(issues: issueClient, links: linkClient, mover: mover)
 
+        // Same terms as Jira: a fixture can never write, and no live board is
+        // read under any other override.
+        if let fixture = Debug.projectFixturePath {
+            let served = ProjectFixtureClient(path: fixture)
+            projects = ProjectStore(client: served, preferences: served.preferences())
+        } else {
+            projects = ProjectStore(
+                client: Debug.overridesActive ? nil : client,
+                mover: Debug.overridesActive ? nil : client
+            )
+        }
+        board = BoardStore(jira: jira, projects: projects)
+
         updates = AppUpdateStore(
             checker: ReleaseClient(),
             currentVersion: Self.bundleVersion,
@@ -176,7 +191,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Started after the user's own list: the section it feeds sits below
         // theirs, so it has no business competing for the first fetch.
         reviews.start()
-        jira.start()
+        board.start()
+        Task { await projects.discover() }
         // Started last so the first update check never competes with the fetch
         // the user is actually waiting to see.
         updates.start()
@@ -192,7 +208,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if Debug.openSettings {
             settingsWindow.show(
                 store: store, reviews: reviews,
-                appearance: appearanceStore, jira: jiraAccount, jiraStore: jira, heatmap: heatmapAccount
+                appearance: appearanceStore, jira: jiraAccount, board: board, heatmap: heatmapAccount
             )
             if let path = Debug.snapshotPath, Debug.openDiff == nil {
                 Task { @MainActor in
@@ -244,7 +260,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         store?.stop()
-        jira?.stop()
+        board?.stop()
         reviews?.stop()
         updates?.stop()
         // Must match the centre it was registered on, or removal is a no-op.
@@ -378,7 +394,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func openSettingsFromMenu() {
         settingsWindow.show(
                 store: store, reviews: reviews,
-                appearance: appearanceStore, jira: jiraAccount, jiraStore: jira, heatmap: heatmapAccount
+                appearance: appearanceStore, jira: jiraAccount, board: board, heatmap: heatmapAccount
             )
     }
 
@@ -435,6 +451,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// title next to the glyph.
     /// Signing in has to reach the pane without a restart, and a fixture stands
     /// in for the account entirely, so it must not be torn down by a sign-out.
+    /// A Jira card's link needs the signed-in site; a GitHub card carries its own.
+    private func cardURL(_ card: BoardCard) -> URL? {
+        switch card.id {
+        case .jira(let key):
+            return jiraAccount.current.map { JiraIssueKey.browseURL(key, on: $0.baseURL) }
+        case .project:
+            return card.url
+        }
+    }
+
     private func observeJiraAccount() {
         withObservationTracking {
             _ = jiraAccount.current
@@ -507,7 +533,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     popover.performClose(nil)
                     settingsWindow.show(
                 store: store, reviews: reviews,
-                appearance: appearanceStore, jira: jiraAccount, jiraStore: jira, heatmap: heatmapAccount
+                appearance: appearanceStore, jira: jiraAccount, board: board, heatmap: heatmapAccount
             )
                 },
                 onQuit: { NSApp.terminate(nil) },
@@ -519,15 +545,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 appearance: appearanceStore,
                 launchAtLogin: launchAtLogin,
                 selection: tabSelection,
-                jira: jira,
-                onOpenIssue: { [weak self] issue in
-                    guard let self, let base = jiraAccount.current?.baseURL else { return }
-                    open(issue.browseURL(on: base))
+                board: board,
+                onOpenCard: { [weak self] card in
+                    guard let self, let url = cardURL(card) else { return }
+                    open(url)
                     popover.performClose(nil)
                 },
-                jiraIssueLink: { [weak self] issue in
-                    self?.jiraAccount.current.map { issue.browseURL(on: $0.baseURL) }
-                },
+                cardLink: { [weak self] card in self?.cardURL(card) },
                 jiraKeyLink: { [weak self] key in
                     self?.jiraAccount.current.map { JiraIssueKey.browseURL(key, on: $0.baseURL) }
                 },
@@ -590,7 +614,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await NotificationManager.shared.refreshAuthorizationStatus()
             await store.refresh()
             await reviews.refresh()
-            await jira.refresh()
+            await board.refresh()
         }
     }
 

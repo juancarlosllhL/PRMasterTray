@@ -11,7 +11,7 @@ extension JiraClient: JiraIssueMoving {}
 public enum JiraMoveOutcome: Sendable, Equatable {
     case moved(to: JiraStatus)
     /// Earlier hops already happened in Jira.
-    case stopped(at: JiraStatus, target: JiraLane)
+    case stopped(at: JiraStatus, target: BoardLane)
     /// `leftAt` is where the last hop that went through put the issue, if any did.
     case failed(String, leftAt: JiraStatus?)
     /// The user closed a hop's form.
@@ -33,7 +33,7 @@ public struct JiraMove: Sendable {
         self.askFor = askFor
     }
 
-    public func run(_ key: String, to target: JiraLane) async -> JiraMoveOutcome {
+    public func run(_ key: String, to target: BoardLane) async -> JiraMoveOutcome {
         var visited: Set<String> = []
         var leftAt: JiraStatus?
         do {

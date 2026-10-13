@@ -45,7 +45,7 @@ private let bugFromTesting = globals + [
 struct JiraRouteTests {
 
     private func hop(
-        _ current: JiraStatus, _ target: JiraLane, _ offered: [JiraTransition],
+        _ current: JiraStatus, _ target: BoardLane, _ offered: [JiraTransition],
         visited: Set<String> = []
     ) -> String? {
         JiraRoute.nextHop(

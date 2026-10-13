@@ -168,6 +168,13 @@ enum Debug {
             .flatMap { FileManager.default.isReadableFile(atPath: $0) ? $0 : nil }
     }
 
+    /// `PRMASTER_PROJECT_FIXTURE=<path>` serves captured GitHub project items, so
+    /// the board can be inspected without the project scope.
+    static var projectFixturePath: String? {
+        ProcessInfo.processInfo.environment["PRMASTER_PROJECT_FIXTURE"]
+            .flatMap { FileManager.default.isReadableFile(atPath: $0) ? $0 : nil }
+    }
+
     /// `PRMASTER_DIFF_FIXTURE=<path>` serves a compare response to every review
     /// window, so the diff can be inspected without a network.
     static var diffFixturePath: String? {

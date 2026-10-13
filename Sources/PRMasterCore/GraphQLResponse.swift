@@ -92,6 +92,12 @@ struct GraphQLResponse<T: Decodable>: Decodable {
 
 struct GraphQLError: Decodable {
     let message: String
+    let type: String?
+
+    /// GitHub names the scope it wanted only in the message.
+    var isMissingProjectScope: Bool {
+        type == "INSUFFICIENT_SCOPES" && message.contains("project'")
+    }
 }
 
 // MARK: - Wire shape

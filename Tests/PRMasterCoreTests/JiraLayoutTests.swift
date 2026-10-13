@@ -2,18 +2,6 @@ import Foundation
 import Testing
 @testable import PRMasterCore
 
-private final class CountingIssueClient: JiraIssueFetching, @unchecked Sendable {
-    private let lock = NSLock()
-    private var count = 0
-
-    var fetchCount: Int { lock.withLock { count } }
-
-    func fetchAssignedIssues(within window: JiraWindow) async throws -> [JiraIssue] {
-        lock.withLock { count += 1 }
-        return []
-    }
-}
-
 @Suite("JiraLayout")
 struct JiraLayoutTests {
 
@@ -69,38 +57,5 @@ struct JiraLayoutTests {
         let preferences = UserDefaultsPreferences(defaults: defaults)
         preferences.setJiraLayout(layout)
         #expect(preferences.jiraLayout() == layout)
-    }
-
-    @MainActor
-    @Test("the store reads the stored layout at launch")
-    func storeReadsAtLaunch() {
-        let preferences = MemoryPreferences()
-        preferences.setJiraLayout(.board)
-        #expect(JiraStore(issues: nil, links: nil, preferences: preferences).layout == .board)
-    }
-
-    @MainActor
-    @Test("assigning the layout writes it through")
-    func assignmentWritesThrough() {
-        let preferences = MemoryPreferences()
-        let store = JiraStore(issues: nil, links: nil, preferences: preferences)
-
-        store.layout = .board
-
-        #expect(preferences.jiraLayout() == .board)
-    }
-
-    /// Unlike `window`, the layout changes nothing about the query, so it must
-    /// not cost a fetch.
-    @MainActor
-    @Test("changing the layout does not refetch")
-    func assignmentDoesNotRefetch() async {
-        let client = CountingIssueClient()
-        let store = JiraStore(issues: client, links: nil, preferences: MemoryPreferences())
-
-        store.layout = .board
-        await Task.yield()
-
-        #expect(client.fetchCount == 0)
     }
 }

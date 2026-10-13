@@ -9,7 +9,7 @@ public enum PopoverTab: String, Sendable, Equatable, CaseIterable {
     public var label: String {
         switch self {
         case .pullRequests: return "Pull requests"
-        case .jira:         return "Jira"
+        case .jira:         return "Board"
         }
     }
 
