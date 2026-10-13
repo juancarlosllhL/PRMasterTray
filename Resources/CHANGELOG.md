@@ -4,6 +4,15 @@ What each release changed, newest first. The app shows the entries you missed
 the first time it runs after an update, so keep the lines short and written for
 whoever has to read them in a small window.
 
+## 0.18.0 — 2026-10-13
+
+- The Jira tab is now Board. It also shows what is assigned to you on the GitHub projects you switch on under Settings, Board.
+- Every card carries the Jira or GitHub logo, so you can tell where it came from.
+- A project's Status options land on the same five columns, guessed from their names. Settings, Board lets you change where each one goes.
+- Backlog, In Refinement and items with no Status start hidden. Map them to a column in Settings, Board if you want them on the board.
+- GitHub cards move by drag or right-click, which sets their Status.
+- GitHub projects need the project scope. Run gh auth refresh -s project once.
+
 ## 0.17.0 — 2026-10-13
 
 - While a review window is open, the app sits in the Dock and in Command-Tab. Window switchers such as AltTab list each review by its title.
