@@ -4,6 +4,13 @@ What each release changed, newest first. The app shows the entries you missed
 the first time it runs after an update, so keep the lines short and written for
 whoever has to read them in a small window.
 
+## 0.17.0 — 2026-10-13
+
+- While a review window is open, the app sits in the Dock and in Command-Tab. Window switchers such as AltTab list each review by its title.
+- Closing the last review takes the app back out of the Dock, to the menu bar only.
+- With a review open, the menu bar has app, File, Edit and Window menus. Command-W closes a review, Command-M minimises it, and Escape still closes it.
+- The app has its own icon.
+
 ## 0.16.1 — 2026-10-07
 
 - In the review window, each file's header has its own colour, so you can see where one file ends and the next begins.
