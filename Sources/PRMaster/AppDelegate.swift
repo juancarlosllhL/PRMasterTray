@@ -165,7 +165,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // registration pointing at nothing. A no-op for anybody who never asked.
         launchAtLogin.repairIfNeeded()
 
-        installEditMenu()
+        installMainMenu()
         installStatusItem()
         installPopover()
         observeWake()
@@ -251,10 +251,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         observers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
     }
 
-    /// Draws no menu bar, since an accessory app has none. AppKit still walks
-    /// the main menu for key equivalents, and that walk is what makes Cmd+V
-    /// work in a text field.
-    private func installEditMenu() {
+    /// Drawn only while a review window puts the app in the Dock. AppKit walks it
+    /// for key equivalents either way, which is what makes Cmd+V work in a text field.
+    private func installMainMenu() {
+        // Automatic tabbing would merge review windows and fill the Window menu with tab items.
+        NSWindow.allowsAutomaticWindowTabbing = false
+        let windows = NSMenu(title: "Window")
+        let main = NSMenu()
+        for menu in [
+            mainMenu(.app, title: "PR Master Tray"),
+            mainMenu(.file, title: "File"),
+            editMenu(),
+            mainMenu(.window, title: "Window", into: windows),
+        ] {
+            let holder = NSMenuItem()
+            holder.submenu = menu
+            main.addItem(holder)
+        }
+        NSApp.mainMenu = main
+        NSApp.windowsMenu = windows
+    }
+
+    private func mainMenu(_ section: MainMenuSection, title: String, into menu: NSMenu? = nil) -> NSMenu {
+        let menu = menu ?? NSMenu(title: title)
+        for item in MainMenuItem.allCases where item.section == section {
+            let menuItem = NSMenuItem(
+                title: item.title,
+                action: NSSelectorFromString(item.selectorName),
+                keyEquivalent: item.keyEquivalent
+            )
+            if item == .settings { menuItem.target = self }
+            menu.addItem(menuItem)
+            if item.isFollowedBySeparator { menu.addItem(.separator()) }
+        }
+        return menu
+    }
+
+    private func editMenu() -> NSMenu {
         let edit = NSMenu(title: "Edit")
         for item in EditMenuItem.allCases {
             let menuItem = NSMenuItem(
@@ -268,11 +301,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             edit.addItem(menuItem)
             if item.isFollowedBySeparator { edit.addItem(.separator()) }
         }
-        let editHolder = NSMenuItem()
-        editHolder.submenu = edit
-        let main = NSMenu()
-        main.addItem(editHolder)
-        NSApp.mainMenu = main
+        return edit
     }
 
     // MARK: - Status item
