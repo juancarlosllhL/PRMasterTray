@@ -9,6 +9,7 @@ struct BoardView: View {
     let filter: PRFilter
     let onOpenCard: (BoardCard) -> Void
     let cardLink: (BoardCard) -> URL?
+    let cardJira: (BoardCard) -> JiraKeyReference?
     let onOpenLink: (LinkedPullRequest) -> Void
 
     @State private var targetedLane: BoardLane?
@@ -89,7 +90,7 @@ struct BoardView: View {
                     onOpenLink: onOpenLink
                 )
                 .modifier(DragSource(id: card.id, isEnabled: board.canMove(card) && !board.isMoving(card.id)))
-                .boardCardMenu(card, board: board, link: cardLink(card))
+                .boardCardMenu(card, board: board, link: cardLink(card), jira: cardJira(card))
             }
         }
         .padding(.horizontal, 2)

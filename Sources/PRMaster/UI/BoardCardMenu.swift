@@ -8,10 +8,15 @@ struct BoardCardMenu: ViewModifier {
     let card: BoardCard
     let board: BoardStore
     let link: URL?
+    let jira: JiraKeyReference?
 
     func body(content: Content) -> some View {
         content.contextMenu {
             CopyMenuItems(link: link, id: card.copyID)
+            if let jira {
+                Divider()
+                JiraKeyMenuItems(reference: jira)
+            }
             if board.canMove(card) {
                 Divider()
                 ForEach(BoardLane.allCases.filter { $0 != card.lane }, id: \.self) { lane in
@@ -43,8 +48,8 @@ struct CopyMenuItems: View {
 }
 
 extension View {
-    func boardCardMenu(_ card: BoardCard, board: BoardStore, link: URL?) -> some View {
-        modifier(BoardCardMenu(card: card, board: board, link: link))
+    func boardCardMenu(_ card: BoardCard, board: BoardStore, link: URL?, jira: JiraKeyReference?) -> some View {
+        modifier(BoardCardMenu(card: card, board: board, link: link, jira: jira))
     }
 
     func copyMenu(link: URL, repo: String, number: Int, jira: JiraKeyReference? = nil) -> some View {

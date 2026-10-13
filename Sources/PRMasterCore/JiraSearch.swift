@@ -15,7 +15,7 @@ public enum BoardSearch {
     }
 
     public static func matches(_ card: BoardCard, terms: [String]) -> Bool {
-        matches("\(card.reference) \(card.title)", terms: terms)
+        matches("\(card.reference) \(card.pairedReference ?? "") \(card.title)", terms: terms)
     }
 
     private static func folded(_ text: String) -> String {

@@ -6,6 +6,8 @@ struct BoardPaneView: View {
     let filter: PRFilter
     let onOpenCard: (BoardCard) -> Void
     let cardLink: (BoardCard) -> URL?
+    let jiraKeyLink: (String) -> URL?
+    let onOpenJiraLink: (URL) -> Void
     let onOpenLink: (LinkedPullRequest) -> Void
     let onOpenSettings: () -> Void
 
@@ -157,8 +159,15 @@ struct BoardPaneView: View {
             filter: filter,
             onOpenCard: onOpenCard,
             cardLink: cardLink,
+            cardJira: jiraReference,
             onOpenLink: onOpenLink
         )
+    }
+
+    /// Only a pair: a Jira card's own Copy ID and link are already Jira's.
+    private func jiraReference(_ card: BoardCard) -> JiraKeyReference? {
+        guard case .paired(let key, _) = card.id else { return nil }
+        return JiraKeyReference(key: key, link: jiraKeyLink(key), open: onOpenJiraLink)
     }
 
     private var rows: some View {
@@ -200,7 +209,7 @@ struct BoardPaneView: View {
                     onOpen: { onOpenCard(card) },
                     onOpenLink: onOpenLink
                 )
-                .boardCardMenu(card, board: board, link: cardLink(card))
+                .boardCardMenu(card, board: board, link: cardLink(card), jira: jiraReference(card))
             }
         }
         .padding(.horizontal, 4)

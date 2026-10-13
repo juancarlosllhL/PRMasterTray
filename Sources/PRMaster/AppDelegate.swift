@@ -456,7 +456,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch card.id {
         case .jira(let key):
             return jiraAccount.current.map { JiraIssueKey.browseURL(key, on: $0.baseURL) }
-        case .project:
+        case .project, .paired:
             return card.url
         }
     }

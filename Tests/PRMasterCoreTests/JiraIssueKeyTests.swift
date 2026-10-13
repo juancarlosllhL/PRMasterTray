@@ -30,6 +30,33 @@ struct JiraIssueKeyTests {
         #expect(JiraIssueKey.first(in: title) == nil)
     }
 
+    @Test("a migrated GitHub issue leads its title with the bracketed key", arguments: [
+        ("[ACME-65806] Drop schedule.enabled", "ACME-65806", "Drop schedule.enabled"),
+        ("  [PLAT-12]   Tidy the docs", "PLAT-12", "Tidy the docs"),
+        ("[ACME-63842] Update TypeScript to 7.1 (deferred from ACME-63703)", "ACME-63842",
+         "Update TypeScript to 7.1 (deferred from ACME-63703)"),
+    ])
+    func leading(title: String, key: String, rest: String) throws {
+        let found = try #require(JiraIssueKey.leading(in: title))
+        #expect(found.key == key)
+        #expect(found.title == rest)
+    }
+
+    /// A key mentioned anywhere but the front names a related issue, not the one this copies.
+    @Test("only a bracketed key at the very front counts", arguments: [
+        "Update TypeScript to 7.1 (deferred from ACME-63703)",
+        "ACME-12 without brackets",
+        "Fix [ACME-12] later",
+        "[Phase 3]-[asset-cortex] Point deployments to the new key",
+        "[UTF-8] encode the export",
+        "[acme-12] lowercase",
+        "[ACME-0] no such issue",
+        "[ZZZ-12] not one of our projects",
+    ])
+    func notLeading(title: String) {
+        #expect(JiraIssueKey.leading(in: title) == nil)
+    }
+
     @Test("the link is the key's browse page on the signed-in site")
     func browseURL() throws {
         let base = try #require(URL(string: "https://lansweeper.atlassian.net"))

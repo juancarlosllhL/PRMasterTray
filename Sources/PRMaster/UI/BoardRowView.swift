@@ -51,7 +51,7 @@ struct BoardRowView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    SourceMark(source: card.source)
+                    SourceMarks(sources: card.sources)
                     Text(verbatim: card.reference)
                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
                         .foregroundStyle(palette.color(card.tint))

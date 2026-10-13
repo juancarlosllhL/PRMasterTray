@@ -44,7 +44,7 @@ struct BoardCardView: View {
 
     private var heading: some View {
         HStack(spacing: 5) {
-            SourceMark(source: card.source)
+            SourceMarks(sources: card.sources)
             Text(verbatim: card.reference)
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundStyle(palette.color(card.tint))

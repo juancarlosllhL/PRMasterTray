@@ -5,6 +5,8 @@ import Observation
 public enum BoardCardID: Hashable, Sendable {
     case jira(String)
     case project(String)
+    /// A Jira issue and the GitHub issue migrated from it, drawn as one card.
+    case paired(key: String, item: String)
 
     /// Strings dropped from other apps parse to nil.
     public init?(rawValue: String) {
@@ -13,6 +15,10 @@ public enum BoardCardID: Hashable, Sendable {
         switch parts[0] {
         case "jira":    self = .jira(parts[1])
         case "project": self = .project(parts[1])
+        case "paired":
+            let ids = parts[1].split(separator: "/", maxSplits: 1).map(String.init)
+            guard ids.count == 2 else { return nil }
+            self = .paired(key: ids[0], item: ids[1])
         default:        return nil
         }
     }
@@ -21,20 +27,24 @@ public enum BoardCardID: Hashable, Sendable {
         switch self {
         case .jira(let key):  return "jira:\(key)"
         case .project(let id): return "project:\(id)"
+        case .paired(let key, let item): return "paired:\(key)/\(item)"
         }
     }
 }
 
 public struct BoardCard: Sendable, Equatable, Identifiable {
-    public enum Source: Sendable, Equatable {
+    public enum Source: Sendable, Hashable {
         case jira
         case github(project: String)
     }
 
     public let id: BoardCardID
-    public let source: Source
-    /// `ACME-123` for Jira, `repo#42` for GitHub.
+    /// Jira first when a card is both.
+    public let sources: [Source]
+    /// `ACME-123` for Jira and for a pair, `repo#42` for GitHub.
     public let reference: String
+    /// The GitHub `repo#42` of a pair.
+    public let pairedReference: String?
     /// What Copy ID copies: the key, or `owner/repo#42`, unambiguous across repositories.
     public let copyID: String
     public let title: String
@@ -130,8 +140,9 @@ public final class BoardStore {
 
     /// Every card on a column before the search, by lane.
     public var allCards: [BoardLane: [BoardCard]] {
+        let copies = migratedCopies
         var lanes: [BoardLane: [BoardCard]] = [:]
-        for card in jiraCards + projectCards {
+        for card in jiraCards(except: copies) + projectCards(pairing: copies) {
             lanes[card.lane, default: []].append(card)
         }
         return lanes.mapValues { cards in
@@ -163,17 +174,33 @@ public final class BoardStore {
         allCards.values.lazy.flatMap { $0 }.first { $0.id == id }
     }
 
-    private var jiraCards: [BoardCard] {
+    /// Item id to the Jira issue it was copied from, first copy per key. Pull requests
+    /// are left out: `[ACME-123]` on a pull request names the work, not a copy of it.
+    private var migratedCopies: [String: JiraIssue] {
+        var issues = Dictionary(jira.issues.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
+        var copies: [String: JiraIssue] = [:]
+        for item in projects.items where !item.isPullRequest {
+            guard let key = JiraIssueKey.leading(in: item.title)?.key,
+                  let issue = issues.removeValue(forKey: key)
+            else { continue }
+            copies[item.id] = issue
+        }
+        return copies
+    }
+
+    private func jiraCards(except copies: [String: JiraIssue]) -> [BoardCard] {
+        let paired = Set(copies.values.map(\.key))
         let groups = jira.groups
         let lanes: [(BoardLane, [JiraIssue])] = [
             (.toDo, groups.toDo), (.inProgress, groups.inProgress), (.reviewing, groups.reviewing),
             (.testing, groups.testing), (.done, groups.done),
         ]
         return lanes.flatMap { lane, issues in
-            issues.map { issue in
+            issues.filter { !paired.contains($0.key) }.map { issue in
                 let links = jira.links[issue.key] ?? []
                 return BoardCard(
-                    id: .jira(issue.key), source: .jira, reference: issue.key, copyID: issue.key,
+                    id: .jira(issue.key), sources: [.jira], reference: issue.key, pairedReference: nil,
+                    copyID: issue.key,
                     title: issue.summary,
                     statusName: issue.statusName, typeName: issue.issueType, priority: issue.priority,
                     tint: issue.statusCategory.tint, lane: lane, createdAt: issue.createdAt,
@@ -187,7 +214,7 @@ public final class BoardStore {
     /// Done is filtered against the window by when the Status was set, the
     /// way Jira's is by when the category changed. A card being moved counts as
     /// finishing now, as Jira's does.
-    private var projectCards: [BoardCard] {
+    private func projectCards(pairing copies: [String: JiraIssue]) -> [BoardCard] {
         projects.items.compactMap { item in
             guard let lane = projects.lane(of: item) else { return nil }
             let moving = projects.moves[item.id] != nil
@@ -196,16 +223,35 @@ public final class BoardStore {
             let project = projects.project(for: item)
             let statusName = project?.options.first { $0.id == item.statusOptionID }?.name
                 ?? item.statusName ?? "No Status"
-            return BoardCard(
-                id: .project(item.id), source: .github(project: project?.title ?? ""),
-                reference: item.reference,
+            let card = BoardCard(
+                id: .project(item.id), sources: [.github(project: project?.title ?? "")],
+                reference: item.reference, pairedReference: nil,
                 copyID: PullRequestReference.id(repo: item.repo, number: item.number),
                 title: item.title, statusName: statusName,
                 typeName: item.typeName, priority: .unset, tint: lane.tint, lane: lane,
                 createdAt: item.createdAt, finishedAt: finishedAt, url: item.url, links: item.links,
                 linkState: item.isPullRequest ? nil : (item.links.isEmpty ? IssueLinkState.none : .linked)
             )
+            return copies[item.id].map { paired(card, item: item, issue: $0) } ?? card
         }
+    }
+
+    /// GitHub places and opens the card. Jira's priority, type and age stand,
+    /// since the copy's were set on migration day.
+    private func paired(_ card: BoardCard, item: ProjectItem, issue: JiraIssue) -> BoardCard {
+        let jiraLinks = jira.links[issue.key] ?? []
+        let links = jiraLinks + card.links.filter { pull in !jiraLinks.contains { $0.url == pull.url } }
+        let status = jira.lane(of: issue) == card.lane
+            ? card.statusName
+            : "\(card.statusName) · Jira: \(issue.statusName)"
+        return BoardCard(
+            id: .paired(key: issue.key, item: item.id), sources: [.jira] + card.sources,
+            reference: issue.key, pairedReference: card.reference, copyID: card.copyID,
+            title: JiraIssueKey.leading(in: item.title)?.title ?? item.title,
+            statusName: status, typeName: issue.issueType, priority: issue.priority, tint: card.tint,
+            lane: card.lane, createdAt: issue.createdAt, finishedAt: card.finishedAt, url: card.url,
+            links: links, linkState: links.isEmpty ? jira.linkState(for: issue.key) : .linked
+        )
     }
 
     // MARK: - State
@@ -283,8 +329,8 @@ public final class BoardStore {
 
     public func canMove(_ card: BoardCard) -> Bool {
         switch card.id {
-        case .jira:    return jira.canMove
-        case .project: return projects.canMove
+        case .jira:              return jira.canMove
+        case .project, .paired:  return projects.canMove
         }
     }
 
@@ -292,6 +338,7 @@ public final class BoardStore {
         switch id {
         case .jira(let key):  return jira.isMoving(key)
         case .project(let id): return projects.isMoving(id)
+        case .paired(let key, let item): return jira.isMoving(key) || projects.isMoving(item)
         }
     }
 
@@ -299,6 +346,11 @@ public final class BoardStore {
         switch id {
         case .jira(let key):  await jira.move(key, to: lane)
         case .project(let id): await projects.move(id, to: lane)
+        case .paired(let key, let item):
+            // Together: Jira may sit on its form while GitHub has already moved the card.
+            async let github: Void = projects.move(item, to: lane)
+            await jira.move(key, to: lane)
+            await github
         }
     }
 

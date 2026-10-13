@@ -2,6 +2,16 @@ import AppKit
 import SwiftUI
 import PRMasterCore
 
+struct SourceMarks: View {
+    let sources: [BoardCard.Source]
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(sources, id: \.self) { SourceMark(source: $0) }
+        }
+    }
+}
+
 /// The Jira or GitHub mark at the head of a card. The marks are rendered into
 /// the bundle by `make bundle`; a bare `swift run` has none and falls back to
 /// SF Symbols.

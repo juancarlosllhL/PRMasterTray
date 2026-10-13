@@ -7,21 +7,21 @@ private func daysAgo(_ days: Double) -> Date { now.addingTimeInterval(-days * 86
 
 private func jiraIssue(
     _ key: String, _ status: String, _ category: JiraStatusCategory,
-    priority: JiraPriority = .medium, createdDaysAgo: Double = 1, doneDaysAgo: Double? = nil
+    priority: JiraPriority = .medium, type: String = "Task", createdDaysAgo: Double = 1, doneDaysAgo: Double? = nil
 ) -> JiraIssue {
     JiraIssue(
         key: key, summary: "summary \(key)", statusName: status, statusCategory: category,
-        issueType: "Task", priority: priority, updatedAt: now, createdAt: daysAgo(createdDaysAgo),
+        issueType: type, priority: priority, updatedAt: now, createdAt: daysAgo(createdDaysAgo),
         categoryChangedAt: doneDaysAgo.map(daysAgo)
     )
 }
 
 private func item(
     _ id: String, _ option: String?, number: Int, createdDaysAgo: Double = 0, changedDaysAgo: Double = 1,
-    isPullRequest: Bool = false, links: [LinkedPullRequest] = []
+    isPullRequest: Bool = false, links: [LinkedPullRequest] = [], title: String? = nil
 ) -> ProjectItem {
     ProjectItem(
-        id: id, projectID: "PVT_1", number: number, title: "github \(id)",
+        id: id, projectID: "PVT_1", number: number, title: title ?? "github \(id)",
         url: URL(string: "https://github.com/acme/widget/issues/\(number)")!, repo: "acme/widget",
         isPullRequest: isPullRequest, typeName: "Task", statusOptionID: option, statusName: nil,
         statusChangedAt: daysAgo(changedDaysAgo), createdAt: daysAgo(createdDaysAgo), links: links
@@ -31,6 +31,11 @@ private func item(
 private struct FixedIssues: JiraIssueFetching {
     let result: Result<[JiraIssue], PRMasterError>
     func fetchAssignedIssues(within window: JiraWindow) async throws -> [JiraIssue] { try result.get() }
+}
+
+private struct FixedLinks: IssueLinkFetching {
+    let links: [String: [LinkedPullRequest]]
+    func fetchPullRequests(forIssueKeys keys: [String]) async throws -> [String: [LinkedPullRequest]] { links }
 }
 
 private final class CountingIssues: JiraIssueFetching, @unchecked Sendable {
@@ -48,6 +53,9 @@ private final class OneHopJira: JiraIssueMoving, @unchecked Sendable {
     private let lock = NSLock()
     private var moved = false
     private(set) var performed: [String] = []
+    private let fields: [JiraField]
+
+    init(fields: [JiraField] = []) { self.fields = fields }
 
     func transitions(for key: String) async throws -> (JiraStatus, [JiraTransition]) {
         lock.withLock {
@@ -55,7 +63,7 @@ private final class OneHopJira: JiraIssueMoving, @unchecked Sendable {
                 ? (JiraStatus(name: "In Progress", category: .inProgress), [])
                 : (JiraStatus(name: "To Do", category: .toDo), [JiraTransition(
                     id: "11", to: JiraStatus(name: "In Progress", category: .inProgress),
-                    isGlobal: false, needsInput: false)])
+                    isGlobal: false, needsInput: false, fields: fields)])
         }
     }
 
@@ -102,14 +110,15 @@ private func makeBoard(
     issues: Result<[JiraIssue], PRMasterError>? = .success(standardIssues),
     items: Result<[ProjectItem], PRMasterError>? = .success(standardItems),
     preferences: MemoryPreferences = MemoryPreferences(),
-    jiraMover: JiraIssueMoving? = nil
+    jiraMover: JiraIssueMoving? = nil,
+    links: [String: [LinkedPullRequest]]? = nil
 ) async -> (BoardStore, ServedProjects?) {
     if items != nil {
         preferences.setKnownProjects([boardProject()])
         preferences.setProjectSelection(ProjectSelection(enabled: ["PVT_1"]))
     }
     let jira = JiraStore(
-        issues: issues.map { FixedIssues(result: $0) }, links: nil, mover: jiraMover,
+        issues: issues.map { FixedIssues(result: $0) }, links: links.map(FixedLinks.init), mover: jiraMover,
         preferences: preferences, now: { now }, sleep: { _ in throw CancellationError() }
     )
     let served = items.map { ServedProjects($0) }
@@ -194,12 +203,12 @@ struct BoardStoreColumnTests {
         let cards = board.columns.flatMap(\.cards)
         let github = try #require(cards.first { $0.reference == "widget#1" })
         let jira = try #require(cards.first { $0.reference == "ACME-1" })
-        #expect(github.source == .github(project: "Platform Board"))
+        #expect(github.sources == [.github(project: "Platform Board")])
         #expect(github.url?.absoluteString == "https://github.com/acme/widget/issues/1")
         #expect(github.title == "github a")
         #expect(github.copyID == "acme/widget#1")
         #expect(jira.copyID == "ACME-1")
-        #expect(jira.source == .jira)
+        #expect(jira.sources == [.jira])
         #expect(jira.url == nil)
         #expect(jira.priority == .medium)
         #expect(github.priority == .unset)
@@ -219,6 +228,167 @@ struct BoardStoreColumnTests {
         #expect(cards.first { $0.reference == "widget#1" }?.links.map(\.number) == [10])
         #expect(cards.first { $0.reference == "widget#2" }?.linkState == IssueLinkState.none)
         #expect(cards.first { $0.reference == "widget#6" }?.linkState == nil)
+    }
+}
+
+private func pull(_ number: Int) -> LinkedPullRequest {
+    LinkedPullRequest(
+        id: "PR_\(number)", number: number, title: "fix", url: URL(string: "https://github.com/acme/widget/pull/\(number)")!,
+        repo: "acme/widget", isPrivate: false, isDraft: false, state: .open
+    )
+}
+
+private let migrated = jiraIssue("ACME-1", "To Do", .toDo, priority: .high, type: "Bug", createdDaysAgo: 40)
+
+private func copy(
+    _ option: String = "o-review", id: String = "c", number: Int = 7, changedDaysAgo: Double = 1,
+    links: [LinkedPullRequest] = [], title: String = "[ACME-1] Ship it"
+) -> ProjectItem {
+    item(id, option, number: number, changedDaysAgo: changedDaysAgo, links: links, title: title)
+}
+
+@Suite("BoardStore pairs a Jira issue with its migrated GitHub copy")
+@MainActor
+struct BoardStorePairTests {
+
+    @Test("a GitHub issue titled with a Jira key on the board shares that issue's card, placed by GitHub")
+    func onePair() async throws {
+        let (board, _) = await makeBoard(issues: .success([migrated]), items: .success([copy()]))
+        let cards = board.columns.flatMap(\.cards)
+        #expect(cards.count == 1)
+        let card = try #require(cards.first)
+        #expect(card.id == .paired(key: "ACME-1", item: "c"))
+        #expect(card.sources == [.jira, .github(project: "Platform Board")])
+        #expect(card.reference == "ACME-1")
+        #expect(card.pairedReference == "widget#7")
+        #expect(card.title == "Ship it")
+        #expect(card.lane == .reviewing)
+        #expect(card.url?.absoluteString == "https://github.com/acme/widget/issues/7")
+        #expect(card.copyID == "acme/widget#7")
+    }
+
+    /// The copy was created on migration day and carries no priority, so its own would misorder the lane.
+    @Test("age, priority and type come from Jira, which set them when the work began")
+    func jiraFacts() async throws {
+        let (board, _) = await makeBoard(issues: .success([migrated]), items: .success([copy()]))
+        let card = try #require(board.columns.flatMap(\.cards).first)
+        #expect(card.createdAt == daysAgo(40))
+        #expect(card.priority == .high)
+        #expect(card.typeName == "Bug")
+    }
+
+    @Test("the status also names Jira's while the two tools disagree on the column")
+    func statusWhenLanesDiffer() async throws {
+        let (apart, _) = await makeBoard(issues: .success([migrated]), items: .success([copy("o-review")]))
+        #expect(apart.columns.flatMap(\.cards).first?.statusName == "In Review · Jira: To Do")
+        let (agreeing, _) = await makeBoard(issues: .success([migrated]), items: .success([copy("o-todo")]))
+        #expect(agreeing.columns.flatMap(\.cards).first?.statusName == "Todo")
+    }
+
+    @Test("pull requests from both tools are listed once")
+    func linksFromBoth() async throws {
+        let (board, _) = await makeBoard(
+            issues: .success([migrated]), items: .success([copy(links: [pull(10), pull(11)])]),
+            links: ["ACME-1": [pull(11), pull(12)]]
+        )
+        let card = try #require(board.columns.flatMap(\.cards).first)
+        #expect(card.links.map(\.number).sorted() == [10, 11, 12])
+        #expect(card.linkState == .linked)
+    }
+
+    /// GitHub alone would say "none"; only Jira's lookup knows whether it could check.
+    @Test("with no pull request on either side, the card reads Jira's lookup")
+    func linkStateFromJira() async throws {
+        let (board, _) = await makeBoard(issues: .success([migrated]), items: .success([copy()]))
+        #expect(board.columns.flatMap(\.cards).first?.linkState == .unknown)
+    }
+
+    @Test("a pull request titled with the key, an unknown key, or a key later in the title keeps its own card")
+    func notCopies() async throws {
+        let items = [
+            item("p", "o-review", number: 8, isPullRequest: true, title: "[ACME-1] fix it"),
+            item("q", "o-todo", number: 9, title: "[ACME-99] elsewhere"),
+            item("r", "o-todo", number: 10, title: "Follow up on ACME-1"),
+        ]
+        let (board, _) = await makeBoard(issues: .success([migrated]), items: .success(items))
+        let cards = board.columns.flatMap(\.cards)
+        #expect(Set(cards.map(\.reference)) == ["ACME-1", "widget#8", "widget#9", "widget#10"])
+        #expect(cards.first { $0.reference == "ACME-1" }?.sources == [.jira])
+        #expect(cards.first { $0.reference == "widget#9" }?.title == "[ACME-99] elsewhere")
+    }
+
+    @Test("a copy GitHub keeps off the board takes its Jira card with it", arguments: [("o-blocked", 1.0), ("o-done", 30.0)])
+    func hiddenWithCopy(option: String, changedDaysAgo: Double) async {
+        let (board, _) = await makeBoard(
+            issues: .success([migrated]), items: .success([copy(option, changedDaysAgo: changedDaysAgo)])
+        )
+        #expect(board.cardCount == 0)
+    }
+
+    @Test("the search finds a pair by either tool's reference or by its title", arguments: ["ACME-1", "widget#7", "ship"])
+    func search(query: String) async {
+        let (board, _) = await makeBoard(issues: .success([migrated]), items: .success([copy()]))
+        board.searchQuery = query
+        #expect(board.visibleCount == 1)
+        #expect(board.cardCount == 1)
+    }
+
+    @Test("of two GitHub issues naming one key, the first pairs and the second keeps its own card")
+    func secondCopy() async {
+        let items = [copy(id: "c", number: 7), copy("o-todo", id: "d", number: 8, title: "[ACME-1] Ship it too")]
+        let (board, _) = await makeBoard(issues: .success([migrated]), items: .success(items))
+        let ids = board.columns.flatMap(\.cards).map(\.id)
+        #expect(Set(ids) == [.paired(key: "ACME-1", item: "c"), .project("d")])
+    }
+
+    private let pair = BoardCardID.paired(key: "ACME-1", item: "c")
+
+    @Test("moving a pair moves it in GitHub and in Jira")
+    func movesBoth() async {
+        let jiraMover = OneHopJira()
+        let (board, served) = await makeBoard(
+            issues: .success([migrated]), items: .success([copy("o-todo")]), jiraMover: jiraMover
+        )
+        await board.move(pair, to: .inProgress)
+        #expect(served?.moved == ["c→o-progress"])
+        #expect(jiraMover.performed == ["ACME-1"])
+    }
+
+    /// Jira's form stays open for as long as the user takes over it.
+    @Test("GitHub moves the card while Jira's form is open, and the pair reads as moving until Jira is done")
+    func movesWhileJiraAsks() async {
+        let remark = JiraField(id: "customfield_10170", name: "Remark", kind: .richText)
+        let (board, served) = await makeBoard(
+            issues: .success([migrated]), items: .success([copy("o-todo")]), jiraMover: OneHopJira(fields: [remark])
+        )
+        let moving = Task { await board.move(pair, to: .inProgress) }
+        for _ in 0..<10_000 where board.jira.fieldRequest == nil || served?.moved.isEmpty == true {
+            await Task.yield()
+        }
+        #expect(served?.moved == ["c→o-progress"])
+        #expect(board.isMoving(pair))
+        board.jira.cancelFields()
+        await moving.value
+        #expect(!board.isMoving(pair))
+    }
+
+    @Test("a side that cannot finish the move says so, and the other still moves")
+    func oneSideStops() async {
+        let (board, served) = await makeBoard(
+            issues: .success([migrated]), items: .success([copy("o-todo")]), jiraMover: OneHopJira()
+        )
+        await board.move(pair, to: .reviewing)
+        #expect(served?.moved == ["c→o-review"])
+        #expect(board.moveFailures.count == 1)
+        #expect(board.moveFailures.first?.hasPrefix("ACME-1 stopped at In Progress") == true)
+    }
+
+    @Test("a pair can move wherever GitHub can, signed in to Jira or not")
+    func canMovePair() async throws {
+        let (board, _) = await makeBoard(issues: .success([migrated]), items: .success([copy()]))
+        let card = try #require(board.card(pair))
+        #expect(!board.jira.canMove)
+        #expect(board.canMove(card))
     }
 }
 
@@ -353,13 +523,16 @@ struct BoardStoreFailureTests {
         ("jira:ACME-1", BoardCardID.jira("ACME-1")),
         ("project:PVTI_1", BoardCardID.project("PVTI_1")),
         ("project:a:b", BoardCardID.project("a:b")),
+        ("paired:ACME-1/PVTI_1", BoardCardID.paired(key: "ACME-1", item: "PVTI_1")),
     ])
     func cardIDs(raw: String, id: BoardCardID) {
         #expect(BoardCardID(rawValue: raw) == id)
         #expect(id.rawValue == raw)
     }
 
-    @Test("strings from other apps are not card ids", arguments: ["ACME-1", "jira:", "github:x", "", "https://example.com"])
+    @Test("strings from other apps are not card ids", arguments: [
+        "ACME-1", "jira:", "github:x", "", "https://example.com", "paired:ACME-1", "paired:/PVTI_1", "paired:ACME-1/",
+    ])
     func foreign(raw: String) {
         #expect(BoardCardID(rawValue: raw) == nil)
     }

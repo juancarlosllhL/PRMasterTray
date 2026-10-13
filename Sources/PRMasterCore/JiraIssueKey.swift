@@ -16,6 +16,14 @@ public enum JiraIssueKey {
             .map { String($0.output.0) }
     }
 
+    /// A GitHub issue migrated from Jira keeps its key as a `[ACME-123]` prefix.
+    public static func leading(in title: String) -> (key: String, title: String)? {
+        guard let match = title.prefixMatch(of: /\s*\[([A-Z][A-Z0-9]*)-([1-9][0-9]*)\]\s*/),
+              projects.contains(String(match.output.1))
+        else { return nil }
+        return ("\(match.output.1)-\(match.output.2)", String(title[match.range.upperBound...]))
+    }
+
     public static func browseURL(_ key: String, on base: URL) -> URL {
         base.appendingPathComponent("browse/\(key)")
     }

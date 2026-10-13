@@ -18,6 +18,9 @@
       "repo": "acme/widget-service", "typeName": "Task", "statusOptionID": "p-done", "statusChangedDaysAgo": 2, "createdHoursAgo": 400,
       "links": [ { "number": 395, "title": "remove legacy sync", "state": "MERGED" } ] },
     { "id": "PVTI_f6", "projectID": "PVT_fixture_platform", "number": 12, "title": "Waiting on the vendor's answer",
-      "repo": "acme/hooks", "typeName": "Task", "statusOptionID": "p-blocked", "createdHoursAgo": 90 }
+      "repo": "acme/hooks", "typeName": "Task", "statusOptionID": "p-blocked", "createdHoursAgo": 90 },
+    { "id": "PVTI_f7", "projectID": "PVT_fixture_platform", "number": 214, "title": "[ACME-62941] Let Lens answer AI governance questions",
+      "repo": "acme/lens", "typeName": "Issue", "statusOptionID": "p-review", "createdHoursAgo": 96,
+      "links": [ { "number": 220, "title": "governance answers", "state": "OPEN" } ] }
   ]
 }

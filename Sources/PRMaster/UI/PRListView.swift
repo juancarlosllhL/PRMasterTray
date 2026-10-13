@@ -296,6 +296,8 @@ struct PRListView: View {
                     filter: store.filter,
                     onOpenCard: onOpenCard,
                     cardLink: cardLink,
+                    jiraKeyLink: jiraKeyLink,
+                    onOpenJiraLink: onOpenJiraLink,
                     onOpenLink: onOpenLinkedPullRequest,
                     onOpenSettings: onOpenSettings
                 )

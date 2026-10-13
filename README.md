@@ -158,6 +158,13 @@ GitHub would merge right now.
   on GitHub. Draft issues, the board-only notes with no repository, are not
   shown: there is nothing to link to.
 
+  A GitHub issue whose title starts with a bracketed Jira key, such as
+  `[ACME-65806]`, is that Jira issue copied over in the migration, and the two
+  share one card with both logos. GitHub places the card and is what a click
+  opens. Jira supplies the priority, type and age, because the copy was created
+  on migration day. Moving the card moves it in both. Pull requests titled the
+  same way keep their own cards.
+
   Reading projects needs the `read:project` scope and moving cards needs
   `project`, which the `gh` token does not carry by default. Run
   `gh auth refresh -s project` once; the app picks the new token up without a
