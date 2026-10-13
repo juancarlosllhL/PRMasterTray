@@ -4,6 +4,12 @@ What each release changed, newest first. The app shows the entries you missed
 the first time it runs after an update, so keep the lines short and written for
 whoever has to read them in a small window.
 
+## 0.19.0 — 2026-10-13
+
+- A GitHub issue titled with its Jira key, such as [ACME-65806], now shares one card with that Jira issue, carrying both logos.
+- That card sits where GitHub has it and opens on GitHub. When Jira has it in another column, the card shows Jira's status too.
+- Moving the card moves it in both GitHub and Jira. Right-click it to copy the Jira ID or link, or to open it in Jira.
+
 ## 0.18.0 — 2026-10-13
 
 - The Jira tab is now Board. It also shows what is assigned to you on the GitHub projects you switch on under Settings, Board.
