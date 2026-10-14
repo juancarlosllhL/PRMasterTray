@@ -4,6 +4,12 @@ What each release changed, newest first. The app shows the entries you missed
 the first time it runs after an update, so keep the lines short and written for
 whoever has to read them in a small window.
 
+## 0.20.0 — 2026-10-14
+
+- The list can open as a panel the full height of the screen, docked to the left or right. Choose it in Settings, Appearance, or under Show As in the gear menu.
+- The panel stays open above your other windows. Click the menu bar icon to hide it or bring it back.
+- Switch on Keep other windows clear of the panel to move or narrow any window that lands under it. This needs the Accessibility permission.
+
 ## 0.19.1 — 2026-10-14
 
 - In the review window, GraphQL schema files ending in .graphqls are now coloured like .graphql and .gql files.
