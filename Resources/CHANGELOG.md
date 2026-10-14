@@ -4,6 +4,10 @@ What each release changed, newest first. The app shows the entries you missed
 the first time it runs after an update, so keep the lines short and written for
 whoever has to read them in a small window.
 
+## 0.19.1 — 2026-10-14
+
+- In the review window, GraphQL schema files ending in .graphqls are now coloured like .graphql and .gql files.
+
 ## 0.19.0 — 2026-10-13
 
 - A GitHub issue titled with its Jira key, such as [ACME-65806], now shares one card with that Jira issue, carrying both logos.
