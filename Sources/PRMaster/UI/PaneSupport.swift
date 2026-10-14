@@ -1,6 +1,20 @@
 import SwiftUI
 import PRMasterCore
 
+private struct IsDockedKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// True inside the side panel, which scrolls as a whole: the per-section
+    /// height caps exist to keep the popover on screen, and inside a panel the
+    /// height of the screen they would only nest one scroller in another.
+    var isDocked: Bool {
+        get { self[IsDockedKey.self] }
+        set { self[IsDockedKey.self] = newValue }
+    }
+}
+
 /// The full-pane placeholder for an empty, loading or failed pane.
 struct PaneMessageView: View {
     let icon: String

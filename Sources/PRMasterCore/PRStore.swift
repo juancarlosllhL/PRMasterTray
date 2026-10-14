@@ -98,6 +98,12 @@ public protocol PreferenceStoring: Sendable {
     func setMonochromeEnabled(_ value: Bool)
     func popoverBackground() -> PopoverBackground
     func setPopoverBackground(_ value: PopoverBackground)
+    /// Popover or side panel.
+    func panelPlacement() -> PanelPlacement
+    func setPanelPlacement(_ value: PanelPlacement)
+    /// Whether other apps' windows are moved off the side panel.
+    func keepsWindowsClear() -> Bool
+    func setKeepsWindowsClear(_ value: Bool)
     /// Whether pull request titles are shown without their gitmoji.
     func hidesEmoji() -> Bool
     func setHidesEmoji(_ value: Bool)
@@ -796,6 +802,8 @@ public struct UserDefaultsPreferences: PreferenceStoring {
     private let themeKey = "appearanceTheme"
     private let monochromeKey = "highContrastMonochrome"
     private let popoverBackgroundKey = "popoverBackground"
+    private let panelPlacementKey = "panelPlacement"
+    private let keepsWindowsClearKey = "keepWindowsClearOfPanel"
     private let hidesEmojiKey = "hideTitleEmoji"
     private let lastSeenVersionKey = "lastSeenVersion"
     private let staleThresholdKey = "staleThreshold"
@@ -885,6 +893,26 @@ public struct UserDefaultsPreferences: PreferenceStoring {
 
     public func setPopoverBackground(_ value: PopoverBackground) {
         defaults.set(value.rawValue, forKey: popoverBackgroundKey)
+    }
+
+    public func panelPlacement() -> PanelPlacement {
+        // Absent and unrecognised both mean the popover, which is what the app
+        // did before this setting existed.
+        defaults.string(forKey: panelPlacementKey)
+            .flatMap(PanelPlacement.init(rawValue:)) ?? .popover
+    }
+
+    public func setPanelPlacement(_ value: PanelPlacement) {
+        defaults.set(value.rawValue, forKey: panelPlacementKey)
+    }
+
+    public func keepsWindowsClear() -> Bool {
+        // `object(forKey:)`: a stored false has to outlive a relaunch.
+        defaults.object(forKey: keepsWindowsClearKey) as? Bool ?? false
+    }
+
+    public func setKeepsWindowsClear(_ value: Bool) {
+        defaults.set(value, forKey: keepsWindowsClearKey)
     }
 
     public func hidesEmoji() -> Bool {

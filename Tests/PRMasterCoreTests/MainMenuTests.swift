@@ -31,9 +31,10 @@ struct MainMenuTests {
     /// Two items on one shortcut leave one unreachable, and Edit's live in the same menu bar.
     @Test("no two items in the menu bar share a shortcut")
     func noShortcutCollisions() {
-        let menu = MainMenuItem.allCases.map(\.keyEquivalent).filter { !$0.isEmpty }.map { "\($0)-false" }
-        let edit = EditMenuItem.allCases.map { "\($0.keyEquivalent)-\($0.requiresShift)" }
-        #expect(Set(menu + edit).count == menu.count + edit.count)
+        let menu: [String] = MainMenuItem.allCases.map(\.keyEquivalent).filter { !$0.isEmpty }.map { "\($0)-false" }
+        let edit: [String] = EditMenuItem.allCases.map { "\($0.keyEquivalent)-\($0.requiresShift)" }
+        let shortcuts: [String] = menu + edit
+        #expect(Set(shortcuts).count == shortcuts.count)
     }
 
     /// Command and a digit switch the popover's tabs.

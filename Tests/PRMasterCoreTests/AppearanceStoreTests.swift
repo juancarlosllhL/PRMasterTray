@@ -269,3 +269,107 @@ struct AppThemeTests {
         #expect(AppTheme(rawValue: "solarized") == nil)
     }
 }
+
+@Suite("Panel placement")
+@MainActor
+struct PanelPlacementTests {
+
+    private let visible = CGRect(x: 0, y: 40, width: 1440, height: 835)
+
+    @Test("an absent placement reads as the popover")
+    func defaultsToPopover() throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        #expect(UserDefaultsPreferences(defaults: defaults).panelPlacement() == .popover)
+    }
+
+    @Test("an unrecognised stored placement falls back to the popover")
+    func unknownFallsBack() throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        defaults.set("top", forKey: "panelPlacement")
+        #expect(UserDefaultsPreferences(defaults: defaults).panelPlacement() == .popover)
+    }
+
+    @Test("a stored placement round-trips", arguments: PanelPlacement.allCases)
+    func roundTrips(placement: PanelPlacement) throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let preferences = UserDefaultsPreferences(defaults: defaults)
+        preferences.setPanelPlacement(placement)
+        #expect(preferences.panelPlacement() == placement)
+    }
+
+    @Test("setting the placement persists it")
+    func persists() {
+        let preferences = MemoryPreferences()
+        let store = AppearanceStore(preferences: preferences)
+
+        store.panelPlacement = .right
+        #expect(preferences.panelPlacement() == .right)
+    }
+
+    @Test("the popover has no frame of its own")
+    func popoverHasNoFrame() {
+        #expect(PanelPlacement.popover.frame(width: 440, in: visible) == nil)
+    }
+
+    @Test("the left panel fills the height flush against the left edge")
+    func leftFrame() {
+        #expect(PanelPlacement.left.frame(width: 440, in: visible)
+            == CGRect(x: 0, y: 40, width: 440, height: 835))
+    }
+
+    @Test("the right panel fills the height flush against the right edge")
+    func rightFrame() {
+        #expect(PanelPlacement.right.frame(width: 440, in: visible)
+            == CGRect(x: 1000, y: 40, width: 440, height: 835))
+    }
+
+    /// A board wider than a small screen must still sit on it.
+    @Test("the panel is never wider than the screen")
+    func clampsWidth() {
+        #expect(PanelPlacement.right.frame(width: 2000, in: visible)
+            == CGRect(x: 0, y: 40, width: 1440, height: 835))
+    }
+}
+
+@Suite("Keeping windows clear")
+@MainActor
+struct KeepsWindowsClearTests {
+
+    @Test("an absent flag reads as off")
+    func defaultsOff() throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        #expect(UserDefaultsPreferences(defaults: defaults).keepsWindowsClear() == false)
+    }
+
+    @Test("a stored flag round-trips", arguments: [true, false])
+    func roundTrips(value: Bool) throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let preferences = UserDefaultsPreferences(defaults: defaults)
+        preferences.setKeepsWindowsClear(value)
+        #expect(preferences.keepsWindowsClear() == value)
+    }
+
+    @Test("setting the flag persists it")
+    func persists() {
+        let preferences = MemoryPreferences()
+        let store = AppearanceStore(preferences: preferences)
+
+        store.keepsWindowsClear = true
+        #expect(preferences.keepsWindowsClear() == true)
+    }
+}

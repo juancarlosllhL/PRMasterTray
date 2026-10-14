@@ -28,7 +28,11 @@ INTEROP := $(DEVDIR)/Library/Developer/usr/lib
 TESTFLAGS := -Xswiftc -F -Xswiftc $(FW) \
              -Xlinker -F -Xlinker $(FW) \
              -Xlinker -rpath -Xlinker $(FW) \
-             -Xlinker -rpath -Xlinker $(INTEROP)
+             -Xlinker -rpath -Xlinker $(INTEROP) \
+             -Xswiftc -Xfrontend -Xswiftc -disable-cross-import-overlays
+# The last flag: Command Line Tools 26.2 ship _Testing_Foundation.framework
+# without its Modules folder, so importing Foundation and Testing together
+# fails at `no such module '_Testing_Foundation'`. No test here needs the overlay.
 
 .PHONY: build test bundle run install uninstall dist verify-version clean signing-identity
 

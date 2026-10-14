@@ -292,7 +292,7 @@ public final class DiffStore {
         scoring = Task { [weak self] in
             await withTaskGroup(of: Void.self) { group in
                 for _ in 0..<Self.scoringConcurrency {
-                    group.addTask {
+                    group.addTask { [weak self] in
                         while !Task.isCancelled, await self?.scoreNextFile(scorer, generation: generation) == true {}
                     }
                 }

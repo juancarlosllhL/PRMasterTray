@@ -23,6 +23,8 @@ struct PullRequestsPaneView: View {
     private static let mergedRowsBeforeScrolling = 5
     private static let reviewRowsBeforeScrolling = 5
 
+    @Environment(\.isDocked) private var isDocked
+
     private var reviewRequests: [ReviewRequest] { reviews.visible(under: store.filter) }
 
     var body: some View {
@@ -123,7 +125,7 @@ struct PullRequestsPaneView: View {
             }
             // A ScrollView is greedy and would leave dead space below a short
             // list, so only reach for one when the list is genuinely long.
-            if store.prs.count > Self.rowsBeforeScrolling {
+            if !isDocked, store.prs.count > Self.rowsBeforeScrolling {
                 ScrollView { openRows }
                     .frame(height: 460)
             } else {
@@ -177,7 +179,7 @@ struct PullRequestsPaneView: View {
             PaneHeaderView(title: "Recently merged")
             // Capped like the open list above it. A busy day can merge dozens,
             // and an uncapped section would push the popover off the screen.
-            if store.shipments.count > Self.mergedRowsBeforeScrolling {
+            if !isDocked, store.shipments.count > Self.mergedRowsBeforeScrolling {
                 ScrollView { mergedRows }
                     .frame(height: 220)
             } else {
@@ -215,7 +217,7 @@ struct PullRequestsPaneView: View {
             // Capped like the two sections above it. Even inside the age limit a
             // busy team can carry dozens, and an uncapped section would push the
             // popover off the screen.
-            if reviewRequests.count > Self.reviewRowsBeforeScrolling {
+            if !isDocked, reviewRequests.count > Self.reviewRowsBeforeScrolling {
                 ScrollView { teamRows }
                     .frame(height: 260)
             } else {

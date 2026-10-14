@@ -14,6 +14,7 @@ struct BoardView: View {
 
     @State private var targetedLane: BoardLane?
     @Environment(\.palette) private var palette
+    @Environment(\.isDocked) private var isDocked
 
     private static let columnWidth = CGFloat(JiraBoard.columnWidth)
     private static let columnHeight = CGFloat(JiraBoard.columnHeight)
@@ -41,7 +42,7 @@ struct BoardView: View {
             PaneHeaderView(title: column.title, trailing: "\(column.cards.count)")
             if column.cards.isEmpty {
                 empty
-            } else if column.cards.count > Self.cardsBeforeScrolling {
+            } else if !isDocked, column.cards.count > Self.cardsBeforeScrolling {
                 ScrollView { cards(column) }
                     .frame(height: Self.columnHeight)
             } else {
