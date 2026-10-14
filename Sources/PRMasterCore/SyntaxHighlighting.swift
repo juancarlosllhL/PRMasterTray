@@ -62,6 +62,6 @@ public enum SyntaxLanguage {
         "dockerfile": "docker", "toml": "toml", "tf": "hcl", "tfvars": "hcl", "hcl": "hcl",
         "xml": "xml", "plist": "xml", "csproj": "xml", "svg": "xml", "rb": "ruby",
         "c": "cpp", "h": "cpp", "cc": "cpp", "cpp": "cpp", "cxx": "cpp", "hpp": "cpp", "hh": "cpp",
-        "graphql": "graphql", "gql": "graphql", "mk": "make",
+        "graphql": "graphql", "gql": "graphql", "graphqls": "graphql", "mk": "make",
     ]
 }

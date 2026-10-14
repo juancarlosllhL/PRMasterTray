@@ -68,6 +68,8 @@ struct ShikiHighlighterTests {
             ("app.rb", "def run; end", "def"),
             ("main.cpp", "int main() {\n  return 0;\n}", "int"),
             ("q.graphql", "query Viewer { login }", "query"),
+            ("q.gql", "mutation Close { close }", "mutation"),
+            ("schema.graphqls", "type Query { viewer: User! }", "type"),
             ("Makefile", "build:\n\tswift build", "build"),
         ]
     )
