@@ -142,6 +142,12 @@ final class MemoryPreferences: PreferenceStoring, @unchecked Sendable {
     func setPopoverBackground(_ value: PopoverBackground) {
         lock.withLock { storedBackground = value }
     }
+    private var storedPlacement: PanelPlacement = .popover
+    func panelPlacement() -> PanelPlacement { lock.withLock { storedPlacement } }
+    func setPanelPlacement(_ value: PanelPlacement) { lock.withLock { storedPlacement = value } }
+    private var storedKeepsWindowsClear = false
+    func keepsWindowsClear() -> Bool { lock.withLock { storedKeepsWindowsClear } }
+    func setKeepsWindowsClear(_ value: Bool) { lock.withLock { storedKeepsWindowsClear = value } }
     func mergedWindow() -> MergedWindow { lock.withLock { storedMergedWindow } }
     func setMergedWindow(_ value: MergedWindow) { lock.withLock { storedMergedWindow = value } }
     func reviewWindow() -> ReviewWindow { lock.withLock { storedReviewWindow } }

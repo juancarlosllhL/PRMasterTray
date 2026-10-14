@@ -52,6 +52,12 @@ struct PRListView: View {
     let jiraKeyLink: (String) -> URL?
     let onOpenJiraLink: (URL) -> Void
     let onOpenLinkedPullRequest: (LinkedPullRequest) -> Void
+    /// Drawn in the side panel rather than the popover: the whole screen tall,
+    /// scrolling as one.
+    var isDocked = false
+    /// The width this render wants. The panel sizes its window from it, where
+    /// the popover takes it from `.preferredContentSize` instead.
+    var onWidthChange: ((CGFloat) -> Void)?
 
     var visibleTabs: [PopoverTab] { PopoverTab.allCases }
 
@@ -125,7 +131,12 @@ struct PRListView: View {
                 PopoverTabBar(tabs: visibleTabs, selection: tabBinding, badges: badges)
             }
             Divider()
-            content
+            if isDocked {
+                ScrollView { content }
+                    .frame(maxHeight: .infinity)
+            } else {
+                content
+            }
             // One global row at most, by priority. The rest are routed into the
             // pane that owns them by `PopoverBanner`.
             if let banner = PopoverBanner.topGlobal(from: activeBanners) {
@@ -138,10 +149,13 @@ struct PRListView: View {
             }
         }
         .frame(width: popoverWidth)
+        .frame(maxHeight: isDocked ? .infinity : nil, alignment: .top)
         .background { popoverBackground }
         // Hands the resolved palette to every row and banner below.
         .environment(\.palette, palette)
         .environment(\.hidesEmoji, appearance.hidesEmoji)
+        .environment(\.isDocked, isDocked)
+        .onChange(of: popoverWidth, initial: true) { _, width in onWidthChange?(width) }
     }
 
     /// One deterministic value per render, never one derived from what the last
@@ -230,6 +244,13 @@ struct PRListView: View {
             // window because the organization list is unbounded, and a menu that
             // scrolls is a menu nobody reads.
             Button("Settings…", action: onOpenSettings)
+            // Here as well as in Settings, so a panel in the way can be put back
+            // into the popover from the panel itself.
+            Picker("Show As", selection: Bindable(appearance).panelPlacement) {
+                Text("Popover").tag(PanelPlacement.popover)
+                Text("Left Panel").tag(PanelPlacement.left)
+                Text("Right Panel").tag(PanelPlacement.right)
+            }
             // Absent under a debug override, where the store has no updater —
             // offering a switch for a feature that cannot run would be a lie.
             if canAutoUpdate {

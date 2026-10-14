@@ -23,6 +23,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settingsWindow = SettingsWindowController()
     private let whatsNewWindow = WhatsNewWindowController()
     private let diffWindows = DiffWindowController()
+    private let dockedPanel = DockedPanelController()
+    private var panelTabKeys: Any?
+    private let clearance = WindowClearanceController()
+    private var panelLayout: (panel: NSRect, screen: NSRect)?
     private var diffSource: PullRequestDiffing?
     private var diffViewedWriter: PullRequestDiffing?
     private var whatsNew: WhatsNewStore!
@@ -183,6 +187,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installMainMenu()
         installStatusItem()
         installPopover()
+        dockedPanel.onLayout = { [weak self] layout in
+            self?.panelLayout = layout
+            self?.applyClearance()
+        }
+        applyPlacement()
+        observePlacement()
+        observeClearance()
         observeWake()
         observeStoreForBadge()
         observeJiraAccount()
@@ -208,7 +219,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if Debug.openSettings {
             settingsWindow.show(
                 store: store, reviews: reviews,
-                appearance: appearanceStore, jira: jiraAccount, board: board, heatmap: heatmapAccount
+                appearance: appearanceStore, jira: jiraAccount, board: board, heatmap: heatmapAccount,
+                clearance: clearance
             )
             if let path = Debug.snapshotPath, Debug.openDiff == nil {
                 Task { @MainActor in
@@ -229,7 +241,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // is positioned as if it had no anchor at all.
                 NSApp.activate(ignoringOtherApps: true)
                 try? await Task.sleep(for: .seconds(1))
-                self.togglePopover()
+                // A panel is already open, and toggling it would hide it.
+                if self.appearanceStore.panelPlacement.isDocked {
+                    self.dockedPanel.show()
+                } else {
+                    self.togglePopover()
+                }
 
                 if let number = Debug.openDiff { await self.openReviewWhenListed(number: number) }
                 if Debug.openDiff == nil, !Debug.openSettings, let path = Debug.snapshotPath {
@@ -394,7 +411,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func openSettingsFromMenu() {
         settingsWindow.show(
                 store: store, reviews: reviews,
-                appearance: appearanceStore, jira: jiraAccount, board: board, heatmap: heatmapAccount
+                appearance: appearanceStore, jira: jiraAccount, board: board, heatmap: heatmapAccount,
+                clearance: clearance
             )
     }
 
@@ -501,70 +519,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.animates = false
         popover.delegate = self
 
-        let hosting = NSHostingController(
-            rootView: PRListView(
-                store: store,
-                reviews: reviews,
-                onOpen: { [weak self] pr in
-                    self?.open(pr.url)
-                    self?.popover.performClose(nil)
-                },
-                onReview: { [weak self] pr in self?.review(.mine(pr)) },
-                onMerge: { [weak self] pr in
-                    self?.confirmMerge(id: pr.id, oid: pr.headRefOid, title: pr.displayTitle, url: pr.url)
-                },
-                onClose: { [weak self] pr in
-                    self?.confirmClose(id: pr.id, title: pr.displayTitle, url: pr.url)
-                },
-                onOpenShipment: { [weak self] shipment in
-                    self?.open(shipment.destination)
-                    self?.popover.performClose(nil)
-                },
-                onOpenReviewRequest: { [weak self] request in
-                    self?.open(request.url)
-                    self?.popover.performClose(nil)
-                },
-                onReviewRequest: { [weak self] request in self?.review(.team(request)) },
-                onOpenSettings: { [weak self] in
-                    guard let self else { return }
-                    // Closed explicitly rather than left to `.transient`: the
-                    // panel activates the app, and two things fighting over who
-                    // is key is how the popover ends up half-dismissed.
-                    popover.performClose(nil)
-                    settingsWindow.show(
-                store: store, reviews: reviews,
-                appearance: appearanceStore, jira: jiraAccount, board: board, heatmap: heatmapAccount
-            )
-                },
-                onQuit: { NSApp.terminate(nil) },
-                canMerge: Debug.mergingOffered,
-                canClose: !Debug.overridesActive,
-                canAutoUpdate: !Debug.overridesActive,
-                notifications: NotificationStatus.shared,
-                updates: updates,
-                appearance: appearanceStore,
-                launchAtLogin: launchAtLogin,
-                selection: tabSelection,
-                board: board,
-                onOpenCard: { [weak self] card in
-                    guard let self, let url = cardURL(card) else { return }
-                    open(url)
-                    popover.performClose(nil)
-                },
-                cardLink: { [weak self] card in self?.cardURL(card) },
-                jiraKeyLink: { [weak self] key in
-                    self?.jiraAccount.current.map { JiraIssueKey.browseURL(key, on: $0.baseURL) }
-                },
-                onOpenJiraLink: { [weak self] url in
-                    self?.open(url)
-                    self?.popover.performClose(nil)
-                },
-                onOpenLinkedPullRequest: { [weak self] pull in
-                    self?.open(pull.url)
-                    self?.popover.performClose(nil)
-                }
-            )
-        )
+        let hosting = NSHostingController(rootView: makeListView(docked: false))
         // Without this the popover sizes itself once from a stale measurement
         // and anchors against it, pushing the header off the top of the screen.
         hosting.sizingOptions = [.preferredContentSize]
@@ -575,11 +530,90 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// One for the popover and, while docked, a second for the panel. Both read
+    /// the same stores, so they never disagree about what is on screen.
+    private func makeListView(docked: Bool) -> PRListView {
+        PRListView(
+            store: store,
+            reviews: reviews,
+            onOpen: { [weak self] pr in
+                self?.open(pr.url)
+                self?.popover.performClose(nil)
+            },
+            onReview: { [weak self] pr in self?.review(.mine(pr)) },
+            onMerge: { [weak self] pr in
+                self?.confirmMerge(id: pr.id, oid: pr.headRefOid, title: pr.displayTitle, url: pr.url)
+            },
+            onClose: { [weak self] pr in
+                self?.confirmClose(id: pr.id, title: pr.displayTitle, url: pr.url)
+            },
+            onOpenShipment: { [weak self] shipment in
+                self?.open(shipment.destination)
+                self?.popover.performClose(nil)
+            },
+            onOpenReviewRequest: { [weak self] request in
+                self?.open(request.url)
+                self?.popover.performClose(nil)
+            },
+            onReviewRequest: { [weak self] request in self?.review(.team(request)) },
+            onOpenSettings: { [weak self] in
+                guard let self else { return }
+                // Closed explicitly rather than left to `.transient`: the
+                // panel activates the app, and two things fighting over who
+                // is key is how the popover ends up half-dismissed.
+                popover.performClose(nil)
+                settingsWindow.show(
+                    store: store, reviews: reviews,
+                    appearance: appearanceStore, jira: jiraAccount, board: board, heatmap: heatmapAccount,
+                    clearance: clearance
+                )
+            },
+            onQuit: { NSApp.terminate(nil) },
+            canMerge: Debug.mergingOffered,
+            canClose: !Debug.overridesActive,
+            canAutoUpdate: !Debug.overridesActive,
+            notifications: NotificationStatus.shared,
+            updates: updates,
+            appearance: appearanceStore,
+            launchAtLogin: launchAtLogin,
+            selection: tabSelection,
+            board: board,
+            onOpenCard: { [weak self] card in
+                guard let self, let url = cardURL(card) else { return }
+                open(url)
+                popover.performClose(nil)
+            },
+            cardLink: { [weak self] card in self?.cardURL(card) },
+            jiraKeyLink: { [weak self] key in
+                self?.jiraAccount.current.map { JiraIssueKey.browseURL(key, on: $0.baseURL) }
+            },
+            onOpenJiraLink: { [weak self] url in
+                self?.open(url)
+                self?.popover.performClose(nil)
+            },
+            onOpenLinkedPullRequest: { [weak self] pull in
+                self?.open(pull.url)
+                self?.popover.performClose(nil)
+            },
+            isDocked: docked,
+            onWidthChange: docked
+                ? { [weak self] width in
+                    // Deferred out of the render that reported it: resizing the
+                    // window lays the hosting view out again.
+                    Task { @MainActor in self?.dockedPanel.setWidth(width) }
+                }
+                : nil
+        )
+    }
+
     private func selectTab(at index: Int) {
         tabSelection.select(at: index, in: PopoverTab.allCases)
     }
 
     @objc private func togglePopover() {
+        if appearanceStore.panelPlacement.isDocked {
+            return toggleDockedPanel()
+        }
         guard let button = statusItem?.button else { return }
         guard !popover.isShown else {
             popover.performClose(nil)
@@ -602,7 +636,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.contentViewController?.view.window?.makeKey()
 
         installDismissMonitors()
+        refreshOnOpen()
+    }
 
+    private func refreshOnOpen() {
         // Read on open rather than trusted from launch: the user can tick this in
         // System Settings while the app runs, and the gear menu below is about to
         // draw a switch claiming to know its state.
@@ -615,6 +652,78 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await store.refresh()
             await reviews.refresh()
             await board.refresh()
+        }
+    }
+
+    // MARK: - Side panel
+
+    /// The status item hides the panel and brings it back.
+    private func toggleDockedPanel() {
+        if dockedPanel.isVisible {
+            dockedPanel.hide()
+        } else {
+            dockedPanel.show()
+            refreshOnOpen()
+        }
+    }
+
+    private func applyPlacement() {
+        let placement = appearanceStore.panelPlacement
+        guard placement.isDocked else {
+            dockedPanel.undock()
+            panelTabKeys.map(NSEvent.removeMonitor)
+            panelTabKeys = nil
+            return
+        }
+        popover.performClose(nil)
+        // The display whose menu bar holds the status item, so the panel opens
+        // on the screen that was clicked rather than wherever focus last was.
+        dockedPanel.dock(placement, on: { [weak self] in self?.statusItem?.button?.window?.screen }) {
+            makeListView(docked: true)
+        }
+        // The popover installs these while it is open; the panel is always open.
+        if panelTabKeys == nil {
+            panelTabKeys = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard let self, event.window === dockedPanel.window,
+                      event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+                      let digit = event.charactersIgnoringModifiers.flatMap(Int.init),
+                      (1...4).contains(digit)
+                else { return event }
+                selectTab(at: digit - 1)
+                return nil
+            }
+        }
+    }
+
+    private func applyClearance() {
+        clearance.enforce(appearanceStore.keepsWindowsClear ? panelLayout : nil)
+    }
+
+    /// Switching it on is what asks for the permission, never launching.
+    private func observeClearance() {
+        withObservationTracking {
+            _ = appearanceStore.keepsWindowsClear
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                if self.appearanceStore.keepsWindowsClear, !self.clearance.isTrusted {
+                    self.clearance.requestTrust()
+                }
+                self.applyClearance()
+                self.observeClearance()
+            }
+        }
+    }
+
+    /// Same one-shot shape as `observeAppearance`.
+    private func observePlacement() {
+        withObservationTracking {
+            _ = appearanceStore.panelPlacement
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                self?.applyPlacement()
+                self?.observePlacement()
+            }
         }
     }
 

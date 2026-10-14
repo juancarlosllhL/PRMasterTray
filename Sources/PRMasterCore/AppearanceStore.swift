@@ -1,3 +1,4 @@
+import CoreGraphics
 import Observation
 
 /// Which appearance the app draws in.
@@ -35,6 +36,32 @@ public enum PopoverBackground: String, Sendable, Equatable, CaseIterable {
     case liquidGlass, opaque
 }
 
+/// Where the list is drawn: the popover under the status item, or a panel the
+/// full height of the screen, pinned to one side and left open.
+///
+/// Default is `popover`, for the same reason as every other default in this
+/// file: it is what the app did before the setting existed.
+public enum PanelPlacement: String, Sendable, Equatable, CaseIterable {
+    case popover, left, right
+
+    public var isDocked: Bool { self != .popover }
+
+    /// The panel's frame inside a screen's visible frame: the whole height, the
+    /// width asked for, flush against its edge. Nil for the popover, which
+    /// AppKit anchors to the status item itself.
+    public func frame(width: Double, in visible: CGRect) -> CGRect? {
+        let width = min(width, visible.width)
+        switch self {
+        case .popover:
+            return nil
+        case .left:
+            return CGRect(x: visible.minX, y: visible.minY, width: width, height: visible.height)
+        case .right:
+            return CGRect(x: visible.maxX - width, y: visible.minY, width: width, height: visible.height)
+        }
+    }
+}
+
 /// Observable state behind the appearance settings.
 ///
 /// Beside `PRStore` rather than inside it: that one is pull-request state, it
@@ -62,6 +89,17 @@ public final class AppearanceStore {
     /// against. See `PopoverBackground` for why this is a preference.
     public var popoverBackground: PopoverBackground {
         didSet { preferences.setPopoverBackground(popoverBackground) }
+    }
+
+    /// Popover or side panel. See `PanelPlacement`.
+    public var panelPlacement: PanelPlacement {
+        didSet { preferences.setPanelPlacement(panelPlacement) }
+    }
+
+    /// Moves other apps' windows off the panel. Off by default: it needs the
+    /// Accessibility permission, which nobody should be asked for unprompted.
+    public var keepsWindowsClear: Bool {
+        didSet { preferences.setKeepsWindowsClear(keepsWindowsClear) }
     }
 
     /// Gitmoji left out of pull request titles. Off by default: the glyphs are
@@ -117,6 +155,8 @@ public final class AppearanceStore {
         self.theme = preferences.theme()
         self.monochromeEnabled = preferences.monochromeEnabled()
         self.popoverBackground = preferences.popoverBackground()
+        self.panelPlacement = preferences.panelPlacement()
+        self.keepsWindowsClear = preferences.keepsWindowsClear()
         self.hidesEmoji = preferences.hidesEmoji()
         self.diffFontFamily = preferences.diffFontFamily()
         self.diffFontSize = preferences.diffFontSize()

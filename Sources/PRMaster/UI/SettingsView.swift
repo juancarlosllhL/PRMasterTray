@@ -18,6 +18,7 @@ struct SettingsView: View {
     @Bindable var jira: JiraAccountStore
     @Bindable var board: BoardStore
     @Bindable var heatmap: HeatmapAccountStore
+    let clearance: WindowClearanceController
 
     private enum Tab: String {
         case pullRequests, teams, board, appearance, diffViewer
@@ -244,6 +245,36 @@ struct SettingsView: View {
                 // matters more is theirs to decide, not ours. Said in terms of
                 // what they will see rather than in contrast ratios.
                 footnote(Text("Liquid glass lets the desktop through. Opaque keeps the status colours legible whatever is behind."))
+            }
+
+            Section {
+                Picker("Show as", selection: $appearance.panelPlacement) {
+                    Text("Popover").tag(PanelPlacement.popover)
+                    Text("Left panel").tag(PanelPlacement.left)
+                    Text("Right panel").tag(PanelPlacement.right)
+                }
+                .pickerStyle(.segmented)
+
+                Toggle("Keep other windows clear of the panel", isOn: $appearance.keepsWindowsClear)
+                    .disabled(!appearance.panelPlacement.isDocked)
+                // Only while it is the thing standing in the way: the switch reads
+                // on, and nothing moves until macOS says yes.
+                if appearance.keepsWindowsClear, !clearance.isTrusted {
+                    HStack {
+                        Text("Needs the Accessibility permission")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Open System Settings…") { clearance.openSystemSettings() }
+                    }
+                }
+            } footer: {
+                footnote(Text("A panel stays open the full height of the screen, above your other windows. Click the menu bar icon to hide it or bring it back. Keeping windows clear moves or narrows any window that lands under the panel."))
+            }
+            // The permission is granted in System Settings, so look again whenever
+            // the user comes back from there.
+            .onAppear { clearance.refreshTrust() }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                clearance.refreshTrust()
             }
 
             Section {

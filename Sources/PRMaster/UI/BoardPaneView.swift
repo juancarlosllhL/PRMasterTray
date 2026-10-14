@@ -12,6 +12,7 @@ struct BoardPaneView: View {
     let onOpenSettings: () -> Void
 
     @FocusState private var isSearchFocused: Bool
+    @Environment(\.isDocked) private var isDocked
 
     private var query: Binding<String> {
         Binding { board.searchQuery } set: { board.searchQuery = $0 }
@@ -188,7 +189,7 @@ struct BoardPaneView: View {
     @ViewBuilder
     private func section(_ section: Section, _ column: BoardColumn) -> some View {
         PaneHeaderView(title: column.title, trailing: "\(column.cards.count)")
-        if column.cards.count > section.cap {
+        if !isDocked, column.cards.count > section.cap {
             ScrollView { cardRows(column) }
                 .frame(height: section.height)
         } else {
