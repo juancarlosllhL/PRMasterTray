@@ -52,6 +52,8 @@ struct PRListView: View {
     let jiraKeyLink: (String) -> URL?
     let onOpenJiraLink: (URL) -> Void
     let onOpenLinkedPullRequest: (LinkedPullRequest) -> Void
+    /// The screen this list is drawn on, whose placement the gear menu sets.
+    let screen: ScreenSlot
     /// Drawn in the side panel rather than the popover: the whole screen tall,
     /// scrolling as one.
     var isDocked = false
@@ -245,11 +247,17 @@ struct PRListView: View {
             // scrolls is a menu nobody reads.
             Button("Settings…", action: onOpenSettings)
             // Here as well as in Settings, so a panel in the way can be put back
-            // into the popover from the panel itself.
-            Picker("Show As", selection: Bindable(appearance).panelPlacement) {
-                Text("Popover").tag(PanelPlacement.popover)
-                Text("Left Panel").tag(PanelPlacement.left)
-                Text("Right Panel").tag(PanelPlacement.right)
+            // into the popover from the panel itself. This screen's only: every
+            // other screen keeps its own.
+            if let id = screen.id {
+                Picker("Show Here As", selection: Binding(
+                    get: { appearance.placement(for: id) },
+                    set: { appearance.setPlacement($0, for: id) }
+                )) {
+                    Text("Popover").tag(PanelPlacement.popover)
+                    Text("Left Panel").tag(PanelPlacement.left)
+                    Text("Right Panel").tag(PanelPlacement.right)
+                }
             }
             // Absent under a debug override, where the store has no updater —
             // offering a switch for a feature that cannot run would be a lie.

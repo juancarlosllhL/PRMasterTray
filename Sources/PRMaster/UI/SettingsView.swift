@@ -28,6 +28,19 @@ struct SettingsView: View {
     /// how the appearance tab gets screenshotted at all.
     @State private var tab: Tab = Debug.settingsTab.flatMap(Tab.init(rawValue:)) ?? .pullRequests
 
+    /// The screens plugged in right now, each with its own placement. State
+    /// rather than read in the body: `NSScreen` is not observable, so it is read
+    /// again whenever macOS says the screens changed.
+    @State private var screens = Self.connectedScreens
+
+    private static var connectedScreens: [(id: String, name: String)] {
+        // One row per UUID, for the same reason the app delegate keeps one panel per UUID.
+        var seen = Set<String>()
+        return NSScreen.screens
+            .map { ($0.placementID, $0.localizedName) }
+            .filter { seen.insert($0.0).inserted }
+    }
+
     var body: some View {
         TabView(selection: $tab) {
             pullRequests
@@ -248,15 +261,22 @@ struct SettingsView: View {
             }
 
             Section {
-                Picker("Show as", selection: $appearance.panelPlacement) {
-                    Text("Popover").tag(PanelPlacement.popover)
-                    Text("Left panel").tag(PanelPlacement.left)
-                    Text("Right panel").tag(PanelPlacement.right)
+                // One row per connected screen, named the way System Settings
+                // names it. A screen not plugged in keeps its choice for when it is.
+                ForEach(screens, id: \.id) { screen in
+                    Picker(screens.count > 1 ? "Show on \(screen.name) as" : "Show as", selection: Binding(
+                        get: { appearance.placement(for: screen.id) },
+                        set: { appearance.setPlacement($0, for: screen.id) }
+                    )) {
+                        Text("Popover").tag(PanelPlacement.popover)
+                        Text("Left panel").tag(PanelPlacement.left)
+                        Text("Right panel").tag(PanelPlacement.right)
+                    }
+                    .pickerStyle(.segmented)
                 }
-                .pickerStyle(.segmented)
 
                 Toggle("Keep other windows clear of the panel", isOn: $appearance.keepsWindowsClear)
-                    .disabled(!appearance.panelPlacement.isDocked)
+                    .disabled(!appearance.anyDocked)
                 // Only while it is the thing standing in the way: the switch reads
                 // on, and nothing moves until macOS says yes.
                 if appearance.keepsWindowsClear, !clearance.isTrusted {
@@ -268,11 +288,17 @@ struct SettingsView: View {
                     }
                 }
             } footer: {
-                footnote(Text("A panel stays open the full height of the screen, above your other windows. Click the menu bar icon to hide it or bring it back. Keeping windows clear moves or narrows any window that lands under the panel."))
+                footnote(Text("A panel stays open the full height of its screen, above your other windows, whichever screen you are working on. Click the menu bar icon on that screen to hide it or bring it back. Keeping windows clear moves or narrows any window that lands under the panel."))
             }
             // The permission is granted in System Settings, so look again whenever
             // the user comes back from there.
-            .onAppear { clearance.refreshTrust() }
+            .onAppear {
+                clearance.refreshTrust()
+                screens = Self.connectedScreens
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
+                screens = Self.connectedScreens
+            }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 clearance.refreshTrust()
             }

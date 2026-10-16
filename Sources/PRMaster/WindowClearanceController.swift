@@ -18,8 +18,8 @@ final class WindowClearanceController {
     /// Read live: the permission is granted in System Settings, behind the app's back.
     private(set) var isTrusted = AXIsProcessTrusted()
 
-    /// The panel and its screen's visible frame, in AppKit's bottom-left space.
-    @ObservationIgnored private var layout: (panel: NSRect, screen: NSRect)?
+    /// Each panel and its screen's visible frame, in AppKit's bottom-left space.
+    @ObservationIgnored private var layouts: [(panel: NSRect, screen: NSRect)] = []
     @ObservationIgnored private var observers: [pid_t: AXObserver] = [:]
     @ObservationIgnored private var workspaceObservers: [NSObjectProtocol] = []
     @ObservationIgnored private var sweep: Task<Void, Never>?
@@ -29,10 +29,11 @@ final class WindowClearanceController {
     /// alone while it stays there, or every notification would ask again.
     @ObservationIgnored private var refused: [CFHashCode: CGRect] = [:]
 
-    /// Starts keeping windows clear of `layout`, or stops when it is nil.
-    func enforce(_ layout: (panel: NSRect, screen: NSRect)?) {
-        self.layout = layout
-        guard layout != nil else { return stop() }
+    /// Starts keeping windows clear of every panel in `layouts`, or stops when
+    /// there is none.
+    func enforce(_ layouts: [(panel: NSRect, screen: NSRect)]) {
+        self.layouts = layouts
+        guard !layouts.isEmpty else { return stop() }
         refreshTrust()
         guard isTrusted else { return pollForTrust() }
         if workspaceObservers.isEmpty { start() }
@@ -152,7 +153,7 @@ final class WindowClearanceController {
                 refreshTrust()
                 if isTrusted {
                     trustPoll = nil
-                    enforce(layout)
+                    enforce(layouts)
                     return
                 }
             }
@@ -177,9 +178,10 @@ final class WindowClearanceController {
     }
 
     private func clearWindows() {
-        guard let layout, isTrusted, let primary = NSScreen.screens.first?.frame else { return }
-        let panel = Self.topLeft(layout.panel, primary: primary)
-        let screen = Self.topLeft(layout.screen, primary: primary)
+        guard !layouts.isEmpty, isTrusted, let primary = NSScreen.screens.first?.frame else { return }
+        let regions = layouts.map {
+            (panel: Self.topLeft($0.panel, primary: primary), screen: Self.topLeft($0.screen, primary: primary))
+        }
 
         for pid in observers.keys {
             let app = AXUIElementCreateApplication(pid)
@@ -187,13 +189,18 @@ final class WindowClearanceController {
                 guard Self.isMovable(window), let frame = Self.frame(of: window) else { continue }
                 let key = CFHash(window)
                 if refused[key] == frame { continue }
-                guard let target = WindowClearance.clearedFrame(frame, avoiding: panel, within: screen) else {
+                // A window only ever sits on one panel's screen, so the first
+                // panel it overlaps is the one to clear.
+                guard let (target, region) = regions.lazy.compactMap({ region in
+                    WindowClearance.clearedFrame(frame, avoiding: region.panel, within: region.screen)
+                        .map { ($0, region) }
+                }).first else {
                     refused[key] = nil
                     continue
                 }
                 Self.setFrame(target, of: window)
                 if let settled = Self.frame(of: window),
-                   WindowClearance.clearedFrame(settled, avoiding: panel, within: screen) != nil {
+                   WindowClearance.clearedFrame(settled, avoiding: region.panel, within: region.screen) != nil {
                     refused[key] = settled
                 }
             }

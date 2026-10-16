@@ -23,10 +23,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settingsWindow = SettingsWindowController()
     private let whatsNewWindow = WhatsNewWindowController()
     private let diffWindows = DiffWindowController()
-    private let dockedPanel = DockedPanelController()
+    /// One per connected screen set to a panel, keyed by `NSScreen.placementID`.
+    private var dockedPanels: [String: DockedPanelController] = [:]
     private var panelTabKeys: Any?
     private let clearance = WindowClearanceController()
-    private var panelLayout: (panel: NSRect, screen: NSRect)?
+    private var panelLayouts: [String: (panel: NSRect, screen: NSRect)] = [:]
+    /// The screen the popover was last opened on, for its gear menu.
+    private let popoverScreen = ScreenSlot()
     private var diffSource: PullRequestDiffing?
     private var diffViewedWriter: PullRequestDiffing?
     private var whatsNew: WhatsNewStore!
@@ -37,6 +40,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
     }
     private var observers: [NSObjectProtocol] = []
+    /// On the default centre, unlike `observers`, which are on the workspace's.
+    private var screenObservers: [NSObjectProtocol] = []
     private var dismissMonitors: [Any] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -173,6 +178,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         appearanceStore = AppearanceStore()
+        // The primary screen: the one the single, app-wide panel used to open on.
+        if let primary = NSScreen.screens.first {
+            appearanceStore.adoptLegacyPlacement(on: primary.placementID)
+        }
         applyAppearance()
         observeAppearance()
 
@@ -187,12 +196,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installMainMenu()
         installStatusItem()
         installPopover()
-        dockedPanel.onLayout = { [weak self] layout in
-            self?.panelLayout = layout
-            self?.applyClearance()
-        }
         applyPlacement()
         observePlacement()
+        observeScreens()
         observeClearance()
         observeWake()
         observeStoreForBadge()
@@ -242,10 +248,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 NSApp.activate(ignoringOtherApps: true)
                 try? await Task.sleep(for: .seconds(1))
                 // A panel is already open, and toggling it would hide it.
-                if self.appearanceStore.panelPlacement.isDocked {
-                    self.dockedPanel.show()
-                } else {
+                if self.dockedPanels.isEmpty {
                     self.togglePopover()
+                } else {
+                    self.dockedPanels.values.forEach { $0.show() }
                 }
 
                 if let number = Debug.openDiff { await self.openReviewWhenListed(number: number) }
@@ -282,6 +288,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updates?.stop()
         // Must match the centre it was registered on, or removal is a no-op.
         observers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
+        screenObservers.forEach(NotificationCenter.default.removeObserver)
     }
 
     /// Drawn only while a review window puts the app in the Dock. AppKit walks it
@@ -519,7 +526,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.animates = false
         popover.delegate = self
 
-        let hosting = NSHostingController(rootView: makeListView(docked: false))
+        let hosting = NSHostingController(rootView: makeListView(dockedOn: nil))
         // Without this the popover sizes itself once from a stale measurement
         // and anchors against it, pushing the header off the top of the screen.
         hosting.sizingOptions = [.preferredContentSize]
@@ -530,9 +537,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// One for the popover and, while docked, a second for the panel. Both read
-    /// the same stores, so they never disagree about what is on screen.
-    private func makeListView(docked: Bool) -> PRListView {
+    /// One for the popover and one for each screen's panel. All read the same
+    /// stores, so they never disagree about what is on screen.
+    ///
+    /// - Parameter screenID: the screen whose panel this is, or nil for the popover.
+    private func makeListView(dockedOn screenID: String?) -> PRListView {
         PRListView(
             store: store,
             reviews: reviews,
@@ -595,14 +604,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.open(pull.url)
                 self?.popover.performClose(nil)
             },
-            isDocked: docked,
-            onWidthChange: docked
-                ? { [weak self] width in
+            screen: screenID.map { ScreenSlot(id: $0) } ?? popoverScreen,
+            isDocked: screenID != nil,
+            onWidthChange: screenID.map { id in
+                { [weak self] width in
                     // Deferred out of the render that reported it: resizing the
                     // window lays the hosting view out again.
-                    Task { @MainActor in self?.dockedPanel.setWidth(width) }
+                    Task { @MainActor in self?.dockedPanels[id]?.setWidth(width) }
                 }
-                : nil
+            }
         )
     }
 
@@ -610,9 +620,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         tabSelection.select(at: index, in: PopoverTab.allCases)
     }
 
+    /// Decided by the screen that was clicked: each menu bar shows the status
+    /// item, and each screen has its own placement.
     @objc private func togglePopover() {
-        if appearanceStore.panelPlacement.isDocked {
-            return toggleDockedPanel()
+        let screen = clickedScreen
+        if let id = screen?.placementID, let panel = dockedPanels[id] {
+            return toggle(panel)
         }
         guard let button = statusItem?.button else { return }
         guard !popover.isShown else {
@@ -620,6 +633,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        popoverScreen.id = screen?.placementID
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .maxY)
 
         // An accessory app is not active when its status item is clicked, so
@@ -657,34 +671,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Side panel
 
+    /// The screen under the pointer, which is the one whose menu bar was just
+    /// clicked. The status item's own window is the fallback: with one menu bar
+    /// per display it follows whichever was last active, not the click.
+    private var clickedScreen: NSScreen? {
+        let mouse = NSEvent.mouseLocation
+        return NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) }
+            ?? statusItem?.button?.window?.screen
+    }
+
     /// The status item hides the panel and brings it back.
-    private func toggleDockedPanel() {
-        if dockedPanel.isVisible {
-            dockedPanel.hide()
+    private func toggle(_ panel: DockedPanelController) {
+        if panel.isVisible {
+            panel.hide()
         } else {
-            dockedPanel.show()
+            panel.show()
             refreshOnOpen()
         }
     }
 
+    /// Builds a panel for every connected screen set to one and takes down the
+    /// rest. Run on every placement change and every change of screens, and
+    /// leaves alone any panel whose screen and side are unchanged — hidden or not.
     private func applyPlacement() {
-        let placement = appearanceStore.panelPlacement
-        guard placement.isDocked else {
-            dockedPanel.undock()
+        // Not `uniqueKeysWithValues`: two identical monitors with no serial number
+        // report the same UUID, and share a placement — and a panel — as a result.
+        let docked = Dictionary(NSScreen.screens.compactMap { screen in
+            let id = screen.placementID
+            let placement = appearanceStore.placement(for: id)
+            return placement.isDocked ? (id, placement) : nil
+        }, uniquingKeysWith: { first, _ in first })
+
+        for (id, panel) in dockedPanels where docked[id] == nil {
+            panel.undock()
+            dockedPanels[id] = nil
+        }
+        for (id, placement) in docked {
+            let panel = dockedPanels[id] ?? makeDockedPanel(on: id)
+            panel.dock(placement) { makeListView(dockedOn: id) }
+        }
+
+        guard !dockedPanels.isEmpty else {
             panelTabKeys.map(NSEvent.removeMonitor)
             panelTabKeys = nil
             return
         }
-        popover.performClose(nil)
-        // The display whose menu bar holds the status item, so the panel opens
-        // on the screen that was clicked rather than wherever focus last was.
-        dockedPanel.dock(placement, on: { [weak self] in self?.statusItem?.button?.window?.screen }) {
-            makeListView(docked: true)
-        }
         // The popover installs these while it is open; the panel is always open.
         if panelTabKeys == nil {
             panelTabKeys = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard let self, event.window === dockedPanel.window,
+                guard let self, let window = event.window,
+                      dockedPanels.values.contains(where: { $0.window === window }),
                       event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
                       let digit = event.charactersIgnoringModifiers.flatMap(Int.init),
                       (1...4).contains(digit)
@@ -695,8 +731,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func makeDockedPanel(on screenID: String) -> DockedPanelController {
+        let panel = DockedPanelController(screenID: screenID)
+        panel.onLayout = { [weak self] layout in
+            self?.panelLayouts[screenID] = layout
+            self?.applyClearance()
+        }
+        dockedPanels[screenID] = panel
+        return panel
+    }
+
     private func applyClearance() {
-        clearance.enforce(appearanceStore.keepsWindowsClear ? panelLayout : nil)
+        clearance.enforce(appearanceStore.keepsWindowsClear ? Array(panelLayouts.values) : [])
     }
 
     /// Switching it on is what asks for the permission, never launching.
@@ -718,13 +764,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Same one-shot shape as `observeAppearance`.
     private func observePlacement() {
         withObservationTracking {
-            _ = appearanceStore.panelPlacement
+            _ = appearanceStore.panelPlacements
         } onChange: { [weak self] in
             Task { @MainActor in
+                // The screen it was open on may just have become a panel.
+                self?.popover.performClose(nil)
                 self?.applyPlacement()
                 self?.observePlacement()
             }
         }
+    }
+
+    /// A monitor plugged in gets its panel back; one unplugged takes its panel
+    /// with it rather than leaving it to land on whatever screen is left.
+    private func observeScreens() {
+        let observer = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.applyPlacement() }
+        }
+        screenObservers.append(observer)
     }
 
     /// Closes the popover on a click anywhere else, or on Escape.

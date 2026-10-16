@@ -39,8 +39,10 @@ public enum PopoverBackground: String, Sendable, Equatable, CaseIterable {
 /// Where the list is drawn: the popover under the status item, or a panel the
 /// full height of the screen, pinned to one side and left open.
 ///
-/// Default is `popover`, for the same reason as every other default in this
-/// file: it is what the app did before the setting existed.
+/// Chosen per screen, because the right answer depends on the screen: a panel
+/// beside an ultrawide costs little, beside a laptop's display it costs a third
+/// of it. Default is `popover`, for the same reason as every other default in
+/// this file: it is what the app did before the setting existed.
 public enum PanelPlacement: String, Sendable, Equatable, CaseIterable {
     case popover, left, right
 
@@ -91,9 +93,34 @@ public final class AppearanceStore {
         didSet { preferences.setPopoverBackground(popoverBackground) }
     }
 
-    /// Popover or side panel. See `PanelPlacement`.
-    public var panelPlacement: PanelPlacement {
-        didSet { preferences.setPanelPlacement(panelPlacement) }
+    /// Popover or side panel for each screen, keyed by the app layer's display UUID. A screen
+    /// that is absent gets the popover. See `PanelPlacement`.
+    public private(set) var panelPlacements: [String: PanelPlacement] {
+        didSet { preferences.setPanelPlacements(panelPlacements) }
+    }
+
+    public func placement(for screen: String) -> PanelPlacement {
+        panelPlacements[screen] ?? .popover
+    }
+
+    public func setPlacement(_ placement: PanelPlacement, for screen: String) {
+        guard panelPlacements[screen] != placement else { return }
+        panelPlacements[screen] = placement
+    }
+
+    /// Whether any screen has a panel, connected or not — enough to say whether
+    /// the panel-only settings have anything to act on.
+    public var anyDocked: Bool {
+        panelPlacements.values.contains(where: \.isDocked)
+    }
+
+    /// Carries a placement chosen before it was per screen over to `screen`,
+    /// once: only while no screen has one of its own. Everything else keeps the
+    /// popover, so a laptop on its own does not inherit an ultrawide's panel.
+    public func adoptLegacyPlacement(on screen: String) {
+        let legacy = preferences.panelPlacement()
+        guard panelPlacements.isEmpty, legacy.isDocked else { return }
+        panelPlacements[screen] = legacy
     }
 
     /// Moves other apps' windows off the panel. Off by default: it needs the
@@ -155,7 +182,7 @@ public final class AppearanceStore {
         self.theme = preferences.theme()
         self.monochromeEnabled = preferences.monochromeEnabled()
         self.popoverBackground = preferences.popoverBackground()
-        self.panelPlacement = preferences.panelPlacement()
+        self.panelPlacements = preferences.panelPlacements()
         self.keepsWindowsClear = preferences.keepsWindowsClear()
         self.hidesEmoji = preferences.hidesEmoji()
         self.diffFontFamily = preferences.diffFontFamily()
