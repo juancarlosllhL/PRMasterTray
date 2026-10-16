@@ -4,6 +4,12 @@ What each release changed, newest first. The app shows the entries you missed
 the first time it runs after an update, so keep the lines short and written for
 whoever has to read them in a small window.
 
+## 0.21.0 — 2026-10-16
+
+- Each screen now has its own Show as choice, so one screen can have a panel while another keeps the popover. Set it in Settings, Appearance, or under Show Here As in the gear menu.
+- A screen's panel stays open while you work on another screen. Clicking the menu bar icon on another screen no longer hides or moves it.
+- A panel chosen before this update moves to your main screen. Every other screen starts with the popover.
+
 ## 0.20.0 — 2026-10-14
 
 - The list can open as a panel the full height of the screen, docked to the left or right. Choose it in Settings, Appearance, or under Show As in the gear menu.
