@@ -98,9 +98,13 @@ public protocol PreferenceStoring: Sendable {
     func setMonochromeEnabled(_ value: Bool)
     func popoverBackground() -> PopoverBackground
     func setPopoverBackground(_ value: PopoverBackground)
-    /// Popover or side panel.
+    /// Popover or side panel, from before it was chosen per screen. Only read
+    /// now, to carry an existing choice over to the screen it was made on.
     func panelPlacement() -> PanelPlacement
     func setPanelPlacement(_ value: PanelPlacement)
+    /// Popover or side panel for each screen, keyed by the app layer's display UUID.
+    func panelPlacements() -> [String: PanelPlacement]
+    func setPanelPlacements(_ value: [String: PanelPlacement])
     /// Whether other apps' windows are moved off the side panel.
     func keepsWindowsClear() -> Bool
     func setKeepsWindowsClear(_ value: Bool)
@@ -803,6 +807,7 @@ public struct UserDefaultsPreferences: PreferenceStoring {
     private let monochromeKey = "highContrastMonochrome"
     private let popoverBackgroundKey = "popoverBackground"
     private let panelPlacementKey = "panelPlacement"
+    private let panelPlacementsKey = "panelPlacementsByScreen"
     private let keepsWindowsClearKey = "keepWindowsClearOfPanel"
     private let hidesEmojiKey = "hideTitleEmoji"
     private let lastSeenVersionKey = "lastSeenVersion"
@@ -904,6 +909,17 @@ public struct UserDefaultsPreferences: PreferenceStoring {
 
     public func setPanelPlacement(_ value: PanelPlacement) {
         defaults.set(value.rawValue, forKey: panelPlacementKey)
+    }
+
+    public func panelPlacements() -> [String: PanelPlacement] {
+        // An unrecognised value drops that screen alone, which then reads as
+        // the popover like any screen never configured.
+        let stored = defaults.dictionary(forKey: panelPlacementsKey) as? [String: String] ?? [:]
+        return stored.compactMapValues(PanelPlacement.init(rawValue:))
+    }
+
+    public func setPanelPlacements(_ value: [String: PanelPlacement]) {
+        defaults.set(value.mapValues(\.rawValue), forKey: panelPlacementsKey)
     }
 
     public func keepsWindowsClear() -> Bool {

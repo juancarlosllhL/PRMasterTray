@@ -2,21 +2,24 @@ import AppKit
 import SwiftUI
 import PRMasterCore
 
-/// The popover's list in a panel the full height of the screen, pinned to one
+
+/// The popover's list in a panel the full height of one screen, pinned to one
 /// side and left open.
 ///
 /// Borderless, so the header sits where the traffic lights would, and not
-/// movable: its whole point is to stay where it was put. It follows the visible
-/// frame — menu bar and Dock excluded — whenever the screens change.
+/// movable: its whole point is to stay where it was put. One per screen set to
+/// a panel, and bound to that screen rather than to wherever the status item
+/// was last clicked — so working on another display neither hides it nor drags
+/// it across. It follows the visible frame, menu bar and Dock excluded.
 @MainActor
 final class DockedPanelController {
 
+    /// `NSScreen.placementID` of the screen the panel lives on.
+    let screenID: String
     private var panel: DockedPanel?
     private var hosting: NSView?
     private var placement: PanelPlacement = .popover
     private var width: CGFloat?
-    private var screen: () -> NSScreen? = { NSScreen.main }
-    private var screenObserver: NSObjectProtocol?
 
     var window: NSWindow? { panel }
     /// Where the panel sits and the visible frame of its screen, or nil once it
@@ -24,41 +27,37 @@ final class DockedPanelController {
     var onLayout: (((panel: NSRect, screen: NSRect)?) -> Void)?
     var isVisible: Bool { panel?.isVisible == true }
 
+    init(screenID: String) {
+        self.screenID = screenID
+    }
+
     /// Builds the panel the first time; after that only re-pins it, so switching
-    /// sides does not throw the list's scroll position away.
-    func dock<Content: View>(
-        _ placement: PanelPlacement,
-        on screen: @escaping () -> NSScreen?,
-        content: () -> Content
-    ) {
+    /// sides does not throw the list's scroll position away, and a change of
+    /// screens elsewhere does not bring back a panel the user hid.
+    func dock<Content: View>(_ placement: PanelPlacement, content: () -> Content) {
+        let isNew = panel == nil
+        let moved = placement != self.placement
         self.placement = placement
-        self.screen = screen
-        if panel == nil {
+        if isNew {
             let hosting = FirstClickHostingView(rootView: content())
             // The window is sized from `setWidth`, never from the view: letting the
             // hosting view's intrinsic size constrain it would fight the pinning.
             hosting.sizingOptions = []
             panel = makePanel(around: hosting)
             self.hosting = hosting
-            screenObserver = NotificationCenter.default.addObserver(
-                forName: NSApplication.didChangeScreenParametersNotification,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                Task { @MainActor in self?.pin() }
-            }
         }
+        pin()
         // Regardless: at launch an accessory app is not active, and a plain
         // `orderFront` would leave the panel behind whatever is.
-        panel?.orderFrontRegardless()
-        pin()
+        if isNew || moved {
+            panel?.orderFrontRegardless()
+            pin()
+        }
     }
 
-    /// Back to the popover. Torn down rather than hidden, so nothing keeps
-    /// rendering a list nobody can see.
+    /// Back to the popover, or its screen gone. Torn down rather than hidden, so
+    /// nothing keeps rendering a list nobody can see.
     func undock() {
-        if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
-        screenObserver = nil
         panel?.orderOut(nil)
         onLayout?(nil)
         panel?.contentView = nil
@@ -89,7 +88,9 @@ final class DockedPanelController {
     }
 
     private func pin() {
-        guard let panel, let visible = (screen() ?? NSScreen.main)?.visibleFrame else { return }
+        guard let panel,
+              let visible = NSScreen.screens.first(where: { $0.placementID == screenID })?.visibleFrame
+        else { return }
         let width = width ?? hosting?.fittingSize.width ?? 440
         guard let frame = placement.frame(width: Double(width), in: visible) else { return }
         panel.setFrame(frame, display: true)
@@ -142,4 +143,28 @@ private final class DockedPanel: NSPanel {
 /// the row it was aimed at rather than only bring the app forward.
 private final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
+extension NSScreen {
+
+    /// What a screen's placement is stored under. The display's UUID, which
+    /// survives unplugging and rebooting, where the display number is handed
+    /// out afresh and would leave a reconnected monitor without its setting.
+    var placementID: String {
+        let key = NSDeviceDescriptionKey("NSScreenNumber")
+        let number = (deviceDescription[key] as? NSNumber)?.uint32Value ?? 0
+        guard let uuid = CGDisplayCreateUUIDFromDisplayID(number)?.takeRetainedValue() else {
+            return "display-\(number)"
+        }
+        return CFUUIDCreateString(nil, uuid) as String
+    }
+}
+
+/// Which screen a list is drawn on, for the gear menu's placement picker. The
+/// popover moves between screens, so its slot is rewritten each time it opens.
+@MainActor
+@Observable
+final class ScreenSlot {
+    var id: String?
+    init(id: String? = nil) { self.id = id }
 }

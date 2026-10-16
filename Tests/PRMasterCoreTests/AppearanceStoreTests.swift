@@ -306,13 +306,77 @@ struct PanelPlacementTests {
         #expect(preferences.panelPlacement() == placement)
     }
 
-    @Test("setting the placement persists it")
+    @Test("setting a screen's placement persists it")
     func persists() {
         let preferences = MemoryPreferences()
         let store = AppearanceStore(preferences: preferences)
 
-        store.panelPlacement = .right
-        #expect(preferences.panelPlacement() == .right)
+        store.setPlacement(.right, for: "ultrawide")
+        #expect(preferences.panelPlacements() == ["ultrawide": .right])
+    }
+
+    @Test("each screen keeps its own placement")
+    func perScreen() {
+        let store = AppearanceStore(preferences: MemoryPreferences())
+
+        store.setPlacement(.left, for: "ultrawide")
+        store.setPlacement(.popover, for: "small")
+        #expect(store.placement(for: "ultrawide") == .left)
+        #expect(store.placement(for: "small") == .popover)
+        #expect(store.anyDocked)
+    }
+
+    @Test("a screen never configured gets the popover")
+    func unknownScreenIsPopover() {
+        let store = AppearanceStore(preferences: MemoryPreferences())
+        #expect(store.placement(for: "laptop") == .popover)
+        #expect(!store.anyDocked)
+    }
+
+    @Test("per-screen placements round-trip, dropping values not understood")
+    func placementsRoundTrip() throws {
+        let suite = "PRMasterTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let preferences = UserDefaultsPreferences(defaults: defaults)
+        preferences.setPanelPlacements(["a": .left, "b": .popover])
+        #expect(preferences.panelPlacements() == ["a": .left, "b": .popover])
+
+        defaults.set(["a": "left", "c": "top"], forKey: "panelPlacementsByScreen")
+        #expect(preferences.panelPlacements() == ["a": .left])
+    }
+
+    @Test("the placement chosen before screens had their own moves to the one given")
+    func adoptsLegacy() {
+        let preferences = MemoryPreferences()
+        preferences.setPanelPlacement(.left)
+        let store = AppearanceStore(preferences: preferences)
+
+        store.adoptLegacyPlacement(on: "primary")
+        #expect(store.placement(for: "primary") == .left)
+        #expect(store.placement(for: "laptop") == .popover)
+    }
+
+    @Test("the old placement is not adopted once any screen has its own")
+    func legacyAdoptedOnce() {
+        let preferences = MemoryPreferences()
+        preferences.setPanelPlacement(.left)
+        let store = AppearanceStore(preferences: preferences)
+        store.setPlacement(.popover, for: "primary")
+
+        store.adoptLegacyPlacement(on: "other")
+        #expect(store.placement(for: "other") == .popover)
+        #expect(preferences.panelPlacements() == ["primary": .popover])
+    }
+
+    @Test("an old popover placement adopts nothing")
+    func legacyPopoverIsNoop() {
+        let preferences = MemoryPreferences()
+        let store = AppearanceStore(preferences: preferences)
+
+        store.adoptLegacyPlacement(on: "primary")
+        #expect(preferences.panelPlacements().isEmpty)
     }
 
     @Test("the popover has no frame of its own")
