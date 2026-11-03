@@ -22,7 +22,8 @@ private func request(
     additions: Int = 40,
     deletions: Int = 10,
     changedFiles: Int = 3,
-    teams: [Team] = [cortex]
+    teams: [Team] = [cortex],
+    requestedDirectly: Bool = false
 ) -> ReviewRequest {
     ReviewRequest(
         id: id,
@@ -40,7 +41,8 @@ private func request(
         additions: additions,
         deletions: deletions,
         changedFiles: changedFiles,
-        teams: teams
+        teams: teams,
+        requestedDirectly: requestedDirectly
     )
 }
 
@@ -372,6 +374,30 @@ struct ReviewStoreTests {
         await store.refresh()
 
         #expect(store.visible(under: PRFilter()).map(\.id) == ["PR_cortex", "PR_both"])
+    }
+
+    /// The team switches choose which teams to hear from. A request made to
+    /// you by name is not any team's, so no switch can hide it.
+    @Test("a row asked of you by name is shown whatever teams are switched off")
+    func personalRowIgnoresTeamFilter() async {
+        let preferences = MemoryPreferences(
+            teamFilter: TeamFilter(disabledTeams: ["Lansweeper/asset-cortex", "Lansweeper/cloud-2"])
+        )
+        let client = StubReviewClient(
+            teams: [.success([cortex, cloud])],
+            searches: [.success(ReviewSnapshot(
+                requests: [
+                    request("PR_you", teams: [], requestedDirectly: true),
+                    request("PR_you_and_cloud", teams: [cloud], requestedDirectly: true),
+                    request("PR_cloud", teams: [cloud]),
+                ],
+                pendingCounts: [:]
+            ))]
+        )
+        let store = makeStore(client: client, preferences: preferences)
+        await store.refresh()
+
+        #expect(store.visible(under: PRFilter()).map(\.id) == ["PR_you", "PR_you_and_cloud"])
     }
 
     // MARK: - Truncation

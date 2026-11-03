@@ -361,7 +361,9 @@ struct ReviewSearchNode: Decodable {
             return teams.filter { asked.contains($0.combinedSlug) }
         }
 
-        func domain(teams: [Team], viewerReviewDismissed: Bool = false) -> ReviewRequest {
+        func domain(
+            teams: [Team], viewerReviewDismissed: Bool = false, requestedDirectly: Bool = false
+        ) -> ReviewRequest {
             ReviewRequest(
                 id: id,
                 number: number,
@@ -384,7 +386,8 @@ struct ReviewSearchNode: Decodable {
                 deletions: deletions,
                 changedFiles: changedFiles,
                 teams: teams,
-                viewerReviewDismissed: viewerReviewDismissed
+                viewerReviewDismissed: viewerReviewDismissed,
+                requestedDirectly: requestedDirectly
             )
         }
     }
@@ -396,13 +399,18 @@ private struct Row {
     let node: ReviewSearchNode.Node
     let teams: [Team]
     let dismissed: Bool
+    var direct = false
 
     func adding(_ team: Team) -> Row {
-        Row(node: node, teams: teams + [team], dismissed: dismissed)
+        Row(node: node, teams: teams + [team], dismissed: dismissed, direct: direct)
     }
 
     func dismissing() -> Row {
-        Row(node: node, teams: teams, dismissed: true)
+        Row(node: node, teams: teams, dismissed: true, direct: direct)
+    }
+
+    func askedDirectly() -> Row {
+        Row(node: node, teams: teams, dismissed: dismissed, direct: true)
     }
 }
 
@@ -771,10 +779,10 @@ public enum PullRequestDecoder {
             }
     }
 
-    /// Decodes the per-team review searches into one flat, deduplicated list.
+    /// Decodes the per-team review searches, from every response, into one flat, deduplicated list.
     ///
-    /// Aliases are `s0…sN` in team order, plus `Queries.dismissalAlias`, the
-    /// contract `Queries.reviewRequests(for:filter:window:now:)` establishes.
+    /// Aliases are `s0…sN` in team order, plus `Queries.dismissalAlias` and
+    /// `Queries.personalAlias`, the contract `Queries.reviewRequests(for:filter:window:now:)` establishes.
     ///
     /// Deduplicated by pull request ID, carrying every team that was asked. A
     /// pull request requested from two of the user's teams comes back under two
@@ -794,12 +802,15 @@ public enum PullRequestDecoder {
     ///   before `data` because GitHub reports an SSO refusal as a 200 with a null
     ///   payload — which would otherwise read as nothing waiting on any team.
     public static func decodeReviewRequests(
-        _ data: Data,
+        _ responses: [Data],
         teams: [Team]
     ) throws -> ReviewSnapshot {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        let payload = try aliased(ReviewSearchNode.self, from: data, decoder: decoder)
+        var payload: [String: ReviewSearchNode?] = [:]
+        for data in responses {
+            payload.merge(try aliased(ReviewSearchNode.self, from: data, decoder: decoder)) { first, _ in first }
+        }
 
         var counts: [String: Int] = [:]
         // Insertion-ordered so the teams on a deduplicated row keep the caller's
@@ -821,6 +832,15 @@ public enum PullRequestDecoder {
             }
         }
 
+        for node in (payload[Queries.personalAlias] ?? nil)?.nodes ?? [] {
+            if let existing = byID[node.id] {
+                byID[node.id] = existing.askedDirectly()
+            } else {
+                order.append(node.id)
+                byID[node.id] = Row(node: node, teams: [], dismissed: false, direct: true)
+            }
+        }
+
         for node in (payload[Queries.dismissalAlias] ?? nil)?.nodes ?? [] {
             guard node.viewerLatestReview?.state == .dismissed else { continue }
             let asked = node.teamsAsked(from: teams)
@@ -836,7 +856,9 @@ public enum PullRequestDecoder {
 
         let requests = order
             .compactMap { byID[$0] }
-            .map { $0.node.domain(teams: $0.teams, viewerReviewDismissed: $0.dismissed) }
+            .map {
+                $0.node.domain(teams: $0.teams, viewerReviewDismissed: $0.dismissed, requestedDirectly: $0.direct)
+            }
             .sorted { $0.updatedAt > $1.updatedAt }
 
         return ReviewSnapshot(requests: requests, pendingCounts: counts)

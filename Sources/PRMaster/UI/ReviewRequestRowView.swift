@@ -90,16 +90,16 @@ struct ReviewRequestRowView: View {
         .accessibilityLabel(Text(verbatim: accessibilityDescription))
     }
 
-    /// Who opened it, which of your teams was asked, and how long ago.
+    /// Who opened it, whether you or which of your teams was asked, and how long ago.
     ///
     /// The team is named because with several switched on the section is a mix,
     /// and "why am I seeing this" is otherwise unanswerable from the row. When
     /// two of your teams were asked, only the first is shown — the full list is
     /// in the tooltip and the accessibility label, and a row is 380pt wide.
     private var attribution: String {
-        let team = request.teams.first?.name ?? ""
-        let extra = request.teams.count > 1 ? " +\(request.teams.count - 1)" : ""
-        return "@\(request.author) · \(team)\(extra) · \(age)"
+        let waitingOn = request.waitingOn
+        let extra = waitingOn.count > 1 ? " +\(waitingOn.count - 1)" : ""
+        return "@\(request.author) · \(waitingOn.first ?? "")\(extra) · \(age)"
     }
 
     /// "opened today" rather than "opened today ago", which is what interpolating
@@ -112,9 +112,9 @@ struct ReviewRequestRowView: View {
     /// eye, and neither survives being read aloud. Every team is named here, since
     /// there is no width to run out of.
     private var accessibilityDescription: String {
-        let teams = request.teams.map(\.name).joined(separator: " and ")
+        let waitingOn = request.waitingOn.joined(separator: " and ")
         return "\(request.repo) pull request \(request.number), "
             + "\(title), \(request.state.label), "
-            + "opened by \(request.author) \(spokenAge), waiting on \(teams)"
+            + "opened by \(request.author) \(spokenAge), waiting on \(waitingOn)"
     }
 }

@@ -8,11 +8,11 @@ private func team(_ slug: String) -> Team {
 
 private let allTeams = [team("asset-cortex"), team("cloud-2"), team("datanauts")]
 
-private func build(
+private func requests(
     teams: [Team] = allTeams,
     disabled: Set<String> = [],
     window: ReviewWindow = .twoWeeks
-) -> (query: String, variables: [String: GraphQLValue])? {
+) -> [(query: String, variables: [String: GraphQLValue])] {
     Queries.reviewRequests(
         for: teams,
         filter: TeamFilter(disabledTeams: disabled),
@@ -20,6 +20,30 @@ private func build(
         now: Date(timeIntervalSince1970: 1_786_692_165)
     )
 }
+
+/// Every request's text and variables together, for the tests about what is asked rather than how it is split.
+private func build(
+    teams: [Team] = allTeams,
+    disabled: Set<String> = [],
+    window: ReviewWindow = .twoWeeks
+) -> (query: String, variables: [String: GraphQLValue])? {
+    let all = requests(teams: teams, disabled: disabled, window: window)
+    guard !all.isEmpty else { return nil }
+    return (
+        all.map(\.query).joined(separator: "\n"),
+        all.reduce(into: [:]) { merged, request in merged.merge(request.variables) { first, _ in first } }
+    )
+}
+
+private func searchCount(_ query: String) -> Int {
+    query.components(separatedBy: ": search(").count - 1
+}
+
+private func fetchesRows(_ request: (query: String, variables: [String: GraphQLValue])) -> Bool {
+    request.variables.values.contains(.int(Queries.reviewRequestPageSize))
+}
+
+private let manyTeams = (0..<14).map { team("team-\($0)") }
 
 @Suite("Review request query")
 struct ReviewQueryTests {
@@ -116,6 +140,58 @@ struct ReviewQueryTests {
         #expect(partly.variables["nd"] == .int(Queries.reviewRequestPageSize))
     }
 
+    // MARK: - Asked of you by name
+
+    /// Lansweeper/LECAnalyticsAssetsConsumerV2 836: the author re-requested the
+    /// user after their review, and no team search could see it.
+    @Test("one more search covers the pull requests asked of you by name")
+    func personalSearchIsSent() throws {
+        let built = try #require(build())
+
+        #expect(built.query.contains("p: search("))
+        #expect(built.variables["qp"] == .string(personalSearchString()))
+    }
+
+    /// GitHub removes your request when you review, so one standing is a request
+    /// to look again rather than one you have dealt with.
+    @Test("the personal search keeps what you have already reviewed")
+    func personalSearchKeepsReviewed() throws {
+        let built = try #require(build())
+        let search = searchText(built, "qp")
+
+        #expect(search.contains("user-review-requested:@me"))
+        #expect(search.contains("reviewed-by:@me") == false)
+        #expect(search.contains("team-review-requested:") == false)
+    }
+
+    @Test("the personal search keeps the section's own limits")
+    func personalKeepsSectionLimits() throws {
+        let search = searchText(try #require(build()), "qp")
+
+        for qualifier in [
+            "is:pr", "is:open", "archived:false", "draft:false", "-author:@me",
+            "created:>", "sort:updated-desc",
+        ] {
+            #expect(search.contains(qualifier), "missing \(qualifier)")
+        }
+    }
+
+    /// The team switches say which teams to hear from, not whether to hear from you.
+    @Test("switching every team off still fetches what was asked of you")
+    func personalIgnoresTeamFilter() throws {
+        let built = try #require(build(disabled: Set(allTeams.map(\.combinedSlug))))
+        #expect(built.variables["np"] == .int(Queries.reviewRequestPageSize))
+    }
+
+    @Test("belonging to no teams still asks what was asked of you, and nothing else")
+    func noTeamsAsksOnlyPersonal() throws {
+        let all = requests(teams: [])
+
+        #expect(all.count == 1)
+        #expect(all.first.map { searchCount($0.query) } == 1)
+        #expect(all.first?.query.contains("p: search(") == true)
+    }
+
     // MARK: - Enabled and disabled
 
     /// A disabled team is still asked, at `first: 0`. GitHub answers `issueCount`
@@ -209,11 +285,6 @@ struct ReviewQueryTests {
         #expect(build(window: .off) == nil)
     }
 
-    @Test("no teams asks nothing at all")
-    func noTeamsSendsNoRequest() {
-        #expect(build(teams: []) == nil)
-    }
-
     // MARK: - Injection
 
     /// The rule `Queries.containment` establishes: generated aliases and
@@ -259,6 +330,49 @@ struct ReviewQueryTests {
         }
     }
 
+    // MARK: - Under GitHub's ten-second cutoff
+
+    /// Measured 2026-10-29: Datanauts' 20 rows took up to 7.1 s alone, and every
+    /// search in one request took 10 s, past the cutoff GitHub answers with a 502.
+    @Test("a search that fetches rows is the only search in its request")
+    func rowSearchesTravelAlone() {
+        let all = requests(disabled: ["Lansweeper/cloud-2"])
+        let withRows = all.filter(fetchesRows)
+
+        #expect(withRows.count == 4)
+        #expect(withRows.allSatisfy { searchCount($0.query) == 1 })
+    }
+
+    @Test("count-only searches share requests, a few at a time")
+    func countSearchesAreGrouped() {
+        let all = requests(teams: manyTeams, disabled: Set(manyTeams.map(\.combinedSlug)))
+
+        #expect(all.filter { !fetchesRows($0) }.count == 3)
+        #expect(all.allSatisfy { searchCount($0.query) <= Queries.countSearchesPerRequest })
+    }
+
+    @Test("every search is asked exactly once across the requests")
+    func everySearchAskedOnce() {
+        let all = requests(teams: manyTeams, disabled: ["Lansweeper/team-3", "Lansweeper/team-9"])
+        let searches = all.flatMap { $0.variables.keys.filter { $0.hasPrefix("q") } }
+
+        #expect(searches.count == Set(searches).count)
+        #expect(Set(searches) == Set(manyTeams.indices.map { "q\($0)" } + ["qd", "qp"]))
+        #expect(all.map { searchCount($0.query) }.reduce(0, +) == manyTeams.count + 2)
+    }
+
+    /// GitHub refuses a document whose declared variables and supplied values disagree.
+    @Test("each request carries exactly the variables it declares")
+    func variablesMatchDeclarations() {
+        for request in requests(teams: manyTeams, disabled: ["Lansweeper/team-3"]) {
+            for name in request.variables.keys {
+                #expect(request.query.contains("$\(name): "), "\(name) supplied but not declared")
+            }
+            let declarationsAndUses = request.query.components(separatedBy: "$").count - 1
+            #expect(declarationsAndUses == request.variables.count * 2)
+        }
+    }
+
     // MARK: - Helpers
 
     private func searchText(
@@ -273,6 +387,14 @@ struct ReviewQueryTests {
         let created = window.createdQualifier(now: Date(timeIntervalSince1970: 1_786_692_165))!
         return "is:pr is:open archived:false draft:false "
             + "team-review-requested:Lansweeper/\(slug) -author:@me -reviewed-by:@me "
+            + "\(created) sort:updated-desc"
+    }
+
+    private func personalSearchString() -> String {
+        let window = ReviewWindow.twoWeeks
+        let created = window.createdQualifier(now: Date(timeIntervalSince1970: 1_786_692_165))!
+        return "is:pr is:open archived:false draft:false "
+            + "user-review-requested:@me -author:@me "
             + "\(created) sort:updated-desc"
     }
 

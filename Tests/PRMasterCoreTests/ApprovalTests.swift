@@ -207,7 +207,7 @@ struct ApprovalTests {
 
     @Test("fetching review requests sends one search per team")
     func fetchesRequests() async throws {
-        let ctx = makeClient([.response(status: 200, body: searchOK)])
+        let ctx = makeClient(Array(repeating: .response(status: 200, body: searchOK), count: 3))
         let snapshot = try await ctx.client.fetchReviewRequests(
             teams: [team], filter: TeamFilter(), window: .twoWeeks
         )
@@ -218,11 +218,11 @@ struct ApprovalTests {
         // Read back through JSON rather than as raw text: JSONSerialization
         // escapes the slash in a slug as `\/`, so a substring check on the body
         // would be asserting the encoder's habits rather than the query.
-        let sent = try #require(ctx.stub.requests.first?.body)
-        let payload = try #require(
-            try JSONSerialization.jsonObject(with: sent) as? [String: Any]
-        )
-        let variables = try #require(payload["variables"] as? [String: Any])
+        let sentVariables = try ctx.stub.requests.map { request in
+            let payload = try JSONSerialization.jsonObject(with: try #require(request.body)) as? [String: Any]
+            return try #require(payload?["variables"] as? [String: Any])
+        }
+        let variables = try #require(sentVariables.first { $0["q0"] != nil })
         let search = try #require(variables["q0"] as? String)
 
         #expect(search.hasPrefix(
@@ -236,18 +236,19 @@ struct ApprovalTests {
         #expect(variables["n0"] as? Int == 20)
     }
 
-    /// The guard belongs in the adapter as well as in the store: a request about
-    /// no teams is a rate-limit point spent on nothing, the same rule
-    /// `fetchReleases` follows for an empty repository list.
-    @Test("no teams sends no request at all")
-    func noTeamsSkipsTheRequest() async throws {
-        let ctx = makeClient([])
+    /// Somebody in no teams can still be asked for a review by name.
+    @Test("no teams still asks what was asked of you, in one request")
+    func noTeamsAsksOnlyPersonal() async throws {
+        let ctx = makeClient([.response(status: 200, body: Data(#"{"data":{"p":{"issueCount":0,"nodes":[]}}}"#.utf8))])
         let snapshot = try await ctx.client.fetchReviewRequests(
             teams: [], filter: TeamFilter(), window: .twoWeeks
         )
 
         #expect(snapshot == .empty)
-        #expect(ctx.stub.requests.isEmpty)
+        #expect(ctx.stub.requests.count == 1)
+        let payload = try JSONSerialization.jsonObject(with: try #require(ctx.stub.requests.first?.body)) as? [String: Any]
+        let variables = try #require(payload?["variables"] as? [String: Any])
+        #expect((variables["qp"] as? String)?.contains("user-review-requested:@me") == true)
     }
 
     @Test("the window being off sends no request at all")

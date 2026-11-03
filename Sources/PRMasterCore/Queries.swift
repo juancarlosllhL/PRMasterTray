@@ -182,10 +182,10 @@ enum Queries {
     /// have let one team with 852 pending crowd out another with 8.
     static let reviewRequestPageSize = 20
 
-    /// The open pull requests each of the user's teams has been asked to review.
+    /// The open pull requests the user, and each of their teams, has been asked to review.
     ///
-    /// One aliased search per team in one document — the `promotionTrees(for:)`
-    /// pattern. Repeating `team-review-requested:` in a single search would OR
+    /// One aliased search per team, spread over requests by `countSearchesPerRequest`.
+    /// Repeating `team-review-requested:` in a single search would OR
     /// the teams together and cost one request instead of several fields, but it
     /// was measured and rejected: one search needs one cap, and the volume is not
     /// evenly spread. Searching each team separately also makes attribution free,
@@ -200,67 +200,102 @@ enum Queries {
     /// generated aliases and generated variable *names* only, with every remote
     /// value riding as a variable. A team slug is remote data.
     ///
-    /// One search more than there are teams: `dismissalAlias` carries the ones
-    /// whose row left the team's request behind — see `dismissalFields`.
+    /// Two searches more than there are teams: `dismissalAlias` carries the ones
+    /// whose row left the team's request behind — see `dismissalFields` — and
+    /// `personalAlias` the ones asked of the user by name, whatever the team filter.
     ///
-    /// - Returns: `nil` when there are no teams, or when the window is off. Unlike
+    /// - Returns: no request when the window is off. Unlike
     ///   the merged search, which rides along with the open pull requests and so
     ///   costs nothing extra, this is a round trip of its own — there is nothing
     ///   to be gained by sending one that cannot match.
     static func reviewRequests(
         for teams: [Team], filter: TeamFilter, window: ReviewWindow, now: Date
-    ) -> (query: String, variables: [String: GraphQLValue])? {
-        guard !teams.isEmpty, let created = window.createdQualifier(now: now) else { return nil }
+    ) -> [(query: String, variables: [String: GraphQLValue])] {
+        guard let created = window.createdQualifier(now: now) else { return [] }
 
-        var declarations: [String] = []
-        var fields: [String] = []
-        var variables: [String: GraphQLValue] = [:]
+        // No `-reviewed-by:@me`: GitHub drops your request when you review, so one standing is a re-request.
+        var searches = [ReviewSearch(
+            alias: personalAlias,
+            variable: personalAlias,
+            nodes: reviewRequestFields,
+            query: "is:pr is:open archived:false draft:false "
+                + "user-review-requested:@me -author:@me "
+                + "\(created) sort:updated-desc",
+            first: reviewRequestPageSize
+        )]
 
         for (index, team) in teams.enumerated() {
-            declarations.append("$q\(index): String!, $n\(index): Int!")
-            fields.append("""
-              s\(index): search(query: $q\(index), type: ISSUE, first: $n\(index)) {
-                issueCount
-                nodes { \(reviewRequestFields) }
-              }
-            """)
-
             // `-author:@me` is required rather than tidy: GitHub refuses to let
             // anybody approve their own pull request, so a row of the user's own
             // would offer an Approve button that cannot work — and it is already
             // listed in the section above. `-reviewed-by:@me` drops the ones they
             // have dealt with, which would otherwise sit here until somebody else
             // cleared the team's request.
-            variables["q\(index)"] = .string(
-                "is:pr is:open archived:false draft:false "
+            searches.append(ReviewSearch(
+                alias: "s\(index)",
+                variable: "\(index)",
+                nodes: reviewRequestFields,
+                query: "is:pr is:open archived:false draft:false "
                     + "team-review-requested:\(team.combinedSlug) -author:@me -reviewed-by:@me "
-                    + "\(created) sort:updated-desc"
-            )
-            variables["n\(index)"] = .int(filter.shows(team) ? reviewRequestPageSize : 0)
+                    + "\(created) sort:updated-desc",
+                first: filter.shows(team) ? reviewRequestPageSize : 0
+            ))
         }
 
-        declarations.append("$q\(dismissalAlias): String!, $n\(dismissalAlias): Int!")
-        fields.append("""
-          \(dismissalAlias): search(
-            query: $q\(dismissalAlias), type: ISSUE, first: $n\(dismissalAlias)
-          ) {
-            issueCount
-            nodes { \(reviewRequestFields) \(dismissalFields) }
-          }
-        """)
-        variables["q\(dismissalAlias)"] = .string(
-            "is:pr is:open archived:false draft:false "
-                + "-author:@me reviewed-by:@me review:none "
-                + "\(created) sort:updated-desc"
-        )
-        variables["n\(dismissalAlias)"] = .int(
-            teams.contains(where: filter.shows) ? reviewRequestPageSize : 0
-        )
+        // A dismissed row is only kept when one of the user's teams was asked.
+        if !teams.isEmpty {
+            searches.append(ReviewSearch(
+                alias: dismissalAlias,
+                variable: dismissalAlias,
+                nodes: "\(reviewRequestFields) \(dismissalFields)",
+                query: "is:pr is:open archived:false draft:false "
+                    + "-author:@me reviewed-by:@me review:none "
+                    + "\(created) sort:updated-desc",
+                first: teams.contains(where: filter.shows) ? reviewRequestPageSize : 0
+            ))
+        }
 
-        return (document(declarations, fields), variables)
+        let withRows = searches.filter { $0.first > 0 }.map { [$0] }
+        let countOnly = searches.filter { $0.first == 0 }
+        let grouped = stride(from: 0, to: countOnly.count, by: countSearchesPerRequest).map {
+            Array(countOnly[$0..<min($0 + countSearchesPerRequest, countOnly.count)])
+        }
+        return (withRows + grouped).map(reviewDocument)
+    }
+
+    /// GitHub ends a request past 10 s with a 502, and aliased searches add up. Measured
+    /// 2026-10-29: 20 rows of a busy team took up to 7.1 s alone, a count about 0.5 s.
+    static let countSearchesPerRequest = 6
+
+    private struct ReviewSearch {
+        let alias: String
+        let variable: String
+        let nodes: String
+        let query: String
+        let first: Int
+    }
+
+    private static func reviewDocument(
+        _ searches: [ReviewSearch]
+    ) -> (query: String, variables: [String: GraphQLValue]) {
+        var variables: [String: GraphQLValue] = [:]
+        for search in searches {
+            variables["q\(search.variable)"] = .string(search.query)
+            variables["n\(search.variable)"] = .int(search.first)
+        }
+        let fields = searches.map { search in
+            """
+              \(search.alias): search(query: $q\(search.variable), type: ISSUE, first: $n\(search.variable)) {
+                issueCount
+                nodes { \(search.nodes) }
+              }
+            """
+        }
+        return (document(searches.map { "$q\($0.variable): String!, $n\($0.variable): Int!" }, fields), variables)
     }
 
     static let dismissalAlias = "d"
+    static let personalAlias = "p"
 
     /// The team's request is gone by the time a review is dismissed, so the
     /// timeline is the only record left of who was asked. `viewerLatestReview`

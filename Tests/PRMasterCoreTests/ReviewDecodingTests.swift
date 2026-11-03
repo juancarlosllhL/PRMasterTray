@@ -57,9 +57,10 @@ private func dismissedNode(
     return base + "," + extras + "}"
 }
 
-private func response(_ searches: String..., dismissed: String? = nil) -> Data {
+private func response(_ searches: String..., dismissed: String? = nil, personal: String? = nil) -> Data {
     var fields = searches.enumerated().map { #""s\#($0.offset)":\#($0.element)"# }
     if let dismissed { fields.append(#""d":\#(dismissed)"#) }
+    if let personal { fields.append(#""p":\#(personal)"#) }
     return Data(#"{"data":{\#(fields.joined(separator: ","))}}"#.utf8)
 }
 
@@ -71,10 +72,10 @@ struct ReviewDecodingTests {
     @Test("each alias maps back to the team that produced it")
     func aliasesMapToTeams() throws {
         let snapshot = try PullRequestDecoder.decodeReviewRequests(
-            response(
+            [response(
                 search(count: 1, node(id: "PR_1")),
                 search(count: 1, node(id: "PR_2"))
-            ),
+            )],
             teams: [team("asset-cortex"), team("datanauts")]
         )
 
@@ -86,11 +87,11 @@ struct ReviewDecodingTests {
     @Test("the pending count is reported per team, rows or no rows")
     func countsPerTeam() throws {
         let snapshot = try PullRequestDecoder.decodeReviewRequests(
-            response(
+            [response(
                 search(count: 8, node(id: "PR_1")),
                 // A disabled team: asked at first: 0, so a count and no nodes.
                 search(count: 852)
-            ),
+            )],
             teams: [team("architecture-guild"), team("cloud-2")]
         )
 
@@ -107,10 +108,10 @@ struct ReviewDecodingTests {
     @Test("a pull request two of your teams were asked about is one row")
     func dedupesAcrossTeams() throws {
         let snapshot = try PullRequestDecoder.decodeReviewRequests(
-            response(
+            [response(
                 search(count: 1, node(id: "PR_1")),
                 search(count: 1, node(id: "PR_1"))
-            ),
+            )],
             teams: [team("asset-cortex"), team("datanauts")]
         )
 
@@ -126,15 +127,44 @@ struct ReviewDecodingTests {
     @Test("the teams on a shared row keep the caller's order")
     func sharedRowTeamOrder() throws {
         let snapshot = try PullRequestDecoder.decodeReviewRequests(
-            response(
+            [response(
                 search(count: 1, node(id: "PR_1")),
                 search(count: 1, node(id: "PR_1")),
                 search(count: 1, node(id: "PR_1"))
-            ),
+            )],
             teams: [team("aardvark"), team("beetle"), team("cicada")]
         )
 
         #expect(snapshot.requests[0].teams.map(\.name) == ["aardvark", "beetle", "cicada"])
+    }
+
+    /// The searches go out as several requests, answering in whatever order they finish.
+    @Test("answers split across requests read as one list")
+    func splitAnswersMerge() throws {
+        let first = Data(#"{"data":{"s0":\#(search(count: 1, node(id: "PR_1")))}}"#.utf8)
+        let second = Data(#"""
+        {"data":{"s1":\#(search(count: 2, node(id: "PR_1"), node(id: "PR_2"))),
+                 "d":\#(search(count: 0))}}
+        """#.utf8)
+
+        let snapshot = try PullRequestDecoder.decodeReviewRequests(
+            [second, first], teams: [team("asset-cortex"), team("datanauts")]
+        )
+
+        #expect(snapshot.pendingCounts == ["Lansweeper/asset-cortex": 1, "Lansweeper/datanauts": 2])
+        #expect(Set(snapshot.requests.map(\.id)) == ["PR_1", "PR_2"])
+        let shared = try #require(snapshot.requests.first { $0.id == "PR_1" })
+        #expect(shared.teams.map(\.name) == ["asset-cortex", "datanauts"])
+    }
+
+    @Test("one request answering with errors fails the whole list")
+    func oneFailedAnswerFailsAll() {
+        let good = Data(#"{"data":{"s0":\#(search(count: 1, node(id: "PR_1")))}}"#.utf8)
+        let refused = Data(#"{"data":null,"errors":[{"message":"SSO required"}]}"#.utf8)
+
+        #expect(throws: PRMasterError.graphQL(["SSO required"])) {
+            try PullRequestDecoder.decodeReviewRequests([good, refused], teams: [team("a"), team("b")])
+        }
     }
 
     // MARK: - Dismissed reviews
@@ -142,7 +172,7 @@ struct ReviewDecodingTests {
     @Test("a review that stopped counting comes back as a row that says so")
     func dismissedBecomesARow() throws {
         let snapshot = try PullRequestDecoder.decodeReviewRequests(
-            response(search(count: 0), dismissed: search(count: 1, dismissedNode(id: "PR_1"))),
+            [response(search(count: 0), dismissed: search(count: 1, dismissedNode(id: "PR_1")))],
             teams: [team("asset-cortex")]
         )
 
@@ -159,11 +189,11 @@ struct ReviewDecodingTests {
     @Test("a dismissed row is attributed to the user's teams and no others")
     func dismissedAttributionIsIntersected() throws {
         let snapshot = try PullRequestDecoder.decodeReviewRequests(
-            response(search(count: 0), dismissed: search(count: 1, dismissedNode(
+            [response(search(count: 0), dismissed: search(count: 1, dismissedNode(
                 id: "PR_1",
                 requestedTeams: ["Lansweeper/platform", "Lansweeper/asset-cortex"],
                 individualReviewers: 2
-            ))),
+            )))],
             teams: [team("asset-cortex"), team("datanauts")]
         )
 
@@ -176,10 +206,10 @@ struct ReviewDecodingTests {
     @Test("a dismissed row no team of the user's was asked about is dropped")
     func dismissedWithoutAUserTeamIsDropped() throws {
         let snapshot = try PullRequestDecoder.decodeReviewRequests(
-            response(search(count: 0), dismissed: search(count: 2,
+            [response(search(count: 0), dismissed: search(count: 2,
                 dismissedNode(id: "PR_1", requestedTeams: ["Lansweeper/platform"]),
                 dismissedNode(id: "PR_2", requestedTeams: [], individualReviewers: 1)
-            )),
+            ))],
             teams: [team("asset-cortex")]
         )
 
@@ -194,9 +224,9 @@ struct ReviewDecodingTests {
     ])
     func onlyDismissalCounts(state: String) throws {
         let snapshot = try PullRequestDecoder.decodeReviewRequests(
-            response(search(count: 0), dismissed: search(count: 1, dismissedNode(
+            [response(search(count: 0), dismissed: search(count: 1, dismissedNode(
                 id: "PR_1", latestReview: state
-            ))),
+            )))],
             teams: [team("asset-cortex")]
         )
 
@@ -207,7 +237,7 @@ struct ReviewDecodingTests {
     func dismissedAbsences() throws {
         for body in [#"{"data":{"s0":null,"d":null}}"#, #"{"data":{"s0":null}}"#] {
             let snapshot = try PullRequestDecoder.decodeReviewRequests(
-                Data(body.utf8), teams: [team("asset-cortex")]
+                [Data(body.utf8)], teams: [team("asset-cortex")]
             )
             #expect(snapshot.requests.isEmpty)
         }
@@ -218,7 +248,7 @@ struct ReviewDecodingTests {
     @Test("a dismissed row is not counted against a team's pending total")
     func dismissedDoesNotTouchCounts() throws {
         let snapshot = try PullRequestDecoder.decodeReviewRequests(
-            response(search(count: 3), dismissed: search(count: 1, dismissedNode(id: "PR_1"))),
+            [response(search(count: 3), dismissed: search(count: 1, dismissedNode(id: "PR_1")))],
             teams: [team("asset-cortex")]
         )
 
@@ -230,17 +260,79 @@ struct ReviewDecodingTests {
     @Test("a pull request in both searches is one row that says it was dismissed")
     func dismissedDedupesWithTeamRows() throws {
         let snapshot = try PullRequestDecoder.decodeReviewRequests(
-            response(
+            [response(
                 search(count: 1, node(id: "PR_1")),
                 search(count: 1, node(id: "PR_1")),
                 dismissed: search(count: 1, dismissedNode(id: "PR_1"))
-            ),
+            )],
             teams: [team("asset-cortex"), team("datanauts")]
         )
 
         #expect(snapshot.requests.count == 1)
         #expect(snapshot.requests[0].viewerReviewDismissed)
         #expect(snapshot.requests[0].teams.map(\.name) == ["asset-cortex", "datanauts"])
+    }
+
+    // MARK: - Asked of you by name
+
+    @Test("a pull request asked of you by name is a row with no team")
+    func personalBecomesARow() throws {
+        let snapshot = try PullRequestDecoder.decodeReviewRequests(
+            [response(search(count: 0), personal: search(count: 1, node(id: "PR_1")))],
+            teams: [team("asset-cortex")]
+        )
+
+        let row = try #require(snapshot.requests.first)
+        #expect(row.requestedDirectly)
+        #expect(row.teams.isEmpty)
+        #expect(row.waitingOn == ["you"])
+    }
+
+    @Test("a pull request asked of you and of a team is one row naming you first")
+    func personalDedupesWithTeamRows() throws {
+        let snapshot = try PullRequestDecoder.decodeReviewRequests(
+            [response(
+                search(count: 1, node(id: "PR_1")),
+                personal: search(count: 1, node(id: "PR_1"))
+            )],
+            teams: [team("asset-cortex")]
+        )
+
+        #expect(snapshot.requests.count == 1)
+        #expect(snapshot.requests[0].requestedDirectly)
+        #expect(snapshot.requests[0].waitingOn == ["you", "asset-cortex"])
+    }
+
+    @Test("a team row nobody asked you about by name stays a team row")
+    func teamRowIsNotPersonal() throws {
+        let snapshot = try PullRequestDecoder.decodeReviewRequests(
+            [response(search(count: 1, node(id: "PR_1")), personal: search(count: 0))],
+            teams: [team("asset-cortex")]
+        )
+
+        #expect(snapshot.requests[0].requestedDirectly == false)
+        #expect(snapshot.requests[0].waitingOn == ["asset-cortex"])
+    }
+
+    /// The counts are per team, and settings reads them as what a team has pending.
+    @Test("a pull request asked of you is not counted against any team")
+    func personalDoesNotTouchCounts() throws {
+        let snapshot = try PullRequestDecoder.decodeReviewRequests(
+            [response(search(count: 3), personal: search(count: 5, node(id: "PR_1")))],
+            teams: [team("asset-cortex")]
+        )
+
+        #expect(snapshot.pendingCounts == ["Lansweeper/asset-cortex": 3])
+    }
+
+    @Test("belonging to no teams still lists what was asked of you")
+    func personalWithNoTeams() throws {
+        let snapshot = try PullRequestDecoder.decodeReviewRequests(
+            [Data(#"{"data":{"p":\#(search(count: 1, node(id: "PR_1")))}}"#.utf8)],
+            teams: []
+        )
+
+        #expect(snapshot.requests.map(\.id) == ["PR_1"])
     }
 
     // MARK: - Ordering
@@ -250,12 +342,12 @@ struct ReviewDecodingTests {
     @Test("rows are ordered by last activity, newest first")
     func orderedByUpdatedAt() throws {
         let snapshot = try PullRequestDecoder.decodeReviewRequests(
-            response(
+            [response(
                 search(count: 2,
                        node(id: "PR_old", updatedAt: "2026-08-01T10:00:00Z"),
                        node(id: "PR_new", updatedAt: "2026-08-27T10:00:00Z")),
                 search(count: 1, node(id: "PR_mid", updatedAt: "2026-08-15T10:00:00Z"))
-            ),
+            )],
             teams: [team("asset-cortex"), team("datanauts")]
         )
 
@@ -267,14 +359,14 @@ struct ReviewDecodingTests {
     @Test("a dismissed row sorts by activity with the rest")
     func dismissedJoinsTheOrdering() throws {
         let snapshot = try PullRequestDecoder.decodeReviewRequests(
-            response(
+            [response(
                 search(count: 2,
                        node(id: "PR_old", updatedAt: "2026-08-01T10:00:00Z"),
                        node(id: "PR_new", updatedAt: "2026-08-27T10:00:00Z")),
                 dismissed: search(count: 1, dismissedNode(
                     id: "PR_dismissed", updatedAt: "2026-08-15T10:00:00Z"
                 ))
-            ),
+            )],
             teams: [team("asset-cortex")]
         )
 
@@ -289,7 +381,7 @@ struct ReviewDecodingTests {
     @Test("a missing alias is left out rather than counted as zero")
     func missingAliasIsOmitted() throws {
         let snapshot = try PullRequestDecoder.decodeReviewRequests(
-            Data(#"{"data":{"s0":null}}"#.utf8),
+            [Data(#"{"data":{"s0":null}}"#.utf8)],
             teams: [team("asset-cortex")]
         )
 
@@ -300,9 +392,9 @@ struct ReviewDecodingTests {
     @Test("the diff's size reaches the row, so the remark has something to read")
     func diffSizeIsDecoded() throws {
         let snapshot = try PullRequestDecoder.decodeReviewRequests(
-            response(
+            [response(
                 search(count: 1, node(id: "PR_1", additions: 8, deletions: 941, changedFiles: 63))
-            ),
+            )],
             teams: [team("asset-cortex")]
         )
 
@@ -315,7 +407,7 @@ struct ReviewDecodingTests {
     @Test("a team with nothing pending reports zero rather than nothing")
     func genuineZeroIsRecorded() throws {
         let snapshot = try PullRequestDecoder.decodeReviewRequests(
-            response(search(count: 0)),
+            [response(search(count: 0))],
             teams: [team("database-architects")]
         )
 
@@ -328,7 +420,7 @@ struct ReviewDecodingTests {
     @Test("a deleted author does not lose the row")
     func deletedAuthorSurvives() throws {
         let snapshot = try PullRequestDecoder.decodeReviewRequests(
-            response(search(count: 1, node(id: "PR_1", author: nil))),
+            [response(search(count: 1, node(id: "PR_1", author: nil)))],
             teams: [team("asset-cortex")]
         )
 
@@ -339,7 +431,7 @@ struct ReviewDecodingTests {
     @Test("a repository with no CI decodes as no checks rather than pending")
     func absentRollup() throws {
         let snapshot = try PullRequestDecoder.decodeReviewRequests(
-            response(search(count: 1, node(id: "PR_1", checks: nil))),
+            [response(search(count: 1, node(id: "PR_1", checks: nil)))],
             teams: [team("asset-cortex")]
         )
 
@@ -350,7 +442,7 @@ struct ReviewDecodingTests {
     @Test("a repository requiring no review decodes as no decision")
     func absentReviewDecision() throws {
         let snapshot = try PullRequestDecoder.decodeReviewRequests(
-            response(search(count: 1, node(id: "PR_1", reviewDecision: nil))),
+            [response(search(count: 1, node(id: "PR_1", reviewDecision: nil)))],
             teams: [team("asset-cortex")]
         )
 
@@ -362,7 +454,7 @@ struct ReviewDecodingTests {
     @Test("the nested wire shape collapses onto the flat model")
     func flattensNesting() throws {
         let snapshot = try PullRequestDecoder.decodeReviewRequests(
-            response(search(count: 1, node(
+            [response(search(count: 1, node(
                 id: "PR_kwDONwH6ds8AAAABBDNO4w",
                 number: 187,
                 repo: "Lansweeper/architecture-decisions",
@@ -370,7 +462,7 @@ struct ReviewDecodingTests {
                 author: "jeroensavat",
                 reviewDecision: "CHANGES_REQUESTED",
                 checks: "FAILURE"
-            ))),
+            )))],
             teams: [team("architecture-guild")]
         )
 
@@ -392,11 +484,11 @@ struct ReviewDecodingTests {
     @Test("timestamps parse as ISO8601")
     func parsesDates() throws {
         let snapshot = try PullRequestDecoder.decodeReviewRequests(
-            response(search(count: 1, node(
+            [response(search(count: 1, node(
                 id: "PR_1",
                 createdAt: "2026-08-26T08:50:26Z",
                 updatedAt: "2026-08-26T09:10:06Z"
-            ))),
+            )))],
             teams: [team("asset-cortex")]
         )
 
@@ -411,7 +503,7 @@ struct ReviewDecodingTests {
     @Test("an unrecognised check state degrades to pending, never to success")
     func unknownCheckStateIsPending() throws {
         let snapshot = try PullRequestDecoder.decodeReviewRequests(
-            response(search(count: 1, node(id: "PR_1", checks: "SOMETHING_NEW"))),
+            [response(search(count: 1, node(id: "PR_1", checks: "SOMETHING_NEW")))],
             teams: [team("asset-cortex")]
         )
 
@@ -422,7 +514,7 @@ struct ReviewDecodingTests {
     @Test("an unrecognised review decision assumes a review is still needed")
     func unknownDecisionAssumesReviewRequired() throws {
         let snapshot = try PullRequestDecoder.decodeReviewRequests(
-            response(search(count: 1, node(id: "PR_1", reviewDecision: "SOMETHING_NEW"))),
+            [response(search(count: 1, node(id: "PR_1", reviewDecision: "SOMETHING_NEW")))],
             teams: [team("asset-cortex")]
         )
 
@@ -442,7 +534,7 @@ struct ReviewDecodingTests {
         )
 
         do {
-            _ = try PullRequestDecoder.decodeReviewRequests(data, teams: [team("asset-cortex")])
+            _ = try PullRequestDecoder.decodeReviewRequests([data], teams: [team("asset-cortex")])
             Issue.record("expected a throw")
         } catch let error as PRMasterError {
             guard case .graphQL = error else {
@@ -456,7 +548,7 @@ struct ReviewDecodingTests {
     func neitherDataNorErrors() throws {
         do {
             _ = try PullRequestDecoder.decodeReviewRequests(
-                Data("{}".utf8), teams: [team("asset-cortex")]
+                [Data("{}".utf8)], teams: [team("asset-cortex")]
             )
             Issue.record("expected a throw")
         } catch let error as PRMasterError {
@@ -470,7 +562,7 @@ struct ReviewDecodingTests {
     @Test("no teams decodes to an empty snapshot")
     func noTeams() throws {
         let snapshot = try PullRequestDecoder.decodeReviewRequests(
-            Data(#"{"data":{}}"#.utf8), teams: []
+            [Data(#"{"data":{}}"#.utf8)], teams: []
         )
 
         #expect(snapshot.requests.isEmpty)

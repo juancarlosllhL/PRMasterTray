@@ -142,7 +142,7 @@ public final class ReviewStore {
             .filter { window.includes(createdAt: $0.createdAt, now: instant) }
             // The dismissal search is not per team, so it can return a row
             // belonging to a team the user switched off.
-            .filter { $0.teams.contains(where: teamFilter.shows) }
+            .filter { $0.requestedDirectly || $0.teams.contains(where: teamFilter.shows) }
     }
 
     /// What GitHub reports pending for one team, or `nil` when it did not answer.

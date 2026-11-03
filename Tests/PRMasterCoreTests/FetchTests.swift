@@ -123,6 +123,35 @@ struct FetchTests {
         }
     }
 
+    @Test("team reviews go out as several requests and come back as one list")
+    func reviewRequestsSplitAndMerge() async throws {
+        let teams = ["t0", "t1", "t2"].map { Team(combinedSlug: "acme/\($0)", organization: "acme", name: $0) }
+        let answers = ["s0", "s1", "s2", "d", "p"].map { alias in
+            StubOutcome.response(status: 200, body: Data(#"{"data":{"\#(alias)":{"issueCount":4,"nodes":[]}}}"#.utf8))
+        }
+        let ctx = makeClient(answers)
+
+        let snapshot = try await ctx.client.fetchReviewRequests(
+            teams: teams, filter: TeamFilter(disabledTeams: []), window: .twoWeeks
+        )
+
+        #expect(ctx.stub.requests.count == 5)
+        #expect(snapshot.pendingCounts == ["acme/t0": 4, "acme/t1": 4, "acme/t2": 4])
+    }
+
+    @Test("one request ending in a 502 fails the team reviews as a whole")
+    func reviewRequestsFailTogether() async throws {
+        let teams = ["t0", "t1"].map { Team(combinedSlug: "acme/\($0)", organization: "acme", name: $0) }
+        let ok = StubOutcome.response(status: 200, body: Data(#"{"data":{}}"#.utf8))
+        let ctx = makeClient([ok, .response(status: 502, body: Data("<html>".utf8)), ok])
+
+        await #expect(throws: PRMasterError.httpError(status: 502)) {
+            _ = try await ctx.client.fetchReviewRequests(
+                teams: teams, filter: TeamFilter(disabledTeams: []), window: .twoWeeks
+            )
+        }
+    }
+
     @Test("maps a 429 to rateLimited")
     func rateLimited() async throws {
         let ctx = makeClient([.response(status: 429, body: Data("{}".utf8))])

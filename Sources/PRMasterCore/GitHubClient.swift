@@ -173,24 +173,30 @@ public actor GitHubClient {
         return try PullRequestDecoder.decodeIssueLinks(data, keys: keys)
     }
 
-    /// What each of the user's teams has been asked to review.
+    /// What the user, and each of their teams, has been asked to review.
     ///
-    /// One request covering every team, with rows fetched only for the ones the
+    /// Several requests in parallel, with rows fetched only for the teams the
     /// user has switched on — see `Queries.reviewRequests(for:filter:window:now:)`
-    /// for why a disabled team is still asked.
+    /// for the split and for why a disabled team is still asked.
     ///
     /// Skips the request outright when there is nothing to ask, on the same terms
-    /// as `fetchReleases`: a lookup about no teams, or one whose window is off, is
-    /// a rate-limit point spent on nothing.
+    /// as `fetchReleases`: a lookup whose window is off is a rate-limit point
+    /// spent on nothing.
     public func fetchReviewRequests(
         teams: [Team], filter: TeamFilter, window: ReviewWindow
     ) async throws -> ReviewSnapshot {
-        guard let built = Queries.reviewRequests(
-            for: teams, filter: filter, window: window, now: Date()
-        ) else { return .empty }
+        let requests = Queries.reviewRequests(for: teams, filter: filter, window: window, now: Date())
+        guard !requests.isEmpty else { return .empty }
 
-        let data = try await perform(query: built.query, variables: built.variables)
-        return try PullRequestDecoder.decodeReviewRequests(data, teams: teams)
+        let responses = try await withThrowingTaskGroup(of: Data.self) { group in
+            for request in requests {
+                group.addTask { try await self.perform(query: request.query, variables: request.variables) }
+            }
+            var responses: [Data] = []
+            for try await response in group { responses.append(response) }
+            return responses
+        }
+        return try PullRequestDecoder.decodeReviewRequests(responses, teams: teams)
     }
 
     /// Approves a pull request.

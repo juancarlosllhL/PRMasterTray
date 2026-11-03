@@ -1,6 +1,6 @@
 import Foundation
 
-/// An open pull request that a team the user belongs to has been asked to review.
+/// An open pull request that the user, or a team they belong to, has been asked to review.
 ///
 /// A separate type from `PullRequest` on the same grounds `MergedPullRequest` is
 /// one: half of what makes a `PullRequest` is about getting your own change in —
@@ -58,6 +58,13 @@ public struct ReviewRequest: Identifiable, Sendable, Equatable {
     /// True only for rows the dismissal search found: the per-team searches
     /// cannot see a dismissal, and GitHub's team request is gone by then.
     public let viewerReviewDismissed: Bool
+    /// Asked of the user by name. `teams` is empty when no team was asked as well.
+    public let requestedDirectly: Bool
+
+    /// Who the row is waiting on, for display: "you" first, then each team's name.
+    public var waitingOn: [String] {
+        (requestedDirectly ? ["you"] : []) + teams.map(\.name)
+    }
 
     public var state: ReviewState { ReviewState.evaluate(self) }
 
@@ -84,7 +91,8 @@ public struct ReviewRequest: Identifiable, Sendable, Equatable {
         deletions: Int,
         changedFiles: Int,
         teams: [Team],
-        viewerReviewDismissed: Bool = false
+        viewerReviewDismissed: Bool = false,
+        requestedDirectly: Bool = false
     ) {
         self.id = id
         self.number = number
@@ -103,6 +111,7 @@ public struct ReviewRequest: Identifiable, Sendable, Equatable {
         self.changedFiles = changedFiles
         self.teams = teams
         self.viewerReviewDismissed = viewerReviewDismissed
+        self.requestedDirectly = requestedDirectly
     }
 }
 
