@@ -30,23 +30,24 @@ struct BoardView: View {
         .padding(.bottom, CGFloat(JiraBoard.outerPadding))
     }
 
-    private static let cardsBeforeScrolling = 5
     /// An empty column is only a header tall, too small to aim a drop at.
     private static let minimumDropHeight: CGFloat = 160
 
-    /// Only the long columns get a scroller and a fixed height. A short one
-    /// sized to the tallest would leave the popover mostly empty space.
+    /// Capped by measured height, not card count: a few expanded cards outgrow
+    /// the cap. A short column keeps its own height rather than the tallest one's.
     @ViewBuilder
     private func column(_ column: BoardColumn) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             PaneHeaderView(title: column.title, trailing: "\(column.cards.count)")
             if column.cards.isEmpty {
                 empty
-            } else if !isDocked, column.cards.count > Self.cardsBeforeScrolling {
-                ScrollView { cards(column) }
-                    .frame(height: Self.columnHeight)
-            } else {
+            } else if isDocked {
                 cards(column)
+            } else {
+                ScrollView { cards(column) }
+                    .scrollBounceBehavior(.basedOnSize)
+                    .frame(maxHeight: Self.columnHeight)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(width: Self.columnWidth)
