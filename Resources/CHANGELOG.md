@@ -4,6 +4,12 @@ What each release changed, newest first. The app shows the entries you missed
 the first time it runs after an update, so keep the lines short and written for
 whoever has to read them in a small window.
 
+## 0.22.0 — 2026-11-03
+
+- Pull requests where someone asked you for a review by name now appear under Waiting on your teams, marked you. They show whichever teams you have switched on.
+- Waiting on your teams no longer fails to load when several of your teams have a lot pending. GitHub used to time out the whole list.
+- On the Board in the popover, a column now scrolls as soon as its cards outgrow it, not only after the fifth card.
+
 ## 0.21.0 — 2026-10-16
 
 - Each screen now has its own Show as choice, so one screen can have a panel while another keeps the popover. Set it in Settings, Appearance, or under Show Here As in the gear menu.
