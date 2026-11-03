@@ -143,7 +143,7 @@ struct FetchTests {
     func reviewRequestsFailTogether() async throws {
         let teams = ["t0", "t1"].map { Team(combinedSlug: "acme/\($0)", organization: "acme", name: $0) }
         let ok = StubOutcome.response(status: 200, body: Data(#"{"data":{}}"#.utf8))
-        let ctx = makeClient([ok, .response(status: 502, body: Data("<html>".utf8)), ok])
+        let ctx = makeClient([ok, .response(status: 502, body: Data("<html>".utf8)), ok, ok])
 
         await #expect(throws: PRMasterError.httpError(status: 502)) {
             _ = try await ctx.client.fetchReviewRequests(
