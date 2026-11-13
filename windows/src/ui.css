@@ -1,0 +1,25 @@
+/* Shared by every window. Dark by default; the OS (or the Theme setting, which
+   drives Electron's nativeTheme) switches to light through prefers-color-scheme. */
+:root {
+  color-scheme: dark;
+  --bg: #0d1117; --bg2: #161b22; --border: #30363d; --fg: #e6edf3; --muted: #8b949e; --subtle: #6e7681;
+  --hover: #1c2128; --control: #30363d; --accent: #238636; --accent-fg: #ffffff;
+  --good: #3fb950; --bad: #f85149; --warn: #d29922; --info: #58a6ff;
+  --good-bg: #1f6f3a; --bad-bg: #5a1d1d; --warn-bg: #5a4a14;
+  --add-bg: #12261e; --del-bg: #2d1417; --hunk-bg: #1c2d4a; --find-bg: #7a5a00;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --bg: #ffffff; --bg2: #f6f8fa; --border: #d0d7de; --fg: #1f2328; --muted: #57606a; --subtle: #6e7781;
+    --hover: #eaeef2; --control: #e6eaef; --accent: #1a7f37; --accent-fg: #ffffff;
+    --good: #1a7f37; --bad: #cf222e; --warn: #9a6700; --info: #0969da;
+    --good-bg: #dafbe1; --bad-bg: #ffebe9; --warn-bg: #fff8c5;
+    --add-bg: #e6ffec; --del-bg: #ffebe9; --hunk-bg: #ddf4ff; --find-bg: #fff8c5;
+  }
+}
+body { font: 13px "Segoe UI", sans-serif; margin: 0; background: var(--bg); color: var(--fg); }
+button { background: var(--control); color: inherit; border: 0; padding: 5px 12px; border-radius: 4px; cursor: pointer; font: inherit; }
+button:disabled { opacity: .4; cursor: default; }
+button.primary { background: var(--accent); color: var(--accent-fg); }
+input, select, textarea { font: inherit; color: inherit; background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; }

@@ -1,0 +1,55 @@
+{
+  "name": "prmaster-windows",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "start": "electron .",
+    "icon": "node scripts/make-icon.mjs",
+    "pack:dir": "node scripts/make-icon.mjs && electron-builder --win --dir",
+    "dist": "node scripts/make-icon.mjs && electron-builder --win nsis --publish never"
+  },
+  "devDependencies": {
+    "electron": "^45.1.0",
+    "electron-builder": "^26.18.0"
+  },
+  "description": "PR Master for Windows: your open pull requests, in the system tray.",
+  "build": {
+    "appId": "com.antoniovizuete.prmaster",
+    "productName": "PR Master",
+    "asar": false,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**",
+      "resources/**",
+      "CHANGELOG.md",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "PRMaster-Setup.exe",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": null
+  },
+  "repository": "github:adilansweeper/PRMasterTray",
+  "packageManager": "pnpm@11.3.0"
+}

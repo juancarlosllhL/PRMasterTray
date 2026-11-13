@@ -219,6 +219,10 @@ GitHub would merge right now.
   It goes in your login Keychain, is sent only to your own Jira site, and never
   reaches preferences, a log or a fixture.
 
+## Windows
+
+A Windows build lives in [windows/](windows/README.md): the same app as a system-tray program, released separately under `windows-v…` tags.
+
 ## Install
 
 ```sh

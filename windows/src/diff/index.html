@@ -1,0 +1,88 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Review</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src https: data:">
+<link rel="stylesheet" href="../ui.css">
+<style>
+  html, body { height: 100%; }
+  body { display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: var(--bg2); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  header .title { font-weight: 600; flex: 1; min-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  header .count { color: var(--muted); }
+  #find { width: 180px; }
+  #findCount { color: var(--muted); min-width: 56px; }
+  .banner { padding: 8px 14px; background: var(--warn-bg); display: flex; gap: 10px; align-items: center; }
+  .banner.bad { background: var(--bad-bg); }
+  details.description { border-bottom: 1px solid var(--border); padding: 6px 14px; background: var(--bg); max-height: 40%; overflow: auto; }
+  details.description summary { cursor: pointer; color: var(--muted); }
+  details.description .body img { max-width: 100%; }
+  details.description .body pre, details.description .body code { background: var(--bg2); padding: 1px 4px; border-radius: 3px; }
+  main { flex: 1; display: flex; min-height: 0; }
+  nav { width: 320px; overflow-y: auto; border-right: 1px solid var(--border); background: var(--bg); display: flex; flex-direction: column; }
+  nav input { margin: 8px; }
+  nav .heading { padding: 8px 10px 4px; font-weight: 600; color: var(--muted); font-size: 12px; }
+  nav .file { padding: 5px 10px; cursor: pointer; display: flex; gap: 6px; align-items: baseline; border-bottom: 1px solid var(--bg2); }
+  nav .file:hover { background: var(--hover); }
+  nav .file.viewed { opacity: .55; }
+  nav .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+  .add { color: var(--good); } .del { color: var(--bad); }
+  #diffwrap { flex: 1; position: relative; min-width: 0; }
+  #diff { position: absolute; inset: 0; overflow: auto; }
+  #marks { position: absolute; top: 0; bottom: 0; right: 0; width: 10px; pointer-events: none; }
+  #marks i { position: absolute; right: 0; width: 10px; height: 4px; pointer-events: auto; cursor: pointer; }
+  #marks i.l2 { background: var(--warn); } #marks i.l3 { background: var(--bad); }
+  /* Importance stripe in the gutter: it widens with the exact score, and a line the model is unsure about is hatched. */
+  td.num[data-level="1"] { --hc: var(--muted); } td.num[data-level="2"] { --hc: var(--warn); } td.num[data-level="3"] { --hc: var(--bad); }
+  td.num[data-level]:not([data-level="0"]) { box-shadow: inset calc(2px + var(--score, 0) * 2px) 0 0 var(--hc); }
+  td.num[data-uncertain] { background-image: repeating-linear-gradient(135deg, transparent 0 3px, var(--bg) 3px 5px); }
+  nav .file .dot { width: 8px; height: 8px; border-radius: 2px; align-self: center; flex: none; background: transparent; }
+  nav .file .dot.l1 { background: var(--muted); } nav .file .dot.l2 { background: var(--warn); } nav .file .dot.l3 { background: var(--bad); }
+  nav .file .dot.waiting { background: none; border: 1px dashed var(--muted); } nav .file .dot.failed { background: none; border: 1px solid var(--bad); }
+  table { border-collapse: collapse; width: 100%; font-family: var(--code-font); font-size: var(--code-size); font-variant-ligatures: var(--code-ligatures); table-layout: fixed; }
+  td { padding: 0 8px; white-space: pre-wrap; word-break: break-all; vertical-align: top; }
+  td.num { width: 52px; text-align: right; color: var(--subtle); user-select: none; }
+  td.sign { width: 16px; user-select: none; }
+  tr.filehead td { position: sticky; top: 0; background: var(--bg2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 6px 12px; z-index: 1; font-family: "Segoe UI", sans-serif; font-size: 13px; }
+  tr.filehead .inner { display: flex; gap: 10px; align-items: center; }
+  tr.filehead .path { flex: 1; font-family: var(--code-font); }
+  tr.filehead .err { color: var(--bad); font-size: 12px; }
+  tr.filehead .caret { padding: 0 6px; background: none; }
+  tr.section td { background: var(--bg); color: var(--muted); font-weight: 600; padding: 14px 12px 6px; font-family: "Segoe UI", sans-serif; }
+  tr.omitted td { padding: 12px; color: var(--muted); font-style: italic; font-family: "Segoe UI", sans-serif; }
+  tr.hunk td { background: var(--hunk-bg); color: var(--muted); }
+  tr.added, td.added { background: var(--add-bg); }
+  tr.removed, td.removed { background: var(--del-bg); }
+  td.blank { background: var(--bg2); }
+  tr.added td.sign, td.added.sign { color: var(--good); }
+  tr.removed td.sign { color: var(--bad); }
+  mark { background: var(--find-bg); color: inherit; }
+  mark.current { outline: 2px solid var(--warn); }
+  .empty { padding: 24px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <span class="title" id="title"></span>
+  <span class="count" id="count"></span>
+  <input id="find" type="search" placeholder="Find (Ctrl+F)">
+  <span id="findCount"></span>
+  <button id="findPrev" title="Previous match (Shift+Enter)">↑</button>
+  <button id="findNext" title="Next match (Enter)">↓</button>
+  <span id="scoreInfo" class="count"></span>
+  <button id="score" title="Score how closely each block needs reviewing (sends the changed lines to OpenRouter)">Score</button>
+  <select id="layout"><option value="unified">Unified</option><option value="split">Split</option></select>
+  <button id="reload" title="Load the pull request again">Reload</button>
+  <button id="approve" class="primary" hidden>Approve</button>
+  <button id="merge" class="primary" hidden>Merge</button>
+</header>
+<div id="banner" class="banner" hidden></div>
+<details id="description" class="description" hidden><summary>Description</summary><div class="body" id="descriptionBody"></div></details>
+<main>
+  <nav><input id="filter" type="search" placeholder="Filter files"><div id="files"></div></nav>
+  <div id="diffwrap"><div id="diff"></div><div id="marks"></div></div>
+</main>
+<script src="diff.js"></script>
+</body>
+</html>

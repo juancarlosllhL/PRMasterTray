@@ -1,0 +1,33 @@
+name: Windows
+
+# The tests run on Windows itself: paths, the shell and the tray are the things that
+# differ, and the macOS job cannot say anything about them.
+on:
+  pull_request:
+    paths: ["windows/**", ".github/workflows/windows.yml"]
+  push:
+    branches: [main]
+    paths: ["windows/**", ".github/workflows/windows.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: bash
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: windows/package.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: windows/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test

@@ -1,0 +1,91 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>PR Master</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<link rel="stylesheet" href="../ui.css">
+<style>
+  html, body { height: 100%; }
+  body { display: flex; flex-direction: column; }
+  header { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 16px; font-weight: 600; border-bottom: 1px solid var(--border); background: var(--bg); }
+  header .actions { display: flex; gap: 6px; }
+  nav.tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--bg); }
+  nav.tabs button { flex: 1; background: none; border-radius: 0; padding: 8px; border-bottom: 2px solid transparent; color: var(--muted); }
+  nav.tabs button.active { color: var(--fg); border-bottom-color: var(--info); }
+  nav.tabs .badge { background: var(--control); border-radius: 10px; padding: 0 6px; margin-left: 4px; font-size: 11px; }
+  main { flex: 1; overflow: auto; min-height: 0; }
+  .error { padding: 8px 16px; background: var(--bad-bg); }
+  .row { padding: 10px 16px; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .row:hover { background: var(--hover); }
+  .row button { margin: 6px 6px 0 0; }
+  .repo { color: var(--muted); font-size: 12px; }
+  .status { font-size: 12px; margin-top: 2px; }
+  .ready .status { color: var(--good); }
+  .checksFailing .status, .conflicted .status { color: var(--bad); }
+  .draft { opacity: .55; }
+  .section { padding: 10px 16px 4px; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--border); }
+  .chips { display: flex; gap: 6px; margin-top: 4px; }
+  .chip { font-size: 11px; padding: 1px 6px; border-radius: 10px; background: var(--border); }
+  .chip-carrying { background: var(--good-bg); }
+  .chip-awaiting { background: var(--warn-bg); }
+  .review-awaiting .status { color: var(--info); }
+  .review-approved .status { color: var(--good); }
+  .review-changesRequested .status, .review-dismissed .status { color: var(--warn); }
+  .review-checksFailing .status { color: var(--bad); }
+  .ship-released .status { color: var(--good); }
+  .ship-failed .status { color: var(--bad); }
+  .ship-building .status { color: var(--warn); }
+  .empty { padding: 24px 16px; color: var(--muted); }
+
+  /* ---- Board ---- */
+  .toolbar { display: flex; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg); z-index: 2; }
+  .toolbar input { flex: 1; }
+  .banner { padding: 8px 14px; background: var(--warn-bg); display: flex; gap: 10px; align-items: center; }
+  .banner.bad { background: var(--bad-bg); }
+  .banner span { flex: 1; }
+  .form { padding: 12px 16px; background: var(--bg2); border-bottom: 1px solid var(--border); }
+  .form h3 { margin: 0 0 8px; font-size: 13px; }
+  .form label { display: block; margin: 6px 0; }
+  .form label span { display: block; font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+  .form input, .form select, .form textarea { width: 100%; box-sizing: border-box; }
+  .form .problem { color: var(--bad); font-size: 12px; }
+  .form .actions { display: flex; gap: 8px; margin-top: 8px; }
+  .lane-heading { padding: 10px 16px 4px; font-weight: 600; color: var(--muted); }
+  .lane.dropping { outline: 2px dashed var(--info); outline-offset: -2px; }
+  .card { padding: 8px 12px; margin: 6px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg2); cursor: pointer; }
+  .card.moving { opacity: .55; }
+  .card:hover { background: var(--hover); }
+  .card .top { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+  .card .ref { font-weight: 600; color: var(--fg); }
+  .card .title { margin: 3px 0; }
+  .card .status-pill { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 10px; background: var(--control); }
+  .tint-blue { color: var(--info); } .tint-green { color: var(--good); } .tint-red { color: var(--bad); } .tint-yellow { color: var(--warn); } .tint-gray { color: var(--muted); }
+  .card .links-toggle { font-size: 12px; color: var(--muted); margin-top: 4px; cursor: pointer; user-select: none; }
+  .card .prs { margin-top: 4px; }
+  .card .pr { font-size: 12px; padding: 2px 0; display: flex; gap: 6px; }
+  .card .pr .state-open { color: var(--info); } .card .pr .state-merged { color: var(--good); } .card .pr .state-closed { color: var(--muted); }
+  .board-columns { display: flex; gap: 10px; padding: 10px; align-items: flex-start; min-width: max-content; }
+  .board-columns .lane { width: 260px; flex: none; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding-bottom: 6px; }
+  .board-columns .card { margin: 6px; }
+  .src { font-size: 10px; border: 1px solid var(--border); border-radius: 3px; padding: 0 3px; }
+</style>
+</head>
+<body>
+<header><span id="title">PR Master</span><span class="actions"><button id="refresh">Refresh</button><button id="settings" title="Settings">⚙</button></span></header>
+<div id="update" class="banner" hidden></div>
+<nav class="tabs">
+  <button id="tab-prs" class="active">Pull requests</button>
+  <button id="tab-board">Board<span class="badge" id="boardBadge" hidden></span></button>
+</nav>
+<main>
+  <section id="prs">
+    <div id="error" class="error" hidden></div>
+    <div id="list"></div>
+  </section>
+  <section id="boardpane" hidden></section>
+</main>
+<script src="renderer.js"></script>
+<script src="board.js"></script>
+</body>
+</html>
